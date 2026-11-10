@@ -158,6 +158,7 @@ export interface UsageCounters {
       crossAz: boolean;
       crossRegion: boolean;
       viaNat: boolean;
+      viaPrivateLink?: boolean;
     }
   >;
 }

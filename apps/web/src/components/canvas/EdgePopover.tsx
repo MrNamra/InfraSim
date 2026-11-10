@@ -2,12 +2,14 @@
 
 import { Trash2, X } from 'lucide-react';
 import type { EdgeInstance } from '@infrasim/shared-types';
+import type { InferredEdgePlacement } from '@infrasim/sim-engine';
 import { Button } from '@infrasim/ui-kit';
 
 export interface EdgePopoverProps {
   edge: EdgeInstance;
   sourceLabel: string;
   targetLabel: string;
+  inferredPlacement?: InferredEdgePlacement | null;
   onUpdate: (edgeId: string, updater: (draft: EdgeInstance) => void) => void;
   onDelete: (edgeId: string) => void;
   onClose: () => void;
@@ -32,10 +34,14 @@ export function EdgePopover({
   edge,
   sourceLabel,
   targetLabel,
+  inferredPlacement = null,
   onUpdate,
   onDelete,
   onClose,
 }: EdgePopoverProps) {
+  const defaultP50 = inferredPlacement?.model.p50 ?? 0.4;
+  const defaultP95 = inferredPlacement?.model.p95 ?? 1.2;
+
   return (
     <div
       data-testid="edge-popover"
@@ -149,11 +155,11 @@ export function EdgePopover({
           </label>
         </div>
 
-        {/* Network latency override */}
+        {/* Network latency & link properties */}
         <div className="rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-2.5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-              Network latency (ms)
+              Network & link latency (ms)
             </span>
             {edge.networkLatency ? (
               <button
@@ -172,10 +178,32 @@ export function EdgePopover({
                 className="text-[11px] text-[var(--text-muted)]"
                 title="Typical default — edit me"
               >
-                Auto placement (typical default)
+                Auto (typical default)
               </span>
             )}
           </div>
+          {inferredPlacement ? (
+            <div
+              data-testid="edge-placement-summary"
+              className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[10px] tabular-nums text-[var(--text-muted)]"
+            >
+              <span>{inferredPlacement.label}</span>
+              <span>·</span>
+              <span>
+                p50 {defaultP50} / p95 {defaultP95} ms
+              </span>
+              {inferredPlacement.crossAz ? (
+                <span className="rounded bg-[var(--bg-raised)] px-1 text-[var(--text-secondary)]">
+                  Cross-AZ
+                </span>
+              ) : null}
+              {inferredPlacement.crossRegion ? (
+                <span className="rounded bg-[var(--bg-raised)] px-1 text-[var(--text-secondary)]">
+                  Cross-region
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-2 grid grid-cols-2 gap-2">
             <label className="block">
               <span className="text-[10px] text-[var(--text-muted)]">p50</span>
@@ -183,7 +211,7 @@ export function EdgePopover({
                 type="number"
                 min={0}
                 step={0.1}
-                placeholder="1.2"
+                placeholder={String(defaultP50)}
                 value={edge.networkLatency?.p50 ?? ''}
                 onChange={(e) => {
                   const p50 = Number(e.target.value);
@@ -209,7 +237,7 @@ export function EdgePopover({
                 type="number"
                 min={0}
                 step={0.1}
-                placeholder="3.0"
+                placeholder={String(defaultP95)}
                 value={edge.networkLatency?.p95 ?? ''}
                 onChange={(e) => {
                   const p95 = Number(e.target.value);
@@ -218,12 +246,60 @@ export function EdgePopover({
                       delete d.networkLatency;
                       return;
                     }
-                    const currentP50 = d.networkLatency?.p50 ?? 1;
+                    const currentP50 = d.networkLatency?.p50 ?? defaultP50;
                     d.networkLatency = {
                       distribution: 'lognormal',
                       p50: Math.min(currentP50, Math.max(0, p95)),
                       p95: Math.max(0, p95),
                     };
+                  });
+                }}
+                className="mt-0.5 h-7 w-full rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 font-mono text-[11px] tabular-nums text-[var(--text-primary)]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[10px] text-[var(--text-muted)]">Tunnel</span>
+              <select
+                aria-label="Network tunnel"
+                value={edge.tunnel ?? 'none'}
+                onChange={(e) => {
+                  const val = e.target.value as 'none' | 'privatelink' | 'vpn';
+                  onUpdate(edge.id, (d) => {
+                    if (val === 'none') {
+                      delete d.tunnel;
+                    } else {
+                      d.tunnel = val;
+                    }
+                  });
+                }}
+                className="mt-0.5 h-7 w-full rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-1.5 text-[11px] text-[var(--text-primary)]"
+              >
+                <option value="none">Direct</option>
+                <option value="privatelink">PrivateLink (+0.3/0.8 ms)</option>
+                <option value="vpn">Over VPN (+10/30 ms)</option>
+              </select>
+            </label>
+            <label className="block">
+              <span
+                className="text-[10px] text-[var(--text-muted)]"
+                title="Typical default (1 Gbps) — edit me"
+              >
+                Bandwidth (Gbps)
+              </span>
+              <input
+                type="number"
+                aria-label="Bandwidth (Gbps)"
+                min={0.01}
+                step={0.5}
+                value={edge.bandwidthGbps ?? 1}
+                onChange={(e) => {
+                  const gbps = Number(e.target.value);
+                  onUpdate(edge.id, (d) => {
+                    if (!Number.isFinite(gbps) || gbps <= 0 || gbps === 1) {
+                      delete d.bandwidthGbps;
+                    } else {
+                      d.bandwidthGbps = gbps;
+                    }
                   });
                 }}
                 className="mt-0.5 h-7 w-full rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 font-mono text-[11px] tabular-nums text-[var(--text-primary)]"

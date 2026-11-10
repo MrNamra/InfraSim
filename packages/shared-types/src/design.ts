@@ -169,6 +169,8 @@ export interface EdgeInstance {
   weight: number;
   fanOut?: number;
   payloadBytes?: number;
+  bandwidthGbps?: number;
+  tunnel?: 'none' | 'privatelink' | 'vpn';
   networkLatency?: LatencyModel;
   retry?: { max: number; backoffMs: number; jitter: boolean };
   circuitBreaker?: { failureThreshold: number; windowMs: number; openMs: number };

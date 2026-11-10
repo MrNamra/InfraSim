@@ -43,7 +43,13 @@ import {
 import { MinHeap } from './heap.js';
 import { LogHistogram } from './histogram.js';
 import { clampLatencyMs, sampleLatency } from './latency.js';
-import { sampleEdgeTransportLatency } from './networkLatency.js';
+import {
+  type InferredEdgePlacement,
+  type ResolvedNodePlacement,
+  inferEdgePlacement,
+  resolveNodePlacement,
+  sampleEdgeTransportLatency,
+} from './networkLatency.js';
 import { type SeededRng, createRng, hashSeed } from './prng.js';
 import { type ResolvedNodeCapacities, resolveNodeCapacities } from './runtimePresets.js';
 import {
@@ -182,6 +188,7 @@ interface RuntimeEdge {
   rng: SeededRng;
   circuitBreaker: CircuitBreakerState | null;
   networkBlocked: NetworkAnalysis['edges'][string] | null;
+  resolvedPlacement: InferredEdgePlacement;
   // Rolling 1s frame window counters
   winCount: number;
   winErrors: number;
@@ -191,6 +198,7 @@ interface RuntimeEdge {
   crossAz: boolean;
   crossRegion: boolean;
   viaNat: boolean;
+  viaPrivateLink: boolean;
 }
 
 interface RuntimeNode {
@@ -198,6 +206,7 @@ interface RuntimeNode {
   service?: ServiceDefinition;
   kind: MockKind;
   isClient: boolean;
+  placement: ResolvedNodePlacement;
   capacities: ResolvedNodeCapacities;
   station: StationState<CallCtx, { call: CallCtx; stage: 'pre' | 'post' | 'local' }, CallCtx>;
   healthTracker: NodeHealthTracker;
@@ -447,6 +456,7 @@ export async function runSimulation(
   const scaleFactor = estEvents > 2_000_000 ? Math.ceil(estEvents / 2_000_000) : 1;
 
   // Initialize runtime nodes cleanly with isolated per-node RNG streams
+  const groupsById = new Map(design.groups.map((g) => [g.id, g]));
   const runtimeNodes = new Map<string, RuntimeNode>();
   const orderedNodes: RuntimeNode[] = [];
 
@@ -454,6 +464,7 @@ export async function runSimulation(
     const service = serviceMap.get(n.serviceId);
     const kind: MockKind = service?.kind ?? 'compute';
     const isClient = n.serviceId === 'generic.client' || n.serviceId === 'generic.users';
+    const placement = resolveNodePlacement(n, groupsById);
     const capacities = resolveNodeCapacities(n, service, scaleFactor);
     const station = createStationState<
       CallCtx,
@@ -466,6 +477,7 @@ export async function runSimulation(
       service,
       kind,
       isClient,
+      placement,
       capacities,
       station,
       healthTracker: createNodeHealthTracker(),
@@ -573,12 +585,13 @@ export async function runSimulation(
       continue;
     }
     const netAnalysis = network?.edges[e.id] ?? null;
-    const crossRegion = Boolean(
-      fromNode.node.region && toNode.node.region && fromNode.node.region !== toNode.node.region,
-    );
-    const crossAz =
-      !crossRegion &&
-      Boolean(fromNode.node.az && toNode.node.az && fromNode.node.az !== toNode.node.az);
+    const resolvedPlacement = inferEdgePlacement(e, fromNode.node, toNode.node, {
+      groupsById,
+      sourceKind: fromNode.kind,
+      targetKind: toNode.kind,
+      sourcePlacement: fromNode.placement,
+      targetPlacement: toNode.placement,
+    });
 
     const re: RuntimeEdge = {
       edge: e,
@@ -587,13 +600,15 @@ export async function runSimulation(
       rng: createRng(hashSeed(seed, e.id, 'edge')),
       circuitBreaker: e.circuitBreaker ? createCircuitBreaker(e.id, e.circuitBreaker) : null,
       networkBlocked: netAnalysis && !netAnalysis.reachable ? netAnalysis : null,
+      resolvedPlacement,
       winCount: 0,
       winErrors: 0,
       winLatencySum: 0,
       totalBytes: 0,
-      crossAz,
-      crossRegion,
+      crossAz: resolvedPlacement.crossAz,
+      crossRegion: resolvedPlacement.crossRegion,
       viaNat: toNode.kind === 'net' || fromNode.kind === 'net',
+      viaPrivateLink: resolvedPlacement.viaPrivateLink,
     };
     orderedEdges.push(re);
     fromNode.outgoingAll.push(re);
@@ -604,7 +619,13 @@ export async function runSimulation(
     }
   }
 
-  const heap = new MinHeap<DesEvent>((a, b) => a.t - b.t || a.seq - b.seq);
+  const heap = new MinHeap<DesEvent>((a, b) => {
+    if (a.t !== b.t) return a.t - b.t;
+    // Flush completed 1s buckets before applying chaos transitions at the exact boundary
+    if (a.kind === 'BUCKET_TICK' && b.kind === 'CHAOS_EVENT') return -1;
+    if (a.kind === 'CHAOS_EVENT' && b.kind === 'BUCKET_TICK') return 1;
+    return a.seq - b.seq;
+  });
   let seqCounter = 0;
   let callCounter = 0;
   let now = 0;
@@ -1038,6 +1059,7 @@ export async function runSimulation(
       edgeState.fromNode.node,
       targetNode.node,
       edgeState.rng,
+      { resolvedPlacement: edgeState.resolvedPlacement },
     );
     edgeState.totalBytes += attemptState.payloadBytes;
 
@@ -2389,7 +2411,7 @@ export async function runSimulation(
           }
         } else if (chaos.kind === 'az-outage') {
           for (const rn of orderedNodes) {
-            if (rn.node.az === chaos.az) {
+            if ((rn.placement.az ?? rn.node.az) === chaos.az) {
               rn.azDown = active;
               recomputeActiveInstances(rn);
               if (!active) {
@@ -2533,6 +2555,7 @@ export async function runSimulation(
       crossAz: re.crossAz,
       crossRegion: re.crossRegion,
       viaNat: re.viaNat,
+      ...(re.viaPrivateLink ? { viaPrivateLink: true } : {}),
     };
   }
 

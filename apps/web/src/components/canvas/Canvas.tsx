@@ -28,7 +28,9 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react';
 import { Grid3x3, Maximize2, Trash2 } from 'lucide-react';
+import { getService } from '@infrasim/catalog';
 import type { SimFrame } from '@infrasim/shared-types';
+import { inferEdgePlacement } from '@infrasim/sim-engine';
 import {
   flowToWorldPosition,
   getGroupRect,
@@ -495,6 +497,20 @@ function CanvasInner({
     if (!selectedEdgeObj) return '';
     return design.nodes.find((n) => n.id === selectedEdgeObj.to)?.label ?? selectedEdgeObj.to;
   }, [design.nodes, selectedEdgeObj]);
+  const selectedEdgeInferredPlacement = useMemo(() => {
+    if (!selectedEdgeObj) return null;
+    const src = design.nodes.find((n) => n.id === selectedEdgeObj.from);
+    const tgt = design.nodes.find((n) => n.id === selectedEdgeObj.to);
+    const customList = mergeCustomServices(design.customServices, userCustomServices);
+    const srcKind = src ? getService(src.serviceId, customList)?.kind : undefined;
+    const tgtKind = tgt ? getService(tgt.serviceId, customList)?.kind : undefined;
+    const groupsById = new Map(design.groups.map((g) => [g.id, g]));
+    return inferEdgePlacement(selectedEdgeObj, src, tgt, {
+      groupsById,
+      sourceKind: srcKind,
+      targetKind: tgtKind,
+    });
+  }, [design.customServices, design.groups, design.nodes, selectedEdgeObj, userCustomServices]);
 
   const hasSelectedElement = Boolean(selectedNodeId || selectedEdgeId || selectedGroupId);
 
@@ -645,6 +661,7 @@ function CanvasInner({
           edge={selectedEdgeObj}
           sourceLabel={selectedEdgeSourceLabel}
           targetLabel={selectedEdgeTargetLabel}
+          inferredPlacement={selectedEdgeInferredPlacement}
           onUpdate={updateEdge}
           onDelete={(edgeId) => deleteElements({ edgeIds: [edgeId] })}
           onClose={() => selectEdge(null)}

@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { HelpCircle, Info } from 'lucide-react';
 import type {
+  GroupInstance,
   NodeConfig,
   NodeInstance,
   RuntimePreset,
   Scenario,
   ServiceDefinition,
 } from '@infrasim/shared-types';
+import { resolveNodePlacement } from '@infrasim/sim-engine';
 import {
   RUNTIME_PRESET_SPECS,
   computeTheoreticalMaxRps,
@@ -19,6 +21,7 @@ import { TrafficProfileEditor } from '../TrafficProfileEditor';
 export interface ConfigTabProps {
   node: NodeInstance;
   service?: ServiceDefinition;
+  groups?: readonly GroupInstance[];
   activeScenario?: Scenario | null;
   seed?: number;
   onUpdateScenario?: (scenarioId: string, updater: (scenario: Scenario) => void) => void;
@@ -32,6 +35,7 @@ export interface ConfigTabProps {
 export function ConfigTab({
   node,
   service,
+  groups = [],
   activeScenario,
   seed = 42,
   onUpdateScenario,
@@ -41,6 +45,11 @@ export function ConfigTab({
   onUpdateConfig,
 }: ConfigTabProps) {
   const [showRpsDetail, setShowRpsDetail] = useState(false);
+
+  const inheritedPlacement = useMemo(() => {
+    const groupsById = new Map(groups.map((g) => [g.id, g]));
+    return resolveNodePlacement({ ...node, region: undefined, az: undefined }, groupsById);
+  }, [groups, node]);
 
   const isClientNode = node.serviceId === 'generic.client' || node.serviceId === 'generic.users';
 
@@ -166,21 +175,31 @@ export function ConfigTab({
             <span className="text-[11px] text-[var(--text-muted)]">Region</span>
             <input
               type="text"
-              placeholder="us-east-1"
+              placeholder={inheritedPlacement.region ?? 'us-east-1'}
               value={node.region ?? ''}
               onChange={(e) => onUpdatePlacement({ region: e.target.value })}
               className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
             />
+            {!node.region && inheritedPlacement.region ? (
+              <span className="mt-0.5 block font-mono text-[10px] text-[var(--text-muted)]">
+                Inherited: {inheritedPlacement.region}
+              </span>
+            ) : null}
           </label>
           <label className="block">
             <span className="text-[11px] text-[var(--text-muted)]">AZ / Zone</span>
             <input
               type="text"
-              placeholder="az-a"
+              placeholder={inheritedPlacement.az ?? 'az-a'}
               value={node.az ?? ''}
               onChange={(e) => onUpdatePlacement({ az: e.target.value })}
               className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
             />
+            {!node.az && inheritedPlacement.az ? (
+              <span className="mt-0.5 block font-mono text-[10px] text-[var(--text-muted)]">
+                Inherited: {inheritedPlacement.az}
+              </span>
+            ) : null}
           </label>
         </div>
       </section>

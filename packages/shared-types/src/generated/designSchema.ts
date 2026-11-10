@@ -706,6 +706,17 @@ export const designJsonSchema = {
         "payloadBytes": {
           "type": "number"
         },
+        "bandwidthGbps": {
+          "type": "number"
+        },
+        "tunnel": {
+          "type": "string",
+          "enum": [
+            "none",
+            "privatelink",
+            "vpn"
+          ]
+        },
         "networkLatency": {
           "$ref": "#/definitions/LatencyModel"
         },

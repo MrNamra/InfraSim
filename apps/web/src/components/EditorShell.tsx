@@ -1112,6 +1112,23 @@ export function EditorShell() {
                     className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
                   />
                 </label>
+                {selectedGroup.kind === 'region' ||
+                selectedGroup.kind === 'vpc' ||
+                selectedGroup.kind === 'subnet' ||
+                selectedGroup.kind === 'az' ||
+                selectedGroup.kind === 'zone' ||
+                selectedGroup.kind === 'compartment' ? (
+                  <label className="mt-2.5 block">
+                    <span className="text-[11px] text-[var(--text-secondary)]">Region</span>
+                    <input
+                      type="text"
+                      placeholder="us-east-1"
+                      value={selectedGroup.region ?? ''}
+                      onChange={(e) => updateGroup(selectedGroup.id, { region: e.target.value })}
+                      className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 font-mono text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+                    />
+                  </label>
+                ) : null}
                 {selectedGroup.kind === 'vpc' || selectedGroup.kind === 'subnet' ? (
                   <label className="mt-2.5 block">
                     <span className="text-[11px] text-[var(--text-secondary)]">CIDR block</span>
@@ -1197,6 +1214,7 @@ export function EditorShell() {
                 <ConfigTab
                   node={selectedNode}
                   service={selectedNodeService}
+                  groups={design.groups}
                   activeScenario={activeScenario}
                   seed={design.settings.seed}
                   onUpdateScenario={updateScenario}
