@@ -123,8 +123,12 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
       <div className="px-3 py-2 pl-3.5">
         {/* Top row: icon + label + timing/instances */}
         <div className="flex items-center gap-2">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-[var(--bg-raised)] text-[var(--text-secondary)]">
-            <ServiceIcon icon={service?.icon ?? 'generic'} className="h-3.5 w-3.5" />
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-[var(--bg-raised)] text-[var(--text-secondary)]">
+            <ServiceIcon
+              icon={service?.icon ?? 'generic'}
+              serviceId={nodeInstance.serviceId}
+              className="h-4 w-4 shrink-0 rounded-[3px]"
+            />
           </span>
 
           <span

@@ -163,7 +163,7 @@ First-run guided tour (5 steps: drag service → connect → set latency → Run
 ## 12. Visual design
 
 - Neutral dark and light themes; provider color stripes (AWS orange, GCP blue, Azure cyan, OCI red — as subtle accents, not brand-exact); state colors independent of provider colors.
-- Icons: use generic, own-drawn icons per kind (compute, db, cache, queue, storage, lb, gateway, ai, network) with a small provider badge. **Do not embed official cloud vendor logo/icon sets** unless their usage terms are reviewed and allow it (decision to log).
+- Icons: bundle static per-service SVGs under `apps/web/public/icons/services/` for AWS, GCP, Azure, and OCI services (sourced from MIT-licensed `cloud-icons` / `@thesvg/icons` and UPL-1.0 `oracle/oci-designer-toolkit` with trademark attribution in `apps/web/public/icons/services/ATTRIBUTIONS.md` and `docs/DECISIONS.md`), rendered cleanly inside isolated `<img>` slots without modifying vendor artwork, with `lucide-react` 1.5-stroke kind icons retained for generic/custom blocks.
 - Motion: 150–200 ms transitions; no motion when idle.
 
 ## 13. Acceptance criteria (UI)

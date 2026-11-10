@@ -129,8 +129,12 @@ export function Palette({
           style={{ backgroundColor: meta.stripeColor }}
           aria-hidden="true"
         />
-        <span className="flex w-4 shrink-0 items-center justify-center text-[var(--text-secondary)]">
-          <ServiceIcon icon={service.icon} />
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-[3px] text-[var(--text-secondary)]">
+          <ServiceIcon
+            icon={service.icon}
+            serviceId={service.id}
+            className="h-4 w-4 shrink-0 rounded-[3px]"
+          />
         </span>
         <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-primary)]">
           {service.name}
@@ -346,11 +350,14 @@ export function Palette({
           className="pointer-events-none absolute bottom-3 left-[calc(100%+8px)] z-30 w-72 rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-surface)] p-3 shadow-[var(--shadow-floating)]"
         >
           <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <ServiceIcon
-                icon={hoveredService.icon}
-                className="h-4 w-4 shrink-0 text-[var(--accent)]"
-              />
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] text-[var(--accent)]">
+                <ServiceIcon
+                  icon={hoveredService.icon}
+                  serviceId={hoveredService.id}
+                  className="h-5 w-5 shrink-0 rounded-[3px]"
+                />
+              </span>
               <div>
                 <div className="text-[13px] font-medium text-[var(--text-primary)]">
                   {hoveredService.name}

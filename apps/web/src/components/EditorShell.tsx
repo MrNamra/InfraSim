@@ -50,6 +50,7 @@ import { ConfigTab } from './inspector/ConfigTab';
 import { LatencyMockTab } from './inspector/LatencyMockTab';
 import { WhyTab } from './inspector/WhyTab';
 import { Palette } from './Palette';
+import { ServiceIcon } from './ServiceIcon';
 import { TemplateModal } from './TemplateModal';
 import { TrafficProfileEditor } from './TrafficProfileEditor';
 
@@ -989,17 +990,28 @@ export function EditorShell() {
             </div>
           ) : selectedNode ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <div className="border-b border-[var(--border-hairline)] px-4 py-2.5">
+              <div className="border-b border-[var(--border-hairline)] px-4 py-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="truncate text-[13px] font-medium text-[var(--text-primary)]">
-                    {selectedNode.label}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-[var(--bg-raised)] text-[var(--text-secondary)]">
+                      <ServiceIcon
+                        icon={selectedNodeService?.icon ?? 'generic'}
+                        serviceId={selectedNode.serviceId}
+                        className="h-4 w-4 shrink-0 rounded-[3px]"
+                      />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+                        {selectedNode.label}
+                      </div>
+                      <div className="truncate font-mono text-[11px] text-[var(--text-muted)]">
+                        {selectedNode.serviceId}
+                      </div>
+                    </div>
                   </div>
                   <span className="shrink-0 rounded-[4px] bg-[var(--bg-raised)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
                     {selectedNodeService?.kind ?? 'node'}
                   </span>
-                </div>
-                <div className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-muted)]">
-                  {selectedNode.serviceId}
                 </div>
               </div>
 

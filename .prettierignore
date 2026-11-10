@@ -12,3 +12,4 @@ packages/*/schemas/*.json
 packages/shared-types/src/generated/**
 packages/catalog/src/generated/**
 packages/catalog/data/*.json
+apps/web/public/icons/services/**

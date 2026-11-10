@@ -40,6 +40,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Provider } from '@infrasim/shared-types';
+import { SERVICE_ICON_PATHS } from '../lib/serviceIconMap';
 
 const ICON_MAP: Record<string, LucideIcon> = {
   compute: Cpu,
@@ -85,11 +86,30 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 export interface ServiceIconProps {
   icon: string;
+  serviceId?: string;
   className?: string;
 }
 
-/** Renders the consistent 16px 1.5-stroke line icon for a catalog kind or generic block. */
-export function ServiceIcon({ icon, className = 'h-4 w-4 shrink-0' }: ServiceIconProps) {
+/** Resolves the bundled static SVG icon URL for a cloud service ID, if present. */
+export function getServiceIconPath(serviceId?: string): string | undefined {
+  return serviceId ? SERVICE_ICON_PATHS[serviceId] : undefined;
+}
+
+/** Renders the per-service provider SVG when available, falling back to 1.5-stroke line icons for generic/custom blocks. */
+export function ServiceIcon({ icon, serviceId, className = 'h-4 w-4 shrink-0' }: ServiceIconProps) {
+  const src = getServiceIconPath(serviceId);
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        decoding="async"
+        className={`${className} pointer-events-none select-none object-contain`}
+      />
+    );
+  }
   const Icon = ICON_MAP[icon] ?? Box;
   return <Icon className={className} strokeWidth={1.5} aria-hidden="true" />;
 }

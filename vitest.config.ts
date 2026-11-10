@@ -20,6 +20,9 @@ const packageAliases = [
 }, {});
 
 export default defineConfig({
+  esbuild: {
+    jsx: 'automatic',
+  },
   resolve: {
     alias: packageAliases,
   },
