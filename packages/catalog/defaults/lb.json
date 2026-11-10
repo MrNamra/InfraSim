@@ -1,0 +1,59 @@
+{
+  "kind": "lb",
+  "description": "Managed load balancer distributing traffic across healthy downstream targets.",
+  "icon": "lb",
+  "scope": "regional",
+  "ports": [
+    { "protocol": "https", "port": 443 },
+    { "protocol": "http", "port": 80 },
+    { "protocol": "tcp", "port": 80 }
+  ],
+  "tags": ["load-balancer", "alb", "nlb", "ingress", "proxy", "routing"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "server",
+        "statusCode": 502,
+        "name": "BadGateway",
+        "message": "Invalid backend response",
+        "defaultRate": 0.0001
+      },
+      {
+        "kind": "dropped_queue_full",
+        "statusCode": 503,
+        "name": "ServiceUnavailable",
+        "message": "No healthy backend targets",
+        "defaultRate": 0
+      },
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "GatewayTimeout",
+        "message": "Idle timeout waiting for backend",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Forward",
+      "summary": "Forward request to a healthy downstream target",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"forwarded\":true,\"traceId\":\"{{faker.hex(16)}}\"}",
+        "sizeBytes": 256
+      },
+      "errors": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Backend timed out",
+          "defaultRate": 0
+        }
+      ]
+    }
+  ]
+}

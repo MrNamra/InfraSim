@@ -143,13 +143,16 @@ export interface ServiceDefinition {
   limits?: QuotaSpec[];
   operations: OperationDef[];
   pricing: { model: PriceModel; skuKey?: string };
-  equivalents?: Partial<Record<Provider, string>>;
+  equivalents?: Partial<Record<Provider, string>> | 'none';
   ports?: { protocol: string; port: number }[];
   tags?: string[];
   icon: string;
   docsUrl?: string;
   notes?: string;
 }
+
+/** Array wrapper type used to generate the catalog JSON Schema. */
+export type CatalogServiceList = ServiceDefinition[];
 
 /** User-created custom service definition embedded in a design or saved per user. */
 export interface CustomServiceDefinition extends ServiceDefinition {

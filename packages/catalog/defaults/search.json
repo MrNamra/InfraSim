@@ -1,0 +1,55 @@
+{
+  "kind": "search",
+  "description": "Full-text and vector search engine supporting keyword and RAG retrieval.",
+  "icon": "search",
+  "scope": "regional",
+  "ports": [
+    { "protocol": "https", "port": 443 },
+    { "protocol": "http", "port": 9200 }
+  ],
+  "tags": ["search", "opensearch", "elasticsearch", "vector", "rag", "fts"],
+  "failure": {
+    "errorRate": 0.0003,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "EsRejectedExecutionException",
+        "message": "Search thread pool queue full",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 503,
+        "name": "SearchUnavailable",
+        "message": "Search shard unavailable",
+        "defaultRate": 0.0003
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Search",
+      "summary": "Run a full-text or vector similarity search query",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"hits\":[{{repeat(3,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"score\\\":0.92,\\\"text\\\":\\\"Passage matching query\\\"}\")}}],\"total\":3}",
+        "sizeBytes": 2048
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Index",
+      "summary": "Index or update a searchable document",
+      "defaultResponse": {
+        "statusCode": 201,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"id\":\"{{faker.uuid}}\",\"result\":\"created\"}",
+        "sizeBytes": 256
+      },
+      "errors": []
+    }
+  ]
+}

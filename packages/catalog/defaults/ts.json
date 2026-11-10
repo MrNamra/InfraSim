@@ -1,0 +1,51 @@
+{
+  "kind": "ts",
+  "description": "Time-series database optimized for telemetry ingest and interval rollups.",
+  "icon": "ts",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["timeseries", "metrics", "iot", "telemetry"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "QueryTimeout",
+        "message": "Time-series query timed out",
+        "defaultRate": 0
+      },
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ThrottlingException",
+        "message": "Ingest rate limit exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Query",
+      "summary": "Query aggregated time-series points",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"series\":[{\"t\":\"{{now.iso}}\",\"v\":{{faker.int(10,100)}}}]}",
+        "sizeBytes": 1024
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Write",
+      "summary": "Write time-series measurement records",
+      "defaultResponse": {
+        "statusCode": 200,
+        "bodyTemplate": "{\"accepted\":10}",
+        "sizeBytes": 128
+      },
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "kind": "file",
+  "description": "Managed network file system shared across compute instances.",
+  "icon": "file",
+  "scope": "regional",
+  "ports": [{ "protocol": "tcp", "port": 2049 }],
+  "tags": ["nfs", "smb", "filesystem", "shared-storage", "file"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 503,
+        "name": "ThroughputLimitExceeded",
+        "message": "File system throughput throttled",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Read",
+      "summary": "Read file range from shared volume",
+      "defaultResponse": {
+        "statusCode": 200,
+        "bodyTemplate": "{{binary(sizeBytes)}}",
+        "sizeBytes": 8192
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Write",
+      "summary": "Write data to shared file",
+      "defaultResponse": {
+        "statusCode": 200,
+        "bodyTemplate": "{\"ok\":true,\"bytesWritten\":8192}",
+        "sizeBytes": 128
+      },
+      "errors": []
+    }
+  ]
+}

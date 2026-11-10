@@ -1,0 +1,34 @@
+{
+  "kind": "doc-ai",
+  "description": "Document parsing API extracting structured fields and tables from PDFs and scans.",
+  "icon": "doc-ai",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["ai", "document", "ocr", "pdf", "extract"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ProvisionedThroughputExceeded",
+        "message": "Document AI quota exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Extract",
+      "summary": "Extract structured text, key-values, and tables from a document",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"pages\":2,\"blocks\":[{\"type\":\"LINE\",\"text\":\"{{tokens(12)}}\"}]}",
+        "sizeBytes": 2048
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

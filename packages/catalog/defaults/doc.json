@@ -1,0 +1,79 @@
+{
+  "kind": "doc",
+  "description": "Managed JSON document database with flexible indexing and throughput controls.",
+  "icon": "doc",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["document", "nosql", "json", "mongodb", "cosmos", "firestore"],
+  "failure": {
+    "errorRate": 0.0003,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "RequestRateTooLarge",
+        "message": "Provisioned request units exceeded",
+        "defaultRate": 0
+      },
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "GatewayTimeout",
+        "message": "Document query timed out",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Find",
+      "summary": "Find matching JSON documents",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"documents\":[{{repeat(3,\"{\\\"_id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}]}",
+        "sizeBytes": 1024
+      },
+      "errors": [],
+      "idempotent": true,
+      "units": { "read": 1 }
+    },
+    {
+      "name": "Insert",
+      "summary": "Insert a new JSON document",
+      "defaultResponse": {
+        "statusCode": 201,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"insertedId\":\"{{faker.uuid}}\"}",
+        "sizeBytes": 128
+      },
+      "errors": [],
+      "units": { "write": 5 }
+    },
+    {
+      "name": "Update",
+      "summary": "Update fields on an existing document",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"modifiedCount\":1}",
+        "sizeBytes": 128
+      },
+      "errors": [],
+      "units": { "write": 5 }
+    },
+    {
+      "name": "Aggregate",
+      "summary": "Run an aggregation query pipeline",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"results\":[{\"total\":{{faker.int(10,500)}} }]}",
+        "sizeBytes": 512
+      },
+      "errors": [],
+      "idempotent": true,
+      "units": { "read": 5 }
+    }
+  ]
+}

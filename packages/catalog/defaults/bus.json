@@ -1,0 +1,33 @@
+{
+  "kind": "bus",
+  "description": "Rule-based event bus routing structured cloud events to downstream targets.",
+  "icon": "bus",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["event-bus", "eventbridge", "eventgrid", "events"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ThrottlingException",
+        "message": "Event bus put rate limit exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "PutEvents",
+      "summary": "Submit events to rule-based routing bus",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"FailedEntryCount\":0,\"Entries\":[{\"EventId\":\"{{faker.uuid}}\"}]}",
+        "sizeBytes": 256
+      },
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "kind": "sql",
+  "description": "Managed relational SQL database with connection pooling and read replicas.",
+  "icon": "sql",
+  "scope": "regional",
+  "ports": [{ "protocol": "sql", "port": 5432 }],
+  "tags": ["db", "database", "sql", "postgres", "mysql", "relational", "rds"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "ConnectionPoolTimeout",
+        "message": "Timed out waiting for a DB connection",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "QueryExecutionError",
+        "message": "Database query error",
+        "defaultRate": 0.0002
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Query",
+      "summary": "Execute a SELECT query returning rows",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"rows\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}],\"rowCount\":5}",
+        "sizeBytes": 1024
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Exec",
+      "summary": "Execute an INSERT, UPDATE, or DELETE statement",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"rowCount\":1,\"lastInsertId\":\"{{faker.int(1,99999)}}\"}",
+        "sizeBytes": 128
+      },
+      "errors": []
+    },
+    {
+      "name": "Transaction",
+      "summary": "Execute a multi-statement SQL transaction",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"committed\":true,\"txId\":\"{{faker.uuid}}\"}",
+        "sizeBytes": 256
+      },
+      "errors": []
+    }
+  ]
+}

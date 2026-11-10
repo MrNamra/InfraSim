@@ -1,0 +1,96 @@
+{
+  "kind": "object",
+  "description": "Durable object storage service accessed over HTTPS.",
+  "icon": "object",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["storage", "bucket", "blob", "s3", "files", "media", "object"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 503,
+        "name": "SlowDown",
+        "message": "Reduce your request rate per prefix",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "InternalError",
+        "message": "Transient storage failure",
+        "defaultRate": 0.0005
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "GetObject",
+      "summary": "Retrieve object payload and metadata",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/octet-stream", "etag": "\"{{faker.hex(32)}}\"" },
+        "bodyTemplate": "{\"Body\":\"{{binary(sizeBytes)}}\",\"ETag\":\"\\\"{{faker.hex(32)}}\\\"\",\"ContentLength\":20480,\"ContentType\":\"application/octet-stream\"}",
+        "sizeBytes": 20480
+      },
+      "errors": [
+        {
+          "kind": "throttled",
+          "statusCode": 503,
+          "name": "SlowDown",
+          "message": "SlowDown",
+          "defaultRate": 0
+        }
+      ],
+      "idempotent": true
+    },
+    {
+      "name": "PutObject",
+      "summary": "Upload or overwrite an object",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"ETag\":\"\\\"{{faker.hex(32)}}\\\"\",\"VersionId\":\"{{faker.hex(16)}}\"}",
+        "sizeBytes": 256
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "DeleteObject",
+      "summary": "Delete an object by key",
+      "defaultResponse": {
+        "statusCode": 204,
+        "bodyTemplate": "",
+        "sizeBytes": 0
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "ListObjects",
+      "summary": "List objects in a bucket prefix",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"Contents\":[{{repeat(5,\"{\\\"Key\\\":\\\"items/{{faker.uuid}}.json\\\",\\\"Size\\\":1024}\")}}],\"IsTruncated\":false}",
+        "sizeBytes": 1024
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "HeadObject",
+      "summary": "Fetch object metadata without body",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "etag": "\"{{faker.hex(32)}}\"" },
+        "bodyTemplate": "{\"ContentLength\":20480,\"ETag\":\"\\\"{{faker.hex(32)}}\\\"\"}",
+        "sizeBytes": 128
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "kind": "kv",
+  "description": "Low-latency key-value and wide-column NoSQL datastore with RCU/WCU capacity.",
+  "icon": "kv",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["nosql", "dynamodb", "key-value", "kv", "table", "bigtable"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ProvisionedThroughputExceededException",
+        "message": "Read/write capacity units exceeded",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "InternalServerError",
+        "message": "Transient KV error",
+        "defaultRate": 0.0002
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "GetItem",
+      "summary": "Fetch a single item by primary key",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"Item\":{\"id\":\"{{faker.uuid}}\",\"name\":\"{{faker.name}}\",\"updatedAt\":\"{{now.iso}}\"}}",
+        "sizeBytes": 512
+      },
+      "errors": [],
+      "idempotent": true,
+      "units": { "read": 1 }
+    },
+    {
+      "name": "PutItem",
+      "summary": "Write or replace an item",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"ConsumedCapacity\":{\"CapacityUnits\":1}}",
+        "sizeBytes": 128
+      },
+      "errors": [],
+      "units": { "write": 1 }
+    },
+    {
+      "name": "UpdateItem",
+      "summary": "Modify attributes of an existing item",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"Attributes\":{\"id\":\"{{faker.uuid}}\"}}",
+        "sizeBytes": 256
+      },
+      "errors": [],
+      "units": { "write": 1 }
+    },
+    {
+      "name": "Query",
+      "summary": "Query items sharing a partition key",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"Items\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\"}\")}}],\"Count\":5}",
+        "sizeBytes": 1024
+      },
+      "errors": [],
+      "idempotent": true,
+      "units": { "read": 2 }
+    },
+    {
+      "name": "Scan",
+      "summary": "Full table or index scan",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"Items\":[{{repeat(10,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\"}\")}}],\"Count\":10}",
+        "sizeBytes": 2048
+      },
+      "errors": [],
+      "idempotent": true,
+      "units": { "read": 10 }
+    },
+    {
+      "name": "BatchWrite",
+      "summary": "Batch write up to 25 items",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"UnprocessedItems\":{}}",
+        "sizeBytes": 128
+      },
+      "errors": [],
+      "units": { "write": 5 }
+    }
+  ]
+}

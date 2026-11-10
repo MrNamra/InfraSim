@@ -1,0 +1,664 @@
+[
+  {
+    "id": "generic.client",
+    "provider": "generic",
+    "name": "Client / Load Generator",
+    "category": "Traffic & Entry",
+    "kind": "net",
+    "description": "Entry load generator emitting virtual user requests according to scenario traffic.",
+    "scope": "global",
+    "latency": {
+      "distribution": "fixed",
+      "p50": 0,
+      "p95": 0
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": []
+    },
+    "operations": [
+      {
+        "name": "Emit",
+        "summary": "Generate synthetic client requests into the entry service",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 0
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "client",
+      "load",
+      "generator",
+      "traffic",
+      "users",
+      "entry"
+    ],
+    "icon": "client"
+  },
+  {
+    "id": "generic.internet",
+    "provider": "generic",
+    "name": "Internet",
+    "category": "Traffic & Entry",
+    "kind": "net",
+    "description": "Public internet transit cloud for external callers and outbound SaaS calls.",
+    "scope": "global",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 25,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": []
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Route traffic across the public internet",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "internet",
+      "public",
+      "wan",
+      "edge",
+      "external"
+    ],
+    "icon": "internet"
+  },
+  {
+    "id": "generic.users",
+    "provider": "generic",
+    "name": "Users",
+    "category": "Traffic & Entry",
+    "kind": "net",
+    "description": "End-user browsers or mobile clients initiating traffic flows.",
+    "scope": "global",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 75
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": []
+    },
+    "operations": [
+      {
+        "name": "Emit",
+        "summary": "Emit end-user application requests",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "users",
+      "browser",
+      "mobile",
+      "clients",
+      "entry"
+    ],
+    "icon": "users"
+  },
+  {
+    "id": "generic.lb",
+    "provider": "generic",
+    "name": "Load Balancer",
+    "category": "Networking & Delivery",
+    "kind": "lb",
+    "description": "Provider-neutral load balancer spreading traffic across backend instances.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 2,
+      "p95": 8
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "BadGateway",
+          "message": "Invalid backend response",
+          "defaultRate": 0.0001
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "No healthy backend targets",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Idle timeout waiting for backend",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Forward request to a healthy downstream target",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"forwarded\":true,\"traceId\":\"{{faker.hex(16)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [
+          {
+            "kind": "timeout",
+            "statusCode": 504,
+            "name": "GatewayTimeout",
+            "message": "Backend timed out",
+            "defaultRate": 0
+          }
+        ]
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": {
+      "aws": "aws.alb",
+      "gcp": "gcp.lb_https",
+      "azure": "azure.app_gateway",
+      "oci": "oci.load_balancer"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "load-balancer",
+      "alb",
+      "nlb",
+      "ingress",
+      "proxy",
+      "routing"
+    ],
+    "icon": "lb"
+  },
+  {
+    "id": "generic.cache",
+    "provider": "generic",
+    "name": "Cache",
+    "category": "Databases & Caches",
+    "kind": "cache",
+    "description": "Provider-neutral in-memory key cache absorbing read load on cache hits.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 0.5,
+      "p95": 2
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "CacheTimeout",
+          "message": "Cache operation timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "CacheError",
+          "message": "Cache node transient failure",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Get",
+        "summary": "Read key from cache; falls back to downstream on cache miss",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"hit\":true,\"value\":{\"id\":\"{{faker.uuid}}\",\"cachedAt\":\"{{now.iso}}\"}}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Set",
+        "summary": "Store key in cache with TTL",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":\"OK\"}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      },
+      {
+        "name": "Del",
+        "summary": "Invalidate key in cache",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"deleted\":1}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": {
+      "aws": "aws.elasticache_redis",
+      "gcp": "gcp.memorystore_redis",
+      "azure": "azure.redis_cache",
+      "oci": "oci.cache_redis"
+    },
+    "ports": [
+      {
+        "protocol": "redis",
+        "port": 6379
+      }
+    ],
+    "tags": [
+      "cache",
+      "redis",
+      "memcached",
+      "memory",
+      "valkey",
+      "in-memory"
+    ],
+    "icon": "cache"
+  },
+  {
+    "id": "generic.db",
+    "provider": "generic",
+    "name": "Database",
+    "category": "Databases & Caches",
+    "kind": "sql",
+    "description": "Provider-neutral relational database with bounded connection pool.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 4,
+      "p95": 18
+    },
+    "capacity": {
+      "type": "conn",
+      "default": 100
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ConnectionPoolTimeout",
+          "message": "Timed out waiting for a DB connection",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueryExecutionError",
+          "message": "Database query error",
+          "defaultRate": 0.0002
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Execute a SELECT query returning rows",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rows\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}],\"rowCount\":5}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Exec",
+        "summary": "Execute an INSERT, UPDATE, or DELETE statement",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rowCount\":1,\"lastInsertId\":\"{{faker.int(1,99999)}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      },
+      {
+        "name": "Transaction",
+        "summary": "Execute a multi-statement SQL transaction",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"committed\":true,\"txId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": {
+      "aws": "aws.rds_postgres",
+      "gcp": "gcp.cloud_sql_postgres",
+      "azure": "azure.postgres_flexible",
+      "oci": "oci.postgres"
+    },
+    "ports": [
+      {
+        "protocol": "sql",
+        "port": 5432
+      }
+    ],
+    "tags": [
+      "db",
+      "database",
+      "sql",
+      "postgres",
+      "mysql",
+      "relational",
+      "rds"
+    ],
+    "icon": "sql"
+  },
+  {
+    "id": "generic.queue",
+    "provider": "generic",
+    "name": "Queue",
+    "category": "Messaging & Integration",
+    "kind": "queue",
+    "description": "Provider-neutral asynchronous message queue buffering spikes.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 10,
+      "p95": 30
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "OverLimit",
+          "message": "Queue throughput throttled",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueueServiceError",
+          "message": "Queue operation failed",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Send",
+        "summary": "Enqueue a message asynchronously",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"MessageId\":\"{{faker.uuid}}\",\"MD5OfMessageBody\":\"{{faker.hex(32)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "Receive",
+        "summary": "Poll messages from queue backlog",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Messages\":[{\"MessageId\":\"{{faker.uuid}}\",\"ReceiptHandle\":\"{{faker.hex(24)}}\",\"Body\":\"{}\"}]}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      },
+      {
+        "name": "Delete",
+        "summary": "Acknowledge and delete processed message",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": {
+      "aws": "aws.sqs",
+      "gcp": "gcp.cloud_tasks",
+      "azure": "azure.service_bus",
+      "oci": "oci.queue"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "queue",
+      "sqs",
+      "messaging",
+      "async",
+      "buffer",
+      "dlq"
+    ],
+    "icon": "queue"
+  },
+  {
+    "id": "generic.service",
+    "provider": "generic",
+    "name": "Service",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "Provider-neutral application service hosting business logic.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Unhandled handler failure",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "Instance capacity queue saturated",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Request exceeded compute timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Handle an incoming HTTP or RPC request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true,\"requestId\":\"{{faker.uuid}}\",\"ts\":\"{{now.iso}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "server",
+            "statusCode": 500,
+            "name": "InternalServerError",
+            "message": "Handler returned 500",
+            "defaultRate": 0.0005
+          }
+        ],
+        "idempotent": false
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": {
+      "aws": "aws.ec2",
+      "gcp": "gcp.compute_engine",
+      "azure": "azure.vm",
+      "oci": "oci.compute"
+    },
+    "ports": [
+      {
+        "protocol": "http",
+        "port": 8080
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "vm",
+      "server",
+      "container",
+      "api",
+      "app",
+      "backend",
+      "compute"
+    ],
+    "icon": "compute"
+  }
+]

@@ -1,0 +1,63 @@
+{
+  "kind": "cache",
+  "description": "Sub-millisecond in-memory cache supporting hit/miss offload ratios.",
+  "icon": "cache",
+  "scope": "regional",
+  "ports": [{ "protocol": "redis", "port": 6379 }],
+  "tags": ["cache", "redis", "memcached", "memory", "valkey", "in-memory"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "CacheTimeout",
+        "message": "Cache operation timed out",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "CacheError",
+        "message": "Cache node transient failure",
+        "defaultRate": 0.0001
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Get",
+      "summary": "Read key from cache; falls back to downstream on cache miss",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"hit\":true,\"value\":{\"id\":\"{{faker.uuid}}\",\"cachedAt\":\"{{now.iso}}\"}}",
+        "sizeBytes": 512
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Set",
+      "summary": "Store key in cache with TTL",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"ok\":\"OK\"}",
+        "sizeBytes": 64
+      },
+      "errors": []
+    },
+    {
+      "name": "Del",
+      "summary": "Invalidate key in cache",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"deleted\":1}",
+        "sizeBytes": 64
+      },
+      "errors": []
+    }
+  ]
+}

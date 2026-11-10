@@ -1,7 +1,12 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@infrasim/shared-types": ["packages/shared-types/src/index.ts"],
+      "@infrasim/catalog": ["packages/catalog/src/index.ts"]
+    }
   },
   "include": ["scripts/**/*.ts", "e2e/**/*.ts", "vitest.config.ts", "playwright.config.ts"]
 }

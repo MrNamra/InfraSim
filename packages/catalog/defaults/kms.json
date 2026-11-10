@@ -1,0 +1,53 @@
+{
+  "kind": "kms",
+  "description": "Key management service for cryptographic signing, encryption, and data key generation.",
+  "icon": "kms",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["kms", "encryption", "keys", "crypto", "security"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ThrottlingException",
+        "message": "KMS request rate exceeded",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 403,
+        "name": "AccessDeniedException",
+        "message": "Not authorized to use key",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Decrypt",
+      "summary": "Decrypt ciphertext with a managed key",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"KeyId\":\"key-{{faker.uuid}}\",\"Plaintext\":\"bW9jay1wbGFpbnRleHQ=\"}",
+        "sizeBytes": 256
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Encrypt",
+      "summary": "Encrypt plaintext payload with a managed key",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"KeyId\":\"key-{{faker.uuid}}\",\"CiphertextBlob\":\"{{faker.hex(48)}}\"}",
+        "sizeBytes": 256
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

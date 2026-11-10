@@ -1,0 +1,33 @@
+{
+  "kind": "bot",
+  "description": "Conversational dialog orchestration service for intent detection and virtual agents.",
+  "icon": "bot",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["ai", "bot", "chat", "dialog", "intent"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ThrottlingException",
+        "message": "Bot conversation quota exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Converse",
+      "summary": "Process a user utterance and return dialog intent and reply",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"sessionId\":\"sess-{{faker.uuid}}\",\"intent\":\"Help\",\"message\":\"{{tokens(20)}}\"}",
+        "sizeBytes": 512
+      },
+      "errors": []
+    }
+  ]
+}

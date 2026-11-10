@@ -1,0 +1,46 @@
+{
+  "kind": "text-ai",
+  "description": "Natural language processing API for translation, sentiment, entities, and moderation.",
+  "icon": "text-ai",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["ai", "nlp", "translate", "sentiment", "text"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "TooManyRequests",
+        "message": "Text AI quota exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Translate",
+      "summary": "Translate text between languages",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"translatedText\":\"{{tokens(16)}}\",\"sourceLanguageCode\":\"en\",\"targetLanguageCode\":\"es\"}",
+        "sizeBytes": 512
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Analyze",
+      "summary": "Analyze sentiment, entities, or safety signals in text",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"sentiment\":\"NEUTRAL\",\"score\":0.84}",
+        "sizeBytes": 512
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

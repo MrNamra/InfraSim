@@ -2202,7 +2202,15 @@ export const designJsonSchema = {
           "additionalProperties": false
         },
         "equivalents": {
-          "$ref": "#/definitions/Partial%3CRecord%3CProvider%2Cstring%3E%3E"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Partial%3CRecord%3CProvider%2Cstring%3E%3E"
+            },
+            {
+              "type": "string",
+              "const": "none"
+            }
+          ]
         },
         "ports": {
           "type": "array",

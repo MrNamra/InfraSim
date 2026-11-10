@@ -1,0 +1,47 @@
+{
+  "kind": "stream",
+  "description": "Partitioned ordered event stream for high-throughput ingestion and replay.",
+  "icon": "stream",
+  "scope": "regional",
+  "ports": [
+    { "protocol": "https", "port": 443 },
+    { "protocol": "kafka", "port": 9092 }
+  ],
+  "tags": ["stream", "kafka", "kinesis", "eventhub", "partition"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ProvisionedThroughputExceededException",
+        "message": "Shard ingest capacity exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "PutRecord",
+      "summary": "Append event record to a stream partition",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"ShardId\":\"shardId-000000000000\",\"SequenceNumber\":\"{{seq}}\"}",
+        "sizeBytes": 256
+      },
+      "errors": []
+    },
+    {
+      "name": "GetRecords",
+      "summary": "Read record batch from shard iterator",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"Records\":[{{repeat(3,\"{\\\"SequenceNumber\\\":\\\"{{seq}}\\\",\\\"Data\\\":\\\"{}\\\"}\")}}]}",
+        "sizeBytes": 1024
+      },
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "kind": "graph",
+  "description": "Managed graph database for connected entity traversals.",
+  "icon": "graph",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 8182 }],
+  "tags": ["graph", "gremlin", "sparql", "neptune", "relationships"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "QueryTimeout",
+        "message": "Graph traversal timed out",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Query",
+      "summary": "Run a graph traversal query",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"vertices\":[{{repeat(4,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\"}\")}}]}",
+        "sizeBytes": 1024
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

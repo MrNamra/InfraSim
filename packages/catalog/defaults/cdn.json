@@ -1,0 +1,43 @@
+{
+  "kind": "cdn",
+  "description": "Edge content delivery network serving cached responses close to clients.",
+  "icon": "cdn",
+  "scope": "global",
+  "ports": [
+    { "protocol": "https", "port": 443 },
+    { "protocol": "http", "port": 80 }
+  ],
+  "tags": ["cdn", "edge", "cache", "delivery"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "server",
+        "statusCode": 502,
+        "name": "OriginError",
+        "message": "Origin unreachable",
+        "defaultRate": 0.0001
+      },
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "OriginTimeout",
+        "message": "Origin response timed out",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Get",
+      "summary": "Serve object from edge cache or fetch from origin",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "x-cache": "Hit from edge", "content-type": "application/octet-stream" },
+        "bodyTemplate": "{{binary(sizeBytes)}}",
+        "sizeBytes": 16384
+      },
+      "errors": []
+    }
+  ]
+}

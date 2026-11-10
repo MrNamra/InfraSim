@@ -1,0 +1,52 @@
+{
+  "kind": "async",
+  "description": "Long-running asynchronous job, batch execution, or archive restore service.",
+  "icon": "async",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["batch", "async", "job", "archive", "background"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "JobFailed",
+        "message": "Asynchronous job failed",
+        "defaultRate": 0.0005
+      },
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "JobTimedOut",
+        "message": "Asynchronous job exceeded timeout",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Start",
+      "summary": "Submit an asynchronous job or restore request",
+      "defaultResponse": {
+        "statusCode": 202,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"jobId\":\"job-{{faker.uuid}}\",\"status\":\"SUBMITTED\"}",
+        "sizeBytes": 256
+      },
+      "errors": []
+    },
+    {
+      "name": "GetStatus",
+      "summary": "Poll job execution status and result metadata",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"jobId\":\"job-{{faker.uuid}}\",\"status\":\"SUCCEEDED\",\"completedAt\":\"{{now.iso}}\"}",
+        "sizeBytes": 256
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

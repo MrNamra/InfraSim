@@ -1,0 +1,633 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/CatalogServiceList",
+  "definitions": {
+    "CatalogServiceList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ServiceDefinition"
+      },
+      "description": "Array wrapper type used to generate the catalog JSON Schema."
+    },
+    "ServiceDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/definitions/Provider"
+        },
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/MockKind"
+        },
+        "description": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "regional",
+            "zonal",
+            "global"
+          ]
+        },
+        "latency": {
+          "$ref": "#/definitions/LatencyModel"
+        },
+        "capacity": {
+          "$ref": "#/definitions/CapacitySpec"
+        },
+        "coldStart": {
+          "type": "object",
+          "properties": {
+            "p50": {
+              "type": "number"
+            },
+            "p95": {
+              "type": "number"
+            },
+            "idleTtlS": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "p50",
+            "p95",
+            "idleTtlS"
+          ],
+          "additionalProperties": false
+        },
+        "scaleOutLagS": {
+          "type": "number"
+        },
+        "maxTimeoutS": {
+          "type": "number"
+        },
+        "failure": {
+          "type": "object",
+          "properties": {
+            "errorRate": {
+              "type": "number"
+            },
+            "kinds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ErrorKindDef"
+              }
+            }
+          },
+          "required": [
+            "errorRate",
+            "kinds"
+          ],
+          "additionalProperties": false
+        },
+        "limits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QuotaSpec"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OperationDef"
+          }
+        },
+        "pricing": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "$ref": "#/definitions/PriceModel"
+            },
+            "skuKey": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "model"
+          ],
+          "additionalProperties": false
+        },
+        "equivalents": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Partial%3CRecord%3CProvider%2Cstring%3E%3E"
+            },
+            {
+              "type": "string",
+              "const": "none"
+            }
+          ]
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "protocol": {
+                "type": "string"
+              },
+              "port": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "protocol",
+              "port"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "icon": {
+          "type": "string"
+        },
+        "docsUrl": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "provider",
+        "name",
+        "category",
+        "kind",
+        "description",
+        "scope",
+        "latency",
+        "capacity",
+        "failure",
+        "operations",
+        "pricing",
+        "icon"
+      ],
+      "additionalProperties": false,
+      "description": "Full catalog service entry parsed from specs and kind defaults."
+    },
+    "Provider": {
+      "type": "string",
+      "enum": [
+        "aws",
+        "gcp",
+        "azure",
+        "oci",
+        "custom",
+        "generic"
+      ],
+      "description": "Supported cloud and pseudo-cloud providers."
+    },
+    "MockKind": {
+      "type": "string",
+      "enum": [
+        "compute",
+        "fn",
+        "lb",
+        "gw",
+        "cdn",
+        "dns",
+        "net",
+        "object",
+        "block",
+        "file",
+        "sql",
+        "kv",
+        "doc",
+        "cache",
+        "graph",
+        "ts",
+        "olap",
+        "search",
+        "queue",
+        "topic",
+        "stream",
+        "bus",
+        "workflow",
+        "auth",
+        "secret",
+        "kms",
+        "email",
+        "async",
+        "llm",
+        "ml",
+        "vision",
+        "speech",
+        "text-ai",
+        "doc-ai",
+        "bot"
+      ],
+      "description": "Behavioral kind determining how the simulation engine handles a service node."
+    },
+    "LatencyModel": {
+      "type": "object",
+      "properties": {
+        "distribution": {
+          "type": "string",
+          "enum": [
+            "lognormal",
+            "fixed",
+            "normal",
+            "bimodal"
+          ]
+        },
+        "p50": {
+          "type": "number"
+        },
+        "p95": {
+          "type": "number"
+        },
+        "mode2": {
+          "type": "object",
+          "properties": {
+            "weight": {
+              "type": "number"
+            },
+            "p50": {
+              "type": "number"
+            },
+            "p95": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "weight",
+            "p50",
+            "p95"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "distribution",
+        "p50",
+        "p95"
+      ],
+      "additionalProperties": false,
+      "description": "Latency sampling parameters anchored at p50 and p95 in milliseconds."
+    },
+    "CapacitySpec": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "elastic"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "slots"
+            },
+            "fromInstanceType": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "type",
+            "fromInstanceType"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "conc"
+            },
+            "limit": {
+              "type": "number"
+            },
+            "onLimit": {
+              "type": "string",
+              "enum": [
+                "throttle",
+                "queue"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "limit",
+            "onLimit"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "rps"
+            },
+            "limit": {
+              "type": "number"
+            },
+            "burst": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "limit"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "units"
+            },
+            "read": {
+              "type": "number"
+            },
+            "write": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "read",
+            "write"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "conn"
+            },
+            "formula": {
+              "type": "string"
+            },
+            "default": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "default"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tpm"
+            },
+            "rpm": {
+              "type": "number"
+            },
+            "tpm": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "passthrough"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "Capacity behavior specification for a service catalog entry."
+    },
+    "ErrorKindDef": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/ErrorKind"
+        },
+        "statusCode": {
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "defaultRate": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "statusCode",
+        "name",
+        "message",
+        "defaultRate"
+      ],
+      "additionalProperties": false,
+      "description": "Error specification defined on a service or operation."
+    },
+    "ErrorKind": {
+      "type": "string",
+      "enum": [
+        "timeout",
+        "throttled",
+        "server",
+        "conn_refused",
+        "conn_timeout",
+        "dropped_queue_full",
+        "circuit_open",
+        "user_code",
+        "not_reachable"
+      ],
+      "description": "Classification of simulated request failures."
+    },
+    "QuotaSpec": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "limit",
+        "unit"
+      ],
+      "additionalProperties": false,
+      "description": "Quota specification listed in a catalog service entry."
+    },
+    "OperationDef": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "latency": {
+          "$ref": "#/definitions/LatencyModel"
+        },
+        "inputSchema": {
+          "$ref": "#/definitions/Record%3Cstring%2Cunknown%3E"
+        },
+        "defaultResponse": {
+          "type": "object",
+          "properties": {
+            "statusCode": {
+              "type": "number"
+            },
+            "headers": {
+              "$ref": "#/definitions/Record%3Cstring%2Cstring%3E"
+            },
+            "bodyTemplate": {
+              "type": "string"
+            },
+            "sizeBytes": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "statusCode",
+            "bodyTemplate"
+          ],
+          "additionalProperties": false
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ErrorKindDef"
+          }
+        },
+        "idempotent": {
+          "type": "boolean"
+        },
+        "units": {
+          "type": "object",
+          "properties": {
+            "read": {
+              "type": "number"
+            },
+            "write": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "name",
+        "summary",
+        "defaultResponse",
+        "errors"
+      ],
+      "additionalProperties": false,
+      "description": "Operation supported by a service definition."
+    },
+    "Record<string,unknown>": {
+      "type": "object",
+      "additionalProperties": {}
+    },
+    "Record<string,string>": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "PriceModel": {
+      "type": "string",
+      "enum": [
+        "hr",
+        "vcpu-gb-hr",
+        "req",
+        "fn",
+        "gb-mo",
+        "gb-xfer",
+        "tok",
+        "unit",
+        "ru",
+        "rcu-wcu",
+        "shard-hr",
+        "lcu",
+        "msg",
+        "query-tb",
+        "acu-hr",
+        "mau",
+        "mix",
+        "flat",
+        "free"
+      ],
+      "description": "Pricing dimension model code used by catalog tables and cost engine."
+    },
+    "Partial<Record<Provider,string>>": {
+      "type": "object",
+      "properties": {
+        "aws": {
+          "type": "string"
+        },
+        "gcp": {
+          "type": "string"
+        },
+        "azure": {
+          "type": "string"
+        },
+        "oci": {
+          "type": "string"
+        },
+        "custom": {
+          "type": "string"
+        },
+        "generic": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

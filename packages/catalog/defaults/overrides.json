@@ -1,0 +1,144 @@
+{
+  "aws.route53": { "scope": "global" },
+  "aws.cloudfront": { "scope": "global", "tags": ["cdn", "edge", "cache", "cloudfront"] },
+  "aws.global_accelerator": { "scope": "global" },
+  "aws.waf": { "scope": "global" },
+  "aws.sts": { "scope": "global" },
+  "aws.apigw_rest": {
+    "maxTimeoutS": 29,
+    "capacity": { "type": "rps", "limit": 10000, "burst": 5000 }
+  },
+  "aws.apigw_http": {
+    "maxTimeoutS": 30,
+    "capacity": { "type": "rps", "limit": 10000, "burst": 5000 }
+  },
+  "aws.s3": {
+    "limits": [
+      { "name": "PUT/COPY/POST/DELETE per prefix", "limit": 3500, "unit": "rps" },
+      { "name": "GET/HEAD per prefix", "limit": 5500, "unit": "rps" }
+    ],
+    "notes": "Per-prefix request rate applies; configure prefixes on node to scale."
+  },
+  "aws.rds_mysql": {
+    "ports": [{ "protocol": "sql", "port": 3306 }],
+    "capacity": { "type": "conn", "formula": "DBInstanceClassMemory/12582880", "default": 150 }
+  },
+  "aws.aurora_mysql": {
+    "ports": [{ "protocol": "sql", "port": 3306 }],
+    "capacity": { "type": "conn", "formula": "DBInstanceClassMemory/12582880", "default": 150 }
+  },
+  "aws.rds_postgres": {
+    "capacity": {
+      "type": "conn",
+      "formula": "LEAST(DBInstanceClassMemory/9531392, 5000)",
+      "default": 150
+    }
+  },
+  "aws.aurora_pg": {
+    "capacity": {
+      "type": "conn",
+      "formula": "LEAST(DBInstanceClassMemory/9531392, 5000)",
+      "default": 150
+    }
+  },
+  "aws.rds_proxy": {
+    "ports": [
+      { "protocol": "sql", "port": 5432 },
+      { "protocol": "sql", "port": 3306 }
+    ]
+  },
+  "aws.elasticache_memcached": {
+    "ports": [{ "protocol": "memcached", "port": 11211 }]
+  },
+  "aws.dynamodb": {
+    "limits": [
+      { "name": "Partition read throughput", "limit": 3000, "unit": "rcu" },
+      { "name": "Partition write throughput", "limit": 1000, "unit": "wcu" }
+    ]
+  },
+  "aws.kinesis": {
+    "limits": [
+      { "name": "Shard write throughput", "limit": 1000, "unit": "records/s" },
+      { "name": "Shard read throughput", "limit": 2, "unit": "MB/s" }
+    ]
+  },
+  "aws.msk": {
+    "ports": [
+      { "protocol": "kafka", "port": 9092 },
+      { "protocol": "https", "port": 443 }
+    ]
+  },
+  "aws.mq": {
+    "ports": [
+      { "protocol": "amqp", "port": 5671 },
+      { "protocol": "https", "port": 443 }
+    ]
+  },
+  "aws.lambda": {
+    "limits": [{ "name": "Regional concurrent executions", "limit": 1000, "unit": "concurrent" }]
+  },
+
+  "gcp.cloud_dns": { "scope": "global" },
+  "gcp.cloud_cdn": { "scope": "global" },
+  "gcp.lb_https": { "scope": "global" },
+  "gcp.cloud_armor": { "scope": "global" },
+  "gcp.firebase_auth": { "scope": "global" },
+  "gcp.cloud_sql_mysql": {
+    "ports": [{ "protocol": "sql", "port": 3306 }]
+  },
+  "gcp.memorystore_memcached": {
+    "ports": [{ "protocol": "memcached", "port": 11211 }]
+  },
+  "gcp.spanner": {
+    "limits": [{ "name": "Recommended single-region CPU utilization", "limit": 65, "unit": "%" }],
+    "notes": "Hot threshold ~65% CPU in single-region (~45% multi-region)."
+  },
+  "gcp.bigtable": {
+    "limits": [{ "name": "SSD node throughput", "limit": 10000, "unit": "ops/s" }]
+  },
+  "gcp.managed_kafka": {
+    "ports": [
+      { "protocol": "kafka", "port": 9092 },
+      { "protocol": "https", "port": 443 }
+    ]
+  },
+
+  "azure.dns": { "scope": "global" },
+  "azure.traffic_manager": { "scope": "global" },
+  "azure.front_door": { "scope": "global" },
+  "azure.cdn": { "scope": "global" },
+  "azure.entra_id": { "scope": "global" },
+  "azure.sql_db": {
+    "ports": [{ "protocol": "sql", "port": 1433 }]
+  },
+  "azure.sql_managed_instance": {
+    "ports": [{ "protocol": "sql", "port": 1433 }]
+  },
+  "azure.mysql_flexible": {
+    "ports": [{ "protocol": "sql", "port": 3306 }]
+  },
+  "azure.cosmos_db": {
+    "limits": [
+      { "name": "Logical partition throughput", "limit": 10000, "unit": "ru/s" },
+      { "name": "Logical partition storage", "limit": 20, "unit": "GB" }
+    ]
+  },
+
+  "oci.dns": { "scope": "global" },
+  "oci.identity_domains": { "scope": "global" },
+  "oci.mysql_heatwave": {
+    "ports": [{ "protocol": "sql", "port": 3306 }]
+  },
+  "oci.autonomous_atp": {
+    "ports": [{ "protocol": "sql", "port": 1521 }]
+  },
+  "oci.base_db": {
+    "ports": [{ "protocol": "sql", "port": 1521 }]
+  },
+  "oci.streaming": {
+    "ports": [
+      { "protocol": "kafka", "port": 9092 },
+      { "protocol": "https", "port": 443 }
+    ]
+  }
+}

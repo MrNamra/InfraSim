@@ -1,0 +1,43 @@
+{
+  "kind": "block",
+  "description": "High-performance block storage volume attached to compute instances.",
+  "icon": "block",
+  "scope": "zonal",
+  "ports": [{ "protocol": "tcp", "port": 3260 }],
+  "tags": ["disk", "volume", "block", "iops", "storage"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 503,
+        "name": "IOThrottled",
+        "message": "Provisioned IOPS/throughput limit reached",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Read",
+      "summary": "Read disk blocks",
+      "defaultResponse": {
+        "statusCode": 200,
+        "bodyTemplate": "{{binary(sizeBytes)}}",
+        "sizeBytes": 4096
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Write",
+      "summary": "Write disk blocks",
+      "defaultResponse": {
+        "statusCode": 200,
+        "bodyTemplate": "{\"bytesWritten\":4096}",
+        "sizeBytes": 128
+      },
+      "errors": []
+    }
+  ]
+}

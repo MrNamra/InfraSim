@@ -1,0 +1,66 @@
+{
+  "kind": "fn",
+  "description": "Managed serverless function runtime with per-execution concurrency and cold starts.",
+  "icon": "fn",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["serverless", "lambda", "functions", "faas", "event"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "TooManyRequestsException",
+        "message": "Concurrency limit exceeded",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 502,
+        "name": "HandlerException",
+        "message": "Function execution failed",
+        "defaultRate": 0.0005
+      },
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "TaskTimeout",
+        "message": "Function exceeded configured timeout",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Invoke",
+      "summary": "Synchronously invoke the serverless function",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"statusCode\":200,\"requestId\":\"{{faker.uuid}}\",\"ok\":true}",
+        "sizeBytes": 512
+      },
+      "errors": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequestsException",
+          "message": "Rate exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    {
+      "name": "InvokeAsync",
+      "summary": "Queue an asynchronous function invocation",
+      "defaultResponse": {
+        "statusCode": 202,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"accepted\":true,\"invocationId\":\"{{faker.uuid}}\"}",
+        "sizeBytes": 128
+      },
+      "errors": []
+    }
+  ]
+}

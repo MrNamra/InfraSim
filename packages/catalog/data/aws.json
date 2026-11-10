@@ -1,0 +1,6893 @@
+[
+  {
+    "id": "aws.ec2",
+    "provider": "aws",
+    "name": "EC2 instance (runs your code)",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "EC2 instance (runs your code) — Programmable compute host running application handler code.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "scaleOutLagS": 90,
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Unhandled handler failure",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "Instance capacity queue saturated",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Request exceeded compute timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Handle an incoming HTTP or RPC request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true,\"requestId\":\"{{faker.uuid}}\",\"ts\":\"{{now.iso}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "server",
+            "statusCode": 500,
+            "name": "InternalServerError",
+            "message": "Handler returned 500",
+            "defaultRate": 0.0005
+          }
+        ],
+        "idempotent": false
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.compute_engine",
+      "azure": "azure.vm",
+      "oci": "oci.compute"
+    },
+    "ports": [
+      {
+        "protocol": "http",
+        "port": 8080
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "vm",
+      "server",
+      "container",
+      "api",
+      "app",
+      "backend",
+      "compute"
+    ],
+    "icon": "compute",
+    "notes": "Launch + warmup via Auto Scaling. T-family burstable CPU credits are a v2 model."
+  },
+  {
+    "id": "aws.lambda",
+    "provider": "aws",
+    "name": "Lambda",
+    "category": "Compute",
+    "kind": "fn",
+    "description": "Lambda — Managed serverless function runtime with per-execution concurrency and cold starts.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 15,
+      "p95": 60
+    },
+    "capacity": {
+      "type": "conc",
+      "limit": 1000,
+      "onLimit": "throttle"
+    },
+    "coldStart": {
+      "p50": 250,
+      "p95": 900,
+      "idleTtlS": 600
+    },
+    "scaleOutLagS": 0,
+    "maxTimeoutS": 900,
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequestsException",
+          "message": "Concurrency limit exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "HandlerException",
+          "message": "Function execution failed",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "TaskTimeout",
+          "message": "Function exceeded configured timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "limits": [
+      {
+        "name": "Regional concurrent executions",
+        "limit": 1000,
+        "unit": "concurrent"
+      }
+    ],
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Synchronously invoke the serverless function",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"statusCode\":200,\"requestId\":\"{{faker.uuid}}\",\"ok\":true}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "throttled",
+            "statusCode": 429,
+            "name": "TooManyRequestsException",
+            "message": "Rate exceeded",
+            "defaultRate": 0
+          }
+        ]
+      },
+      {
+        "name": "InvokeAsync",
+        "summary": "Queue an asynchronous function invocation",
+        "defaultResponse": {
+          "statusCode": 202,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"accepted\":true,\"invocationId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "fn"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_functions",
+      "azure": "azure.functions",
+      "oci": "oci.functions"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "serverless",
+      "lambda",
+      "functions",
+      "faas",
+      "event"
+    ],
+    "icon": "fn",
+    "notes": "Java/.NET cold starts are longer; CPU scales with memory (≈ 1 vCPU at 1,769 MB). `onLimit = throttle` (429)."
+  },
+  {
+    "id": "aws.fargate",
+    "provider": "aws",
+    "name": "ECS on Fargate",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "ECS on Fargate — Programmable compute host running application handler code.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "scaleOutLagS": 45,
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Unhandled handler failure",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "Instance capacity queue saturated",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Request exceeded compute timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Handle an incoming HTTP or RPC request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true,\"requestId\":\"{{faker.uuid}}\",\"ts\":\"{{now.iso}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "server",
+            "statusCode": 500,
+            "name": "InternalServerError",
+            "message": "Handler returned 500",
+            "defaultRate": 0.0005
+          }
+        ],
+        "idempotent": false
+      }
+    ],
+    "pricing": {
+      "model": "vcpu-gb-hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_run",
+      "azure": "azure.container_apps",
+      "oci": "oci.container_instances"
+    },
+    "ports": [
+      {
+        "protocol": "http",
+        "port": 8080
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "vm",
+      "server",
+      "container",
+      "api",
+      "app",
+      "backend",
+      "compute"
+    ],
+    "icon": "compute",
+    "notes": "New tasks take tens of seconds to serve."
+  },
+  {
+    "id": "aws.ecs_ec2",
+    "provider": "aws",
+    "name": "ECS on EC2",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "ECS on EC2 — Programmable compute host running application handler code.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Unhandled handler failure",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "Instance capacity queue saturated",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Request exceeded compute timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Handle an incoming HTTP or RPC request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true,\"requestId\":\"{{faker.uuid}}\",\"ts\":\"{{now.iso}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "server",
+            "statusCode": 500,
+            "name": "InternalServerError",
+            "message": "Handler returned 500",
+            "defaultRate": 0.0005
+          }
+        ],
+        "idempotent": false
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.gke",
+      "azure": "azure.container_instances",
+      "oci": "oci.container_instances"
+    },
+    "ports": [
+      {
+        "protocol": "http",
+        "port": 8080
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "vm",
+      "server",
+      "container",
+      "api",
+      "app",
+      "backend",
+      "compute"
+    ],
+    "icon": "compute"
+  },
+  {
+    "id": "aws.eks",
+    "provider": "aws",
+    "name": "EKS pod",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "EKS pod — Programmable compute host running application handler code.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "scaleOutLagS": 40,
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Unhandled handler failure",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "Instance capacity queue saturated",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Request exceeded compute timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Handle an incoming HTTP or RPC request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true,\"requestId\":\"{{faker.uuid}}\",\"ts\":\"{{now.iso}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "server",
+            "statusCode": 500,
+            "name": "InternalServerError",
+            "message": "Handler returned 500",
+            "defaultRate": 0.0005
+          }
+        ],
+        "idempotent": false
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.gke",
+      "azure": "azure.aks",
+      "oci": "oci.oke"
+    },
+    "ports": [
+      {
+        "protocol": "http",
+        "port": 8080
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "vm",
+      "server",
+      "container",
+      "api",
+      "app",
+      "backend",
+      "compute"
+    ],
+    "icon": "compute",
+    "notes": "Pod scheduling + image pull; node scale adds more."
+  },
+  {
+    "id": "aws.app_runner",
+    "provider": "aws",
+    "name": "App Runner",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "App Runner — Programmable compute host running application handler code.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "conc",
+      "limit": 100,
+      "onLimit": "throttle"
+    },
+    "coldStart": {
+      "p50": 800,
+      "p95": 2500,
+      "idleTtlS": 600
+    },
+    "scaleOutLagS": 15,
+    "maxTimeoutS": 120,
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Unhandled handler failure",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "Instance capacity queue saturated",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Request exceeded compute timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Handle an incoming HTTP or RPC request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true,\"requestId\":\"{{faker.uuid}}\",\"ts\":\"{{now.iso}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "server",
+            "statusCode": 500,
+            "name": "InternalServerError",
+            "message": "Handler returned 500",
+            "defaultRate": 0.0005
+          }
+        ],
+        "idempotent": false
+      }
+    ],
+    "pricing": {
+      "model": "vcpu-gb-hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_run",
+      "azure": "azure.container_apps",
+      "oci": "oci.container_instances"
+    },
+    "ports": [
+      {
+        "protocol": "http",
+        "port": 8080
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "vm",
+      "server",
+      "container",
+      "api",
+      "app",
+      "backend",
+      "compute"
+    ],
+    "icon": "compute",
+    "notes": "Scales on concurrency."
+  },
+  {
+    "id": "aws.beanstalk",
+    "provider": "aws",
+    "name": "Elastic Beanstalk",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "Elastic Beanstalk — Programmable compute host running application handler code.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Unhandled handler failure",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "Instance capacity queue saturated",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Request exceeded compute timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Handle an incoming HTTP or RPC request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true,\"requestId\":\"{{faker.uuid}}\",\"ts\":\"{{now.iso}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "server",
+            "statusCode": 500,
+            "name": "InternalServerError",
+            "message": "Handler returned 500",
+            "defaultRate": 0.0005
+          }
+        ],
+        "idempotent": false
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.app_engine",
+      "azure": "azure.app_service"
+    },
+    "ports": [
+      {
+        "protocol": "http",
+        "port": 8080
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "vm",
+      "server",
+      "container",
+      "api",
+      "app",
+      "backend",
+      "compute"
+    ],
+    "icon": "compute"
+  },
+  {
+    "id": "aws.lightsail",
+    "provider": "aws",
+    "name": "Lightsail instance",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "Lightsail instance — Programmable compute host running application handler code.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 25,
+      "p95": 100
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Unhandled handler failure",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "Instance capacity queue saturated",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Request exceeded compute timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Handle an incoming HTTP or RPC request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true,\"requestId\":\"{{faker.uuid}}\",\"ts\":\"{{now.iso}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": [
+          {
+            "kind": "server",
+            "statusCode": 500,
+            "name": "InternalServerError",
+            "message": "Handler returned 500",
+            "defaultRate": 0.0005
+          }
+        ],
+        "idempotent": false
+      }
+    ],
+    "pricing": {
+      "model": "flat"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "http",
+        "port": 8080
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "vm",
+      "server",
+      "container",
+      "api",
+      "app",
+      "backend",
+      "compute"
+    ],
+    "icon": "compute"
+  },
+  {
+    "id": "aws.batch",
+    "provider": "aws",
+    "name": "AWS Batch job",
+    "category": "Compute",
+    "kind": "async",
+    "description": "AWS Batch job — Long-running asynchronous job, batch execution, or archive restore service.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 30000,
+      "p95": 120000
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "JobFailed",
+          "message": "Asynchronous job failed",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "JobTimedOut",
+          "message": "Asynchronous job exceeded timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Start",
+        "summary": "Submit an asynchronous job or restore request",
+        "defaultResponse": {
+          "statusCode": 202,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"jobId\":\"job-{{faker.uuid}}\",\"status\":\"SUBMITTED\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "GetStatus",
+        "summary": "Poll job execution status and result metadata",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"jobId\":\"job-{{faker.uuid}}\",\"status\":\"SUCCEEDED\",\"completedAt\":\"{{now.iso}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.batch",
+      "azure": "azure.batch",
+      "oci": "oci.batch"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "batch",
+      "async",
+      "job",
+      "archive",
+      "background"
+    ],
+    "icon": "async"
+  },
+  {
+    "id": "aws.route53",
+    "provider": "aws",
+    "name": "Route 53",
+    "category": "Networking & Delivery",
+    "kind": "dns",
+    "description": "Route 53 — Authoritative and traffic-routing DNS resolution service.",
+    "scope": "global",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 15,
+      "p95": 40
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "SERVFAIL",
+          "message": "DNS resolution failure",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Resolve",
+        "summary": "Resolve hostname to IP address or alias target",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"answer\":\"10.0.1.15\",\"ttl\":60}",
+          "sizeBytes": 128
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_dns",
+      "azure": "azure.dns",
+      "oci": "oci.dns"
+    },
+    "ports": [
+      {
+        "protocol": "dns",
+        "port": 53
+      },
+      {
+        "protocol": "udp",
+        "port": 53
+      }
+    ],
+    "tags": [
+      "dns",
+      "domain",
+      "routing",
+      "resolution"
+    ],
+    "icon": "dns"
+  },
+  {
+    "id": "aws.cloudfront",
+    "provider": "aws",
+    "name": "CloudFront (cache hit)",
+    "category": "Networking & Delivery",
+    "kind": "cdn",
+    "description": "CloudFront (cache hit) — Edge content delivery network serving cached responses close to clients.",
+    "scope": "global",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 10,
+      "p95": 30
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "OriginError",
+          "message": "Origin unreachable",
+          "defaultRate": 0.0001
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "OriginTimeout",
+          "message": "Origin response timed out",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Get",
+        "summary": "Serve object from edge cache or fetch from origin",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "x-cache": "Hit from edge",
+            "content-type": "application/octet-stream"
+          },
+          "bodyTemplate": "{{binary(sizeBytes)}}",
+          "sizeBytes": 16384
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_cdn",
+      "azure": "azure.front_door"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "cdn",
+      "edge",
+      "cache",
+      "delivery",
+      "cloudfront"
+    ],
+    "icon": "cdn"
+  },
+  {
+    "id": "aws.alb",
+    "provider": "aws",
+    "name": "Application Load Balancer",
+    "category": "Networking & Delivery",
+    "kind": "lb",
+    "description": "Application Load Balancer — Managed load balancer distributing traffic across healthy downstream targets.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 2,
+      "p95": 8
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "BadGateway",
+          "message": "Invalid backend response",
+          "defaultRate": 0.0001
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "No healthy backend targets",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Idle timeout waiting for backend",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Forward request to a healthy downstream target",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"forwarded\":true,\"traceId\":\"{{faker.hex(16)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [
+          {
+            "kind": "timeout",
+            "statusCode": 504,
+            "name": "GatewayTimeout",
+            "message": "Backend timed out",
+            "defaultRate": 0
+          }
+        ]
+      }
+    ],
+    "pricing": {
+      "model": "lcu"
+    },
+    "equivalents": {
+      "gcp": "gcp.lb_https",
+      "azure": "azure.app_gateway",
+      "oci": "oci.load_balancer"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "load-balancer",
+      "alb",
+      "nlb",
+      "ingress",
+      "proxy",
+      "routing"
+    ],
+    "icon": "lb"
+  },
+  {
+    "id": "aws.nlb",
+    "provider": "aws",
+    "name": "Network Load Balancer",
+    "category": "Networking & Delivery",
+    "kind": "lb",
+    "description": "Network Load Balancer — Managed load balancer distributing traffic across healthy downstream targets.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 3
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "BadGateway",
+          "message": "Invalid backend response",
+          "defaultRate": 0.0001
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "No healthy backend targets",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Idle timeout waiting for backend",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Forward request to a healthy downstream target",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"forwarded\":true,\"traceId\":\"{{faker.hex(16)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [
+          {
+            "kind": "timeout",
+            "statusCode": 504,
+            "name": "GatewayTimeout",
+            "message": "Backend timed out",
+            "defaultRate": 0
+          }
+        ]
+      }
+    ],
+    "pricing": {
+      "model": "lcu"
+    },
+    "equivalents": {
+      "gcp": "gcp.lb_network",
+      "azure": "azure.load_balancer",
+      "oci": "oci.network_lb"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "load-balancer",
+      "alb",
+      "nlb",
+      "ingress",
+      "proxy",
+      "routing"
+    ],
+    "icon": "lb"
+  },
+  {
+    "id": "aws.gwlb",
+    "provider": "aws",
+    "name": "Gateway Load Balancer",
+    "category": "Networking & Delivery",
+    "kind": "lb",
+    "description": "Gateway Load Balancer — Managed load balancer distributing traffic across healthy downstream targets.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 4
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "BadGateway",
+          "message": "Invalid backend response",
+          "defaultRate": 0.0001
+        },
+        {
+          "kind": "dropped_queue_full",
+          "statusCode": 503,
+          "name": "ServiceUnavailable",
+          "message": "No healthy backend targets",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Idle timeout waiting for backend",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Forward request to a healthy downstream target",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"forwarded\":true,\"traceId\":\"{{faker.hex(16)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [
+          {
+            "kind": "timeout",
+            "statusCode": 504,
+            "name": "GatewayTimeout",
+            "message": "Backend timed out",
+            "defaultRate": 0
+          }
+        ]
+      }
+    ],
+    "pricing": {
+      "model": "lcu"
+    },
+    "equivalents": {
+      "gcp": "gcp.lb_internal"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 80
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "load-balancer",
+      "alb",
+      "nlb",
+      "ingress",
+      "proxy",
+      "routing"
+    ],
+    "icon": "lb"
+  },
+  {
+    "id": "aws.apigw_rest",
+    "provider": "aws",
+    "name": "API Gateway (REST)",
+    "category": "Networking & Delivery",
+    "kind": "gw",
+    "description": "API Gateway (REST) — Managed API gateway with routing, throttling, and integration timeouts.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 12,
+      "p95": 40
+    },
+    "capacity": {
+      "type": "rps",
+      "limit": 10000,
+      "burst": 5000
+    },
+    "maxTimeoutS": 29,
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequests",
+          "message": "API stage limit exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "BadGateway",
+          "message": "Upstream integration error",
+          "defaultRate": 0.0002
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Integration timeout exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Authorize, rate-limit, and forward API request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"requestId\":\"{{faker.uuid}}\",\"status\":\"ok\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": {
+      "gcp": "gcp.api_gateway",
+      "azure": "azure.apim",
+      "oci": "oci.api_gateway"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "api-gateway",
+      "gateway",
+      "rest",
+      "http",
+      "graphql",
+      "throttle"
+    ],
+    "icon": "gw"
+  },
+  {
+    "id": "aws.apigw_http",
+    "provider": "aws",
+    "name": "API Gateway (HTTP API)",
+    "category": "Networking & Delivery",
+    "kind": "gw",
+    "description": "API Gateway (HTTP API) — Managed API gateway with routing, throttling, and integration timeouts.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 6,
+      "p95": 20
+    },
+    "capacity": {
+      "type": "rps",
+      "limit": 10000,
+      "burst": 5000
+    },
+    "maxTimeoutS": 30,
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequests",
+          "message": "API stage limit exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "BadGateway",
+          "message": "Upstream integration error",
+          "defaultRate": 0.0002
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Integration timeout exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Authorize, rate-limit, and forward API request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"requestId\":\"{{faker.uuid}}\",\"status\":\"ok\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": {
+      "gcp": "gcp.api_gateway",
+      "azure": "azure.apim",
+      "oci": "oci.api_gateway"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "api-gateway",
+      "gateway",
+      "rest",
+      "http",
+      "graphql",
+      "throttle"
+    ],
+    "icon": "gw"
+  },
+  {
+    "id": "aws.appsync",
+    "provider": "aws",
+    "name": "AppSync (GraphQL)",
+    "category": "Networking & Delivery",
+    "kind": "gw",
+    "description": "AppSync (GraphQL) — Managed API gateway with routing, throttling, and integration timeouts.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequests",
+          "message": "API stage limit exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 502,
+          "name": "BadGateway",
+          "message": "Upstream integration error",
+          "defaultRate": 0.0002
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Integration timeout exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Authorize, rate-limit, and forward API request",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"requestId\":\"{{faker.uuid}}\",\"status\":\"ok\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "api-gateway",
+      "gateway",
+      "rest",
+      "http",
+      "graphql",
+      "throttle"
+    ],
+    "icon": "gw"
+  },
+  {
+    "id": "aws.global_accelerator",
+    "provider": "aws",
+    "name": "Global Accelerator",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "Global Accelerator — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "global",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 5,
+      "p95": 15
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "azure": "azure.front_door"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.waf",
+    "provider": "aws",
+    "name": "WAF",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "WAF — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "global",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 4
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_armor",
+      "azure": "azure.waf",
+      "oci": "oci.waf"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.nat_gw",
+    "provider": "aws",
+    "name": "NAT Gateway",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "NAT Gateway — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 3
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_nat",
+      "azure": "azure.nat_gateway",
+      "oci": "oci.nat_gw"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.igw",
+    "provider": "aws",
+    "name": "Internet Gateway",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "Internet Gateway — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "fixed",
+      "p50": 0,
+      "p95": 0
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": {
+      "oci": "oci.internet_gw"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.vpc_peering",
+    "provider": "aws",
+    "name": "VPC Peering",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "VPC Peering — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 0.5,
+      "p95": 2
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "gb-xfer"
+    },
+    "equivalents": {
+      "gcp": "gcp.vpc_peering",
+      "azure": "azure.vnet_peering",
+      "oci": "oci.vcn_peering"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.tgw",
+    "provider": "aws",
+    "name": "Transit Gateway",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "Transit Gateway — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 3
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "oci": "oci.drg"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.privatelink",
+    "provider": "aws",
+    "name": "PrivateLink / VPC Endpoint",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "PrivateLink / VPC Endpoint — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 3
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.psc",
+      "azure": "azure.private_link",
+      "oci": "oci.service_gw"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.direct_connect",
+    "provider": "aws",
+    "name": "Direct Connect",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "Direct Connect — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 5,
+      "p95": 15
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.interconnect",
+      "azure": "azure.expressroute",
+      "oci": "oci.fastconnect"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.vpn",
+    "provider": "aws",
+    "name": "Site-to-Site VPN",
+    "category": "Networking & Delivery",
+    "kind": "net",
+    "description": "Site-to-Site VPN — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 10,
+      "p95": 30
+    },
+    "capacity": {
+      "type": "passthrough"
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.vpn",
+      "azure": "azure.vpn_gateway",
+      "oci": "oci.site_vpn"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 443
+      },
+      {
+        "protocol": "tcp",
+        "port": 80
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.s3",
+    "provider": "aws",
+    "name": "S3 (GET, first byte)",
+    "category": "Storage",
+    "kind": "object",
+    "description": "S3 (GET, first byte) — Durable object storage service accessed over HTTPS.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 25,
+      "p95": 90
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 503,
+          "name": "SlowDown",
+          "message": "Reduce your request rate per prefix",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalError",
+          "message": "Transient storage failure",
+          "defaultRate": 0.0005
+        }
+      ]
+    },
+    "limits": [
+      {
+        "name": "PUT/COPY/POST/DELETE per prefix",
+        "limit": 3500,
+        "unit": "rps"
+      },
+      {
+        "name": "GET/HEAD per prefix",
+        "limit": 5500,
+        "unit": "rps"
+      }
+    ],
+    "operations": [
+      {
+        "name": "GetObject",
+        "summary": "Retrieve object payload and metadata",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/octet-stream",
+            "etag": "\"{{faker.hex(32)}}\""
+          },
+          "bodyTemplate": "{\"Body\":\"{{binary(sizeBytes)}}\",\"ETag\":\"\\\"{{faker.hex(32)}}\\\"\",\"ContentLength\":20480,\"ContentType\":\"application/octet-stream\"}",
+          "sizeBytes": 20480
+        },
+        "errors": [
+          {
+            "kind": "throttled",
+            "statusCode": 503,
+            "name": "SlowDown",
+            "message": "SlowDown",
+            "defaultRate": 0
+          }
+        ],
+        "idempotent": true
+      },
+      {
+        "name": "PutObject",
+        "summary": "Upload or overwrite an object",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ETag\":\"\\\"{{faker.hex(32)}}\\\"\",\"VersionId\":\"{{faker.hex(16)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "DeleteObject",
+        "summary": "Delete an object by key",
+        "defaultResponse": {
+          "statusCode": 204,
+          "bodyTemplate": "",
+          "sizeBytes": 0
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "ListObjects",
+        "summary": "List objects in a bucket prefix",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Contents\":[{{repeat(5,\"{\\\"Key\\\":\\\"items/{{faker.uuid}}.json\\\",\\\"Size\\\":1024}\")}}],\"IsTruncated\":false}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "HeadObject",
+        "summary": "Fetch object metadata without body",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "etag": "\"{{faker.hex(32)}}\""
+          },
+          "bodyTemplate": "{\"ContentLength\":20480,\"ETag\":\"\\\"{{faker.hex(32)}}\\\"\"}",
+          "sizeBytes": 128
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_storage",
+      "azure": "azure.blob",
+      "oci": "oci.object_storage"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "storage",
+      "bucket",
+      "blob",
+      "s3",
+      "files",
+      "media",
+      "object"
+    ],
+    "icon": "object",
+    "notes": "Per-prefix request rate applies; configure prefixes on node to scale."
+  },
+  {
+    "id": "aws.ebs",
+    "provider": "aws",
+    "name": "EBS volume",
+    "category": "Storage",
+    "kind": "block",
+    "description": "EBS volume — High-performance block storage volume attached to compute instances.",
+    "scope": "zonal",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 3
+    },
+    "capacity": {
+      "type": "units",
+      "read": 1000,
+      "write": 1000
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 503,
+          "name": "IOThrottled",
+          "message": "Provisioned IOPS/throughput limit reached",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Read",
+        "summary": "Read disk blocks",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{{binary(sizeBytes)}}",
+          "sizeBytes": 4096
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Write",
+        "summary": "Write disk blocks",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"bytesWritten\":4096}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "gb-mo"
+    },
+    "equivalents": {
+      "gcp": "gcp.persistent_disk",
+      "azure": "azure.managed_disk",
+      "oci": "oci.block_volume"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 3260
+      }
+    ],
+    "tags": [
+      "disk",
+      "volume",
+      "block",
+      "iops",
+      "storage"
+    ],
+    "icon": "block"
+  },
+  {
+    "id": "aws.efs",
+    "provider": "aws",
+    "name": "EFS",
+    "category": "Storage",
+    "kind": "file",
+    "description": "EFS — Managed network file system shared across compute instances.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 4,
+      "p95": 15
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 503,
+          "name": "ThroughputLimitExceeded",
+          "message": "File system throughput throttled",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Read",
+        "summary": "Read file range from shared volume",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{{binary(sizeBytes)}}",
+          "sizeBytes": 8192
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Write",
+        "summary": "Write data to shared file",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true,\"bytesWritten\":8192}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "gb-mo"
+    },
+    "equivalents": {
+      "gcp": "gcp.filestore",
+      "azure": "azure.files",
+      "oci": "oci.file_storage"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 2049
+      }
+    ],
+    "tags": [
+      "nfs",
+      "smb",
+      "filesystem",
+      "shared-storage",
+      "file"
+    ],
+    "icon": "file"
+  },
+  {
+    "id": "aws.fsx",
+    "provider": "aws",
+    "name": "FSx",
+    "category": "Storage",
+    "kind": "file",
+    "description": "FSx — Managed network file system shared across compute instances.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 3,
+      "p95": 10
+    },
+    "capacity": {
+      "type": "units",
+      "read": 1000,
+      "write": 1000
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 503,
+          "name": "ThroughputLimitExceeded",
+          "message": "File system throughput throttled",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Read",
+        "summary": "Read file range from shared volume",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{{binary(sizeBytes)}}",
+          "sizeBytes": 8192
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Write",
+        "summary": "Write data to shared file",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true,\"bytesWritten\":8192}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "gb-mo"
+    },
+    "equivalents": {
+      "azure": "azure.netapp_files"
+    },
+    "ports": [
+      {
+        "protocol": "tcp",
+        "port": 2049
+      }
+    ],
+    "tags": [
+      "nfs",
+      "smb",
+      "filesystem",
+      "shared-storage",
+      "file"
+    ],
+    "icon": "file"
+  },
+  {
+    "id": "aws.glacier",
+    "provider": "aws",
+    "name": "S3 Glacier (standard retrieval)",
+    "category": "Storage",
+    "kind": "async",
+    "description": "S3 Glacier (standard retrieval) — Long-running asynchronous job, batch execution, or archive restore service.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 10800000,
+      "p95": 18000000
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "JobFailed",
+          "message": "Asynchronous job failed",
+          "defaultRate": 0.0005
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "JobTimedOut",
+          "message": "Asynchronous job exceeded timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Start",
+        "summary": "Submit an asynchronous job or restore request",
+        "defaultResponse": {
+          "statusCode": 202,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"jobId\":\"job-{{faker.uuid}}\",\"status\":\"SUBMITTED\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "GetStatus",
+        "summary": "Poll job execution status and result metadata",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"jobId\":\"job-{{faker.uuid}}\",\"status\":\"SUCCEEDED\",\"completedAt\":\"{{now.iso}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_storage_archive",
+      "azure": "azure.blob_archive",
+      "oci": "oci.archive_storage"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "batch",
+      "async",
+      "job",
+      "archive",
+      "background"
+    ],
+    "icon": "async"
+  },
+  {
+    "id": "aws.rds_postgres",
+    "provider": "aws",
+    "name": "RDS PostgreSQL (simple query)",
+    "category": "Databases & Caches",
+    "kind": "sql",
+    "description": "RDS PostgreSQL (simple query) — Managed relational SQL database with connection pooling and read replicas.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 3,
+      "p95": 15
+    },
+    "capacity": {
+      "type": "conn",
+      "formula": "LEAST(DBInstanceClassMemory/9531392, 5000)",
+      "default": 150
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ConnectionPoolTimeout",
+          "message": "Timed out waiting for a DB connection",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueryExecutionError",
+          "message": "Database query error",
+          "defaultRate": 0.0002
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Execute a SELECT query returning rows",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rows\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}],\"rowCount\":5}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Exec",
+        "summary": "Execute an INSERT, UPDATE, or DELETE statement",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rowCount\":1,\"lastInsertId\":\"{{faker.int(1,99999)}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      },
+      {
+        "name": "Transaction",
+        "summary": "Execute a multi-statement SQL transaction",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"committed\":true,\"txId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_sql_postgres",
+      "azure": "azure.postgres_flexible",
+      "oci": "oci.postgres"
+    },
+    "ports": [
+      {
+        "protocol": "sql",
+        "port": 5432
+      }
+    ],
+    "tags": [
+      "db",
+      "database",
+      "sql",
+      "postgres",
+      "mysql",
+      "relational",
+      "rds"
+    ],
+    "icon": "sql"
+  },
+  {
+    "id": "aws.rds_mysql",
+    "provider": "aws",
+    "name": "RDS MySQL (simple query)",
+    "category": "Databases & Caches",
+    "kind": "sql",
+    "description": "RDS MySQL (simple query) — Managed relational SQL database with connection pooling and read replicas.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 3,
+      "p95": 15
+    },
+    "capacity": {
+      "type": "conn",
+      "formula": "DBInstanceClassMemory/12582880",
+      "default": 150
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ConnectionPoolTimeout",
+          "message": "Timed out waiting for a DB connection",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueryExecutionError",
+          "message": "Database query error",
+          "defaultRate": 0.0002
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Execute a SELECT query returning rows",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rows\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}],\"rowCount\":5}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Exec",
+        "summary": "Execute an INSERT, UPDATE, or DELETE statement",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rowCount\":1,\"lastInsertId\":\"{{faker.int(1,99999)}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      },
+      {
+        "name": "Transaction",
+        "summary": "Execute a multi-statement SQL transaction",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"committed\":true,\"txId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_sql_mysql",
+      "azure": "azure.mysql_flexible",
+      "oci": "oci.mysql_heatwave"
+    },
+    "ports": [
+      {
+        "protocol": "sql",
+        "port": 3306
+      }
+    ],
+    "tags": [
+      "db",
+      "database",
+      "sql",
+      "postgres",
+      "mysql",
+      "relational",
+      "rds"
+    ],
+    "icon": "sql"
+  },
+  {
+    "id": "aws.rds_proxy",
+    "provider": "aws",
+    "name": "RDS Proxy",
+    "category": "Databases & Caches",
+    "kind": "net",
+    "description": "RDS Proxy — Network gateway, firewall, proxy, or connectivity pass-through hop.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 3
+    },
+    "capacity": {
+      "type": "conn",
+      "default": 100
+    },
+    "failure": {
+      "errorRate": 0,
+      "kinds": [
+        {
+          "kind": "conn_timeout",
+          "statusCode": 504,
+          "name": "ConnectionTimeout",
+          "message": "Packet dropped on network path",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Pass network traffic across gateway or tunnel",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "sql",
+        "port": 5432
+      },
+      {
+        "protocol": "sql",
+        "port": 3306
+      }
+    ],
+    "tags": [
+      "network",
+      "nat",
+      "gateway",
+      "peering",
+      "vpn",
+      "firewall",
+      "proxy"
+    ],
+    "icon": "net"
+  },
+  {
+    "id": "aws.aurora_pg",
+    "provider": "aws",
+    "name": "Aurora PostgreSQL",
+    "category": "Databases & Caches",
+    "kind": "sql",
+    "description": "Aurora PostgreSQL — Managed relational SQL database with connection pooling and read replicas.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 3,
+      "p95": 12
+    },
+    "capacity": {
+      "type": "conn",
+      "formula": "LEAST(DBInstanceClassMemory/9531392, 5000)",
+      "default": 150
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ConnectionPoolTimeout",
+          "message": "Timed out waiting for a DB connection",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueryExecutionError",
+          "message": "Database query error",
+          "defaultRate": 0.0002
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Execute a SELECT query returning rows",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rows\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}],\"rowCount\":5}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Exec",
+        "summary": "Execute an INSERT, UPDATE, or DELETE statement",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rowCount\":1,\"lastInsertId\":\"{{faker.int(1,99999)}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      },
+      {
+        "name": "Transaction",
+        "summary": "Execute a multi-statement SQL transaction",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"committed\":true,\"txId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.alloydb",
+      "azure": "azure.cosmos_postgres"
+    },
+    "ports": [
+      {
+        "protocol": "sql",
+        "port": 5432
+      }
+    ],
+    "tags": [
+      "db",
+      "database",
+      "sql",
+      "postgres",
+      "mysql",
+      "relational",
+      "rds"
+    ],
+    "icon": "sql"
+  },
+  {
+    "id": "aws.aurora_mysql",
+    "provider": "aws",
+    "name": "Aurora MySQL",
+    "category": "Databases & Caches",
+    "kind": "sql",
+    "description": "Aurora MySQL — Managed relational SQL database with connection pooling and read replicas.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 3,
+      "p95": 12
+    },
+    "capacity": {
+      "type": "conn",
+      "formula": "DBInstanceClassMemory/12582880",
+      "default": 150
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ConnectionPoolTimeout",
+          "message": "Timed out waiting for a DB connection",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueryExecutionError",
+          "message": "Database query error",
+          "defaultRate": 0.0002
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Execute a SELECT query returning rows",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rows\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}],\"rowCount\":5}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Exec",
+        "summary": "Execute an INSERT, UPDATE, or DELETE statement",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rowCount\":1,\"lastInsertId\":\"{{faker.int(1,99999)}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      },
+      {
+        "name": "Transaction",
+        "summary": "Execute a multi-statement SQL transaction",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"committed\":true,\"txId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "oci": "oci.mysql_heatwave"
+    },
+    "ports": [
+      {
+        "protocol": "sql",
+        "port": 3306
+      }
+    ],
+    "tags": [
+      "db",
+      "database",
+      "sql",
+      "postgres",
+      "mysql",
+      "relational",
+      "rds"
+    ],
+    "icon": "sql"
+  },
+  {
+    "id": "aws.aurora_serverless",
+    "provider": "aws",
+    "name": "Aurora Serverless v2",
+    "category": "Databases & Caches",
+    "kind": "sql",
+    "description": "Aurora Serverless v2 — Managed relational SQL database with connection pooling and read replicas.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 4,
+      "p95": 18
+    },
+    "capacity": {
+      "type": "conn",
+      "default": 100
+    },
+    "scaleOutLagS": 10,
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ConnectionPoolTimeout",
+          "message": "Timed out waiting for a DB connection",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueryExecutionError",
+          "message": "Database query error",
+          "defaultRate": 0.0002
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Execute a SELECT query returning rows",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rows\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}],\"rowCount\":5}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Exec",
+        "summary": "Execute an INSERT, UPDATE, or DELETE statement",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rowCount\":1,\"lastInsertId\":\"{{faker.int(1,99999)}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      },
+      {
+        "name": "Transaction",
+        "summary": "Execute a multi-statement SQL transaction",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"committed\":true,\"txId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "acu-hr"
+    },
+    "equivalents": {
+      "azure": "azure.sql_db",
+      "oci": "oci.autonomous_atp"
+    },
+    "ports": [
+      {
+        "protocol": "sql",
+        "port": 5432
+      }
+    ],
+    "tags": [
+      "db",
+      "database",
+      "sql",
+      "postgres",
+      "mysql",
+      "relational",
+      "rds"
+    ],
+    "icon": "sql",
+    "notes": "Scales capacity in ACUs; brief pauses possible when scaling."
+  },
+  {
+    "id": "aws.dynamodb",
+    "provider": "aws",
+    "name": "DynamoDB",
+    "category": "Databases & Caches",
+    "kind": "kv",
+    "description": "DynamoDB — Low-latency key-value and wide-column NoSQL datastore with RCU/WCU capacity.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 5,
+      "p95": 15
+    },
+    "capacity": {
+      "type": "units",
+      "read": 1000,
+      "write": 1000
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ProvisionedThroughputExceededException",
+          "message": "Read/write capacity units exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Transient KV error",
+          "defaultRate": 0.0002
+        }
+      ]
+    },
+    "limits": [
+      {
+        "name": "Partition read throughput",
+        "limit": 3000,
+        "unit": "rcu"
+      },
+      {
+        "name": "Partition write throughput",
+        "limit": 1000,
+        "unit": "wcu"
+      }
+    ],
+    "operations": [
+      {
+        "name": "GetItem",
+        "summary": "Fetch a single item by primary key",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Item\":{\"id\":\"{{faker.uuid}}\",\"name\":\"{{faker.name}}\",\"updatedAt\":\"{{now.iso}}\"}}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true,
+        "units": {
+          "read": 1
+        }
+      },
+      {
+        "name": "PutItem",
+        "summary": "Write or replace an item",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ConsumedCapacity\":{\"CapacityUnits\":1}}",
+          "sizeBytes": 128
+        },
+        "errors": [],
+        "units": {
+          "write": 1
+        }
+      },
+      {
+        "name": "UpdateItem",
+        "summary": "Modify attributes of an existing item",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Attributes\":{\"id\":\"{{faker.uuid}}\"}}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "units": {
+          "write": 1
+        }
+      },
+      {
+        "name": "Query",
+        "summary": "Query items sharing a partition key",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Items\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\"}\")}}],\"Count\":5}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true,
+        "units": {
+          "read": 2
+        }
+      },
+      {
+        "name": "Scan",
+        "summary": "Full table or index scan",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Items\":[{{repeat(10,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\"}\")}}],\"Count\":10}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true,
+        "units": {
+          "read": 10
+        }
+      },
+      {
+        "name": "BatchWrite",
+        "summary": "Batch write up to 25 items",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"UnprocessedItems\":{}}",
+          "sizeBytes": 128
+        },
+        "errors": [],
+        "units": {
+          "write": 5
+        }
+      }
+    ],
+    "pricing": {
+      "model": "rcu-wcu"
+    },
+    "equivalents": {
+      "gcp": "gcp.firestore",
+      "azure": "azure.cosmos_db",
+      "oci": "oci.nosql"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "nosql",
+      "dynamodb",
+      "key-value",
+      "kv",
+      "table",
+      "bigtable"
+    ],
+    "icon": "kv"
+  },
+  {
+    "id": "aws.dax",
+    "provider": "aws",
+    "name": "DynamoDB Accelerator (DAX)",
+    "category": "Databases & Caches",
+    "kind": "cache",
+    "description": "DynamoDB Accelerator (DAX) — Sub-millisecond in-memory cache supporting hit/miss offload ratios.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 0.4,
+      "p95": 1.5
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "CacheTimeout",
+          "message": "Cache operation timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "CacheError",
+          "message": "Cache node transient failure",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Get",
+        "summary": "Read key from cache; falls back to downstream on cache miss",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"hit\":true,\"value\":{\"id\":\"{{faker.uuid}}\",\"cachedAt\":\"{{now.iso}}\"}}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Set",
+        "summary": "Store key in cache with TTL",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":\"OK\"}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      },
+      {
+        "name": "Del",
+        "summary": "Invalidate key in cache",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"deleted\":1}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "redis",
+        "port": 6379
+      }
+    ],
+    "tags": [
+      "cache",
+      "redis",
+      "memcached",
+      "memory",
+      "valkey",
+      "in-memory"
+    ],
+    "icon": "cache"
+  },
+  {
+    "id": "aws.elasticache_redis",
+    "provider": "aws",
+    "name": "ElastiCache (Redis/Valkey)",
+    "category": "Databases & Caches",
+    "kind": "cache",
+    "description": "ElastiCache (Redis/Valkey) — Sub-millisecond in-memory cache supporting hit/miss offload ratios.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 0.5,
+      "p95": 2
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "CacheTimeout",
+          "message": "Cache operation timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "CacheError",
+          "message": "Cache node transient failure",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Get",
+        "summary": "Read key from cache; falls back to downstream on cache miss",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"hit\":true,\"value\":{\"id\":\"{{faker.uuid}}\",\"cachedAt\":\"{{now.iso}}\"}}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Set",
+        "summary": "Store key in cache with TTL",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":\"OK\"}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      },
+      {
+        "name": "Del",
+        "summary": "Invalidate key in cache",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"deleted\":1}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.memorystore_redis",
+      "azure": "azure.redis_cache",
+      "oci": "oci.cache_redis"
+    },
+    "ports": [
+      {
+        "protocol": "redis",
+        "port": 6379
+      }
+    ],
+    "tags": [
+      "cache",
+      "redis",
+      "memcached",
+      "memory",
+      "valkey",
+      "in-memory"
+    ],
+    "icon": "cache"
+  },
+  {
+    "id": "aws.elasticache_memcached",
+    "provider": "aws",
+    "name": "ElastiCache (Memcached)",
+    "category": "Databases & Caches",
+    "kind": "cache",
+    "description": "ElastiCache (Memcached) — Sub-millisecond in-memory cache supporting hit/miss offload ratios.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 0.5,
+      "p95": 2
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "CacheTimeout",
+          "message": "Cache operation timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "CacheError",
+          "message": "Cache node transient failure",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Get",
+        "summary": "Read key from cache; falls back to downstream on cache miss",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"hit\":true,\"value\":{\"id\":\"{{faker.uuid}}\",\"cachedAt\":\"{{now.iso}}\"}}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Set",
+        "summary": "Store key in cache with TTL",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":\"OK\"}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      },
+      {
+        "name": "Del",
+        "summary": "Invalidate key in cache",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"deleted\":1}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.memorystore_memcached"
+    },
+    "ports": [
+      {
+        "protocol": "memcached",
+        "port": 11211
+      }
+    ],
+    "tags": [
+      "cache",
+      "redis",
+      "memcached",
+      "memory",
+      "valkey",
+      "in-memory"
+    ],
+    "icon": "cache"
+  },
+  {
+    "id": "aws.memorydb",
+    "provider": "aws",
+    "name": "MemoryDB",
+    "category": "Databases & Caches",
+    "kind": "cache",
+    "description": "MemoryDB — Sub-millisecond in-memory cache supporting hit/miss offload ratios.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1,
+      "p95": 4
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "CacheTimeout",
+          "message": "Cache operation timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "CacheError",
+          "message": "Cache node transient failure",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Get",
+        "summary": "Read key from cache; falls back to downstream on cache miss",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"hit\":true,\"value\":{\"id\":\"{{faker.uuid}}\",\"cachedAt\":\"{{now.iso}}\"}}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Set",
+        "summary": "Store key in cache with TTL",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ok\":\"OK\"}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      },
+      {
+        "name": "Del",
+        "summary": "Invalidate key in cache",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"deleted\":1}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "redis",
+        "port": 6379
+      }
+    ],
+    "tags": [
+      "cache",
+      "redis",
+      "memcached",
+      "memory",
+      "valkey",
+      "in-memory"
+    ],
+    "icon": "cache"
+  },
+  {
+    "id": "aws.documentdb",
+    "provider": "aws",
+    "name": "DocumentDB",
+    "category": "Databases & Caches",
+    "kind": "doc",
+    "description": "DocumentDB — Managed JSON document database with flexible indexing and throughput controls.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 5,
+      "p95": 20
+    },
+    "capacity": {
+      "type": "conn",
+      "default": 100
+    },
+    "failure": {
+      "errorRate": 0.0003,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "RequestRateTooLarge",
+          "message": "Provisioned request units exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "GatewayTimeout",
+          "message": "Document query timed out",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Find",
+        "summary": "Find matching JSON documents",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"documents\":[{{repeat(3,\"{\\\"_id\\\":\\\"{{faker.uuid}}\\\",\\\"name\\\":\\\"{{faker.name}}\\\"}\")}}]}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true,
+        "units": {
+          "read": 1
+        }
+      },
+      {
+        "name": "Insert",
+        "summary": "Insert a new JSON document",
+        "defaultResponse": {
+          "statusCode": 201,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"insertedId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": [],
+        "units": {
+          "write": 5
+        }
+      },
+      {
+        "name": "Update",
+        "summary": "Update fields on an existing document",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"modifiedCount\":1}",
+          "sizeBytes": 128
+        },
+        "errors": [],
+        "units": {
+          "write": 5
+        }
+      },
+      {
+        "name": "Aggregate",
+        "summary": "Run an aggregation query pipeline",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"results\":[{\"total\":{{faker.int(10,500)}} }]}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true,
+        "units": {
+          "read": 5
+        }
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.firestore",
+      "azure": "azure.cosmos_db"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "document",
+      "nosql",
+      "json",
+      "mongodb",
+      "cosmos",
+      "firestore"
+    ],
+    "icon": "doc"
+  },
+  {
+    "id": "aws.neptune",
+    "provider": "aws",
+    "name": "Neptune",
+    "category": "Databases & Caches",
+    "kind": "graph",
+    "description": "Neptune — Managed graph database for connected entity traversals.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 10,
+      "p95": 50
+    },
+    "capacity": {
+      "type": "conn",
+      "default": 100
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "QueryTimeout",
+          "message": "Graph traversal timed out",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Run a graph traversal query",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"vertices\":[{{repeat(4,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\"}\")}}]}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "azure": "azure.cosmos_gremlin"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 8182
+      }
+    ],
+    "tags": [
+      "graph",
+      "gremlin",
+      "sparql",
+      "neptune",
+      "relationships"
+    ],
+    "icon": "graph"
+  },
+  {
+    "id": "aws.keyspaces",
+    "provider": "aws",
+    "name": "Keyspaces (Cassandra)",
+    "category": "Databases & Caches",
+    "kind": "kv",
+    "description": "Keyspaces (Cassandra) — Low-latency key-value and wide-column NoSQL datastore with RCU/WCU capacity.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 5,
+      "p95": 20
+    },
+    "capacity": {
+      "type": "units",
+      "read": 1000,
+      "write": 1000
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ProvisionedThroughputExceededException",
+          "message": "Read/write capacity units exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "InternalServerError",
+          "message": "Transient KV error",
+          "defaultRate": 0.0002
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "GetItem",
+        "summary": "Fetch a single item by primary key",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Item\":{\"id\":\"{{faker.uuid}}\",\"name\":\"{{faker.name}}\",\"updatedAt\":\"{{now.iso}}\"}}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true,
+        "units": {
+          "read": 1
+        }
+      },
+      {
+        "name": "PutItem",
+        "summary": "Write or replace an item",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ConsumedCapacity\":{\"CapacityUnits\":1}}",
+          "sizeBytes": 128
+        },
+        "errors": [],
+        "units": {
+          "write": 1
+        }
+      },
+      {
+        "name": "UpdateItem",
+        "summary": "Modify attributes of an existing item",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Attributes\":{\"id\":\"{{faker.uuid}}\"}}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "units": {
+          "write": 1
+        }
+      },
+      {
+        "name": "Query",
+        "summary": "Query items sharing a partition key",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Items\":[{{repeat(5,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\"}\")}}],\"Count\":5}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true,
+        "units": {
+          "read": 2
+        }
+      },
+      {
+        "name": "Scan",
+        "summary": "Full table or index scan",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Items\":[{{repeat(10,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\"}\")}}],\"Count\":10}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true,
+        "units": {
+          "read": 10
+        }
+      },
+      {
+        "name": "BatchWrite",
+        "summary": "Batch write up to 25 items",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"UnprocessedItems\":{}}",
+          "sizeBytes": 128
+        },
+        "errors": [],
+        "units": {
+          "write": 5
+        }
+      }
+    ],
+    "pricing": {
+      "model": "rcu-wcu"
+    },
+    "equivalents": {
+      "gcp": "gcp.bigtable",
+      "azure": "azure.cosmos_db"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "nosql",
+      "dynamodb",
+      "key-value",
+      "kv",
+      "table",
+      "bigtable"
+    ],
+    "icon": "kv"
+  },
+  {
+    "id": "aws.timestream",
+    "provider": "aws",
+    "name": "Timestream",
+    "category": "Databases & Caches",
+    "kind": "ts",
+    "description": "Timestream — Time-series database optimized for telemetry ingest and interval rollups.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 15,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "QueryTimeout",
+          "message": "Time-series query timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottlingException",
+          "message": "Ingest rate limit exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Query aggregated time-series points",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"series\":[{\"t\":\"{{now.iso}}\",\"v\":{{faker.int(10,100)}}}]}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Write",
+        "summary": "Write time-series measurement records",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"accepted\":10}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "timeseries",
+      "metrics",
+      "iot",
+      "telemetry"
+    ],
+    "icon": "ts"
+  },
+  {
+    "id": "aws.redshift",
+    "provider": "aws",
+    "name": "Redshift",
+    "category": "Databases & Caches",
+    "kind": "olap",
+    "description": "Redshift — Analytical warehouse or serverless SQL query engine for large scans.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 800,
+      "p95": 6000
+    },
+    "capacity": {
+      "type": "conn",
+      "default": 100
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "QueryTimeout",
+          "message": "Analytical query timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ConcurrencyLimitExceeded",
+          "message": "Too many concurrent analytical queries",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Run an analytical scan or aggregation query",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rows\":[{\"metric\":\"sales\",\"total\":{{faker.int(1000,99999)}}}],\"scannedMb\":256}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.bigquery",
+      "azure": "azure.synapse",
+      "oci": "oci.autonomous_adw"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "analytics",
+      "warehouse",
+      "olap",
+      "bigquery",
+      "redshift",
+      "athena"
+    ],
+    "icon": "olap"
+  },
+  {
+    "id": "aws.athena",
+    "provider": "aws",
+    "name": "Athena",
+    "category": "Databases & Caches",
+    "kind": "olap",
+    "description": "Athena — Analytical warehouse or serverless SQL query engine for large scans.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 2500,
+      "p95": 15000
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "QueryTimeout",
+          "message": "Analytical query timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ConcurrencyLimitExceeded",
+          "message": "Too many concurrent analytical queries",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Query",
+        "summary": "Run an analytical scan or aggregation query",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"rows\":[{\"metric\":\"sales\",\"total\":{{faker.int(1000,99999)}}}],\"scannedMb\":256}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "query-tb"
+    },
+    "equivalents": {
+      "gcp": "gcp.bigquery",
+      "azure": "azure.synapse"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "analytics",
+      "warehouse",
+      "olap",
+      "bigquery",
+      "redshift",
+      "athena"
+    ],
+    "icon": "olap"
+  },
+  {
+    "id": "aws.opensearch",
+    "provider": "aws",
+    "name": "OpenSearch Service",
+    "category": "Databases & Caches",
+    "kind": "search",
+    "description": "OpenSearch Service — Full-text and vector search engine supporting keyword and RAG retrieval.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 15,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0003,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "EsRejectedExecutionException",
+          "message": "Search thread pool queue full",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 503,
+          "name": "SearchUnavailable",
+          "message": "Search shard unavailable",
+          "defaultRate": 0.0003
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Search",
+        "summary": "Run a full-text or vector similarity search query",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"hits\":[{{repeat(3,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"score\\\":0.92,\\\"text\\\":\\\"Passage matching query\\\"}\")}}],\"total\":3}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Index",
+        "summary": "Index or update a searchable document",
+        "defaultResponse": {
+          "statusCode": 201,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"id\":\"{{faker.uuid}}\",\"result\":\"created\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.vertex_search",
+      "azure": "azure.ai_search",
+      "oci": "oci.opensearch"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 9200
+      }
+    ],
+    "tags": [
+      "search",
+      "opensearch",
+      "elasticsearch",
+      "vector",
+      "rag",
+      "fts"
+    ],
+    "icon": "search"
+  },
+  {
+    "id": "aws.sqs",
+    "provider": "aws",
+    "name": "SQS",
+    "category": "Messaging & Integration",
+    "kind": "queue",
+    "description": "SQS — Asynchronous message queue decoupling producers from background consumers.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 10,
+      "p95": 30
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "OverLimit",
+          "message": "Queue throughput throttled",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueueServiceError",
+          "message": "Queue operation failed",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Send",
+        "summary": "Enqueue a message asynchronously",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"MessageId\":\"{{faker.uuid}}\",\"MD5OfMessageBody\":\"{{faker.hex(32)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "Receive",
+        "summary": "Poll messages from queue backlog",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Messages\":[{\"MessageId\":\"{{faker.uuid}}\",\"ReceiptHandle\":\"{{faker.hex(24)}}\",\"Body\":\"{}\"}]}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      },
+      {
+        "name": "Delete",
+        "summary": "Acknowledge and delete processed message",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "msg"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_tasks",
+      "azure": "azure.service_bus",
+      "oci": "oci.queue"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "queue",
+      "sqs",
+      "messaging",
+      "async",
+      "buffer",
+      "dlq"
+    ],
+    "icon": "queue"
+  },
+  {
+    "id": "aws.sns",
+    "provider": "aws",
+    "name": "SNS",
+    "category": "Messaging & Integration",
+    "kind": "topic",
+    "description": "SNS — Fan-out pub/sub messaging topic broadcasting events to subscribers.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 15,
+      "p95": 40
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottledException",
+          "message": "Publish quota exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Publish",
+        "summary": "Publish a message to all topic subscribers",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"MessageId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "msg"
+    },
+    "equivalents": {
+      "gcp": "gcp.pubsub",
+      "azure": "azure.event_grid",
+      "oci": "oci.notifications"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "pubsub",
+      "sns",
+      "topic",
+      "fanout",
+      "notifications"
+    ],
+    "icon": "topic"
+  },
+  {
+    "id": "aws.eventbridge",
+    "provider": "aws",
+    "name": "EventBridge",
+    "category": "Messaging & Integration",
+    "kind": "bus",
+    "description": "EventBridge — Rule-based event bus routing structured cloud events to downstream targets.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 30,
+      "p95": 100
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottlingException",
+          "message": "Event bus put rate limit exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "PutEvents",
+        "summary": "Submit events to rule-based routing bus",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"FailedEntryCount\":0,\"Entries\":[{\"EventId\":\"{{faker.uuid}}\"}]}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "msg"
+    },
+    "equivalents": {
+      "gcp": "gcp.eventarc",
+      "azure": "azure.event_grid",
+      "oci": "oci.events"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "event-bus",
+      "eventbridge",
+      "eventgrid",
+      "events"
+    ],
+    "icon": "bus"
+  },
+  {
+    "id": "aws.kinesis",
+    "provider": "aws",
+    "name": "Kinesis Data Streams",
+    "category": "Messaging & Integration",
+    "kind": "stream",
+    "description": "Kinesis Data Streams — Partitioned ordered event stream for high-throughput ingestion and replay.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 70
+    },
+    "capacity": {
+      "type": "units",
+      "read": 1000,
+      "write": 1000
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ProvisionedThroughputExceededException",
+          "message": "Shard ingest capacity exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "limits": [
+      {
+        "name": "Shard write throughput",
+        "limit": 1000,
+        "unit": "records/s"
+      },
+      {
+        "name": "Shard read throughput",
+        "limit": 2,
+        "unit": "MB/s"
+      }
+    ],
+    "operations": [
+      {
+        "name": "PutRecord",
+        "summary": "Append event record to a stream partition",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ShardId\":\"shardId-000000000000\",\"SequenceNumber\":\"{{seq}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "GetRecords",
+        "summary": "Read record batch from shard iterator",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Records\":[{{repeat(3,\"{\\\"SequenceNumber\\\":\\\"{{seq}}\\\",\\\"Data\\\":\\\"{}\\\"}\")}}]}",
+          "sizeBytes": 1024
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "shard-hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.pubsub",
+      "azure": "azure.event_hubs",
+      "oci": "oci.streaming"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "kafka",
+        "port": 9092
+      }
+    ],
+    "tags": [
+      "stream",
+      "kafka",
+      "kinesis",
+      "eventhub",
+      "partition"
+    ],
+    "icon": "stream"
+  },
+  {
+    "id": "aws.msk",
+    "provider": "aws",
+    "name": "MSK (Kafka)",
+    "category": "Messaging & Integration",
+    "kind": "stream",
+    "description": "MSK (Kafka) — Partitioned ordered event stream for high-throughput ingestion and replay.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 5,
+      "p95": 20
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ProvisionedThroughputExceededException",
+          "message": "Shard ingest capacity exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "PutRecord",
+        "summary": "Append event record to a stream partition",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"ShardId\":\"shardId-000000000000\",\"SequenceNumber\":\"{{seq}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "GetRecords",
+        "summary": "Read record batch from shard iterator",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Records\":[{{repeat(3,\"{\\\"SequenceNumber\\\":\\\"{{seq}}\\\",\\\"Data\\\":\\\"{}\\\"}\")}}]}",
+          "sizeBytes": 1024
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.managed_kafka",
+      "azure": "azure.event_hubs",
+      "oci": "oci.streaming"
+    },
+    "ports": [
+      {
+        "protocol": "kafka",
+        "port": 9092
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "stream",
+      "kafka",
+      "kinesis",
+      "eventhub",
+      "partition"
+    ],
+    "icon": "stream"
+  },
+  {
+    "id": "aws.mq",
+    "provider": "aws",
+    "name": "Amazon MQ",
+    "category": "Messaging & Integration",
+    "kind": "queue",
+    "description": "Amazon MQ — Asynchronous message queue decoupling producers from background consumers.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 8,
+      "p95": 30
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "OverLimit",
+          "message": "Queue throughput throttled",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueueServiceError",
+          "message": "Queue operation failed",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Send",
+        "summary": "Enqueue a message asynchronously",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"MessageId\":\"{{faker.uuid}}\",\"MD5OfMessageBody\":\"{{faker.hex(32)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "Receive",
+        "summary": "Poll messages from queue backlog",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Messages\":[{\"MessageId\":\"{{faker.uuid}}\",\"ReceiptHandle\":\"{{faker.hex(24)}}\",\"Body\":\"{}\"}]}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      },
+      {
+        "name": "Delete",
+        "summary": "Acknowledge and delete processed message",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "azure": "azure.service_bus"
+    },
+    "ports": [
+      {
+        "protocol": "amqp",
+        "port": 5671
+      },
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "queue",
+      "sqs",
+      "messaging",
+      "async",
+      "buffer",
+      "dlq"
+    ],
+    "icon": "queue"
+  },
+  {
+    "id": "aws.stepfunctions_std",
+    "provider": "aws",
+    "name": "Step Functions (Standard)",
+    "category": "Messaging & Integration",
+    "kind": "workflow",
+    "description": "Step Functions (Standard) — Serverless state machine orchestrating multi-step distributed workflows.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 50,
+      "p95": 200
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ExecutionTimedOut",
+          "message": "Workflow state timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "StartExecution",
+        "summary": "Start workflow execution instance",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"executionId\":\"{{faker.uuid}}\",\"startDate\":\"{{now.iso}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "Describe",
+        "summary": "Inspect workflow execution status",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"status\":\"SUCCEEDED\",\"output\":\"{}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "unit"
+    },
+    "equivalents": {
+      "gcp": "gcp.workflows",
+      "azure": "azure.logic_apps",
+      "oci": "oci.integration"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "workflow",
+      "stepfunctions",
+      "orchestration",
+      "saga"
+    ],
+    "icon": "workflow"
+  },
+  {
+    "id": "aws.stepfunctions_express",
+    "provider": "aws",
+    "name": "Step Functions (Express)",
+    "category": "Messaging & Integration",
+    "kind": "workflow",
+    "description": "Step Functions (Express) — Serverless state machine orchestrating multi-step distributed workflows.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0002,
+      "kinds": [
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ExecutionTimedOut",
+          "message": "Workflow state timeout",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "StartExecution",
+        "summary": "Start workflow execution instance",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"executionId\":\"{{faker.uuid}}\",\"startDate\":\"{{now.iso}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "Describe",
+        "summary": "Inspect workflow execution status",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"status\":\"SUCCEEDED\",\"output\":\"{}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": {
+      "gcp": "gcp.workflows",
+      "azure": "azure.durable_functions"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "workflow",
+      "stepfunctions",
+      "orchestration",
+      "saga"
+    ],
+    "icon": "workflow"
+  },
+  {
+    "id": "aws.ses",
+    "provider": "aws",
+    "name": "SES (email)",
+    "category": "Messaging & Integration",
+    "kind": "email",
+    "description": "SES (email) — Transactional email sending service with rate limits and delivery webhooks.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 100,
+      "p95": 300
+    },
+    "capacity": {
+      "type": "rps",
+      "limit": 14
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "Throttling",
+          "message": "Maximum sending rate exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 400,
+          "name": "MessageRejected",
+          "message": "Email rejected or bounced",
+          "defaultRate": 0.0005
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Send",
+        "summary": "Send an email message",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"MessageId\":\"msg-{{faker.uuid}}\"}",
+          "sizeBytes": 128
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "msg"
+    },
+    "equivalents": {
+      "azure": "azure.communication_email"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "smtp",
+        "port": 587
+      }
+    ],
+    "tags": [
+      "email",
+      "ses",
+      "smtp",
+      "notifications",
+      "messaging"
+    ],
+    "icon": "email"
+  },
+  {
+    "id": "aws.cognito",
+    "provider": "aws",
+    "name": "Cognito",
+    "category": "Security & Identity",
+    "kind": "auth",
+    "description": "Cognito — Identity provider issuing and verifying authentication tokens.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 80,
+      "p95": 300
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequestsException",
+          "message": "Identity quota throttled",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 401,
+          "name": "NotAuthorizedException",
+          "message": "Invalid credentials or expired token",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Login",
+        "summary": "Authenticate user credentials and issue token",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"accessToken\":\"jwt.{{faker.hex(24)}}.sig\",\"expiresIn\":3600}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      },
+      {
+        "name": "VerifyToken",
+        "summary": "Validate JWT signature and claims",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"valid\":true,\"sub\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Refresh",
+        "summary": "Exchange refresh token for fresh access token",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"accessToken\":\"jwt.{{faker.hex(24)}}.sig\",\"expiresIn\":3600}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "mau"
+    },
+    "equivalents": {
+      "gcp": "gcp.identity_platform",
+      "azure": "azure.entra_b2c",
+      "oci": "oci.identity_domains"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "auth",
+      "iam",
+      "cognito",
+      "oauth",
+      "jwt",
+      "identity"
+    ],
+    "icon": "auth"
+  },
+  {
+    "id": "aws.sts",
+    "provider": "aws",
+    "name": "IAM / STS",
+    "category": "Security & Identity",
+    "kind": "auth",
+    "description": "IAM / STS — Identity provider issuing and verifying authentication tokens.",
+    "scope": "global",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 50,
+      "p95": 150
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequestsException",
+          "message": "Identity quota throttled",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 401,
+          "name": "NotAuthorizedException",
+          "message": "Invalid credentials or expired token",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Login",
+        "summary": "Authenticate user credentials and issue token",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"accessToken\":\"jwt.{{faker.hex(24)}}.sig\",\"expiresIn\":3600}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      },
+      {
+        "name": "VerifyToken",
+        "summary": "Validate JWT signature and claims",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"valid\":true,\"sub\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Refresh",
+        "summary": "Exchange refresh token for fresh access token",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"accessToken\":\"jwt.{{faker.hex(24)}}.sig\",\"expiresIn\":3600}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": {
+      "azure": "azure.entra_id",
+      "oci": "oci.instance_principal"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "auth",
+      "iam",
+      "cognito",
+      "oauth",
+      "jwt",
+      "identity"
+    ],
+    "icon": "auth"
+  },
+  {
+    "id": "aws.secrets_manager",
+    "provider": "aws",
+    "name": "Secrets Manager",
+    "category": "Security & Identity",
+    "kind": "secret",
+    "description": "Secrets Manager — Managed secrets store with encryption at rest and API rate limits.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 60
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottlingException",
+          "message": "Secret read rate limit exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 403,
+          "name": "AccessDeniedException",
+          "message": "Access denied to secret",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "GetSecret",
+        "summary": "Retrieve secret string or binary value",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Name\":\"app/config\",\"VersionId\":\"{{faker.uuid}}\",\"SecretString\":\"{\\\"apiKey\\\":\\\"mock-{{faker.hex(16)}}\\\"}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.secret_manager",
+      "azure": "azure.key_vault",
+      "oci": "oci.vault_secrets"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "secrets",
+      "vault",
+      "credentials",
+      "ssm",
+      "security"
+    ],
+    "icon": "secret"
+  },
+  {
+    "id": "aws.ssm_parameter",
+    "provider": "aws",
+    "name": "SSM Parameter Store",
+    "category": "Security & Identity",
+    "kind": "secret",
+    "description": "SSM Parameter Store — Managed secrets store with encryption at rest and API rate limits.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 10,
+      "p95": 40
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottlingException",
+          "message": "Secret read rate limit exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 403,
+          "name": "AccessDeniedException",
+          "message": "Access denied to secret",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "GetSecret",
+        "summary": "Retrieve secret string or binary value",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Name\":\"app/config\",\"VersionId\":\"{{faker.uuid}}\",\"SecretString\":\"{\\\"apiKey\\\":\\\"mock-{{faker.hex(16)}}\\\"}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "free"
+    },
+    "equivalents": {
+      "gcp": "gcp.secret_manager",
+      "azure": "azure.key_vault",
+      "oci": "oci.vault_secrets"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "secrets",
+      "vault",
+      "credentials",
+      "ssm",
+      "security"
+    ],
+    "icon": "secret"
+  },
+  {
+    "id": "aws.kms",
+    "provider": "aws",
+    "name": "KMS",
+    "category": "Security & Identity",
+    "kind": "kms",
+    "description": "KMS — Key management service for cryptographic signing, encryption, and data key generation.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 5,
+      "p95": 20
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottlingException",
+          "message": "KMS request rate exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 403,
+          "name": "AccessDeniedException",
+          "message": "Not authorized to use key",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Decrypt",
+        "summary": "Decrypt ciphertext with a managed key",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"KeyId\":\"key-{{faker.uuid}}\",\"Plaintext\":\"bW9jay1wbGFpbnRleHQ=\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Encrypt",
+        "summary": "Encrypt plaintext payload with a managed key",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"KeyId\":\"key-{{faker.uuid}}\",\"CiphertextBlob\":\"{{faker.hex(48)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": {
+      "gcp": "gcp.kms",
+      "azure": "azure.key_vault_keys",
+      "oci": "oci.vault_keys"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "kms",
+      "encryption",
+      "keys",
+      "crypto",
+      "security"
+    ],
+    "icon": "kms"
+  },
+  {
+    "id": "aws.bedrock",
+    "provider": "aws",
+    "name": "Bedrock (LLM, full response)",
+    "category": "AI & ML",
+    "kind": "llm",
+    "description": "Bedrock (LLM, full response) — Hosted foundation model inference endpoint with token throughput limits and streaming.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 3000,
+      "p95": 12000
+    },
+    "capacity": {
+      "type": "tpm",
+      "rpm": 1000,
+      "tpm": 250000
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottlingException",
+          "message": "RPM or TPM quota exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "timeout",
+          "statusCode": 504,
+          "name": "ModelTimeoutException",
+          "message": "Generation timed out",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "ModelErrorException",
+          "message": "Upstream model inference error",
+          "defaultRate": 0.0005
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Invoke",
+        "summary": "Generate a full model completion",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"id\":\"resp-{{faker.hex(12)}}\",\"output\":{\"message\":{\"role\":\"assistant\",\"content\":[{\"text\":\"{{tokens(64)}}\"}]}},\"usage\":{\"inputTokens\":128,\"outputTokens\":64,\"totalTokens\":192}}",
+          "sizeBytes": 1024
+        },
+        "errors": [
+          {
+            "kind": "throttled",
+            "statusCode": 429,
+            "name": "ThrottlingException",
+            "message": "TPM/RPM quota exceeded",
+            "defaultRate": 0
+          }
+        ]
+      },
+      {
+        "name": "InvokeStream",
+        "summary": "Stream generated tokens as server-sent chunks",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "text/event-stream"
+          },
+          "bodyTemplate": "data: {\"chunk\":\"{{tokens(64)}}\",\"finishReason\":\"stop\"}\n\n",
+          "sizeBytes": 1024
+        },
+        "errors": []
+      },
+      {
+        "name": "Embed",
+        "summary": "Compute dense embedding vector for input text",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"embedding\":[0.012,-0.034,0.056,0.078],\"usage\":{\"inputTokens\":64}}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "tok"
+    },
+    "equivalents": {
+      "gcp": "gcp.vertex_gemini",
+      "azure": "azure.openai",
+      "oci": "oci.genai"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ai",
+      "llm",
+      "genai",
+      "tokens",
+      "inference",
+      "streaming"
+    ],
+    "icon": "llm"
+  },
+  {
+    "id": "aws.bedrock_kb",
+    "provider": "aws",
+    "name": "Bedrock Knowledge Bases (retrieve)",
+    "category": "AI & ML",
+    "kind": "search",
+    "description": "Bedrock Knowledge Bases (retrieve) — Full-text and vector search engine supporting keyword and RAG retrieval.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 300,
+      "p95": 900
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0003,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "EsRejectedExecutionException",
+          "message": "Search thread pool queue full",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 503,
+          "name": "SearchUnavailable",
+          "message": "Search shard unavailable",
+          "defaultRate": 0.0003
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Search",
+        "summary": "Run a full-text or vector similarity search query",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"hits\":[{{repeat(3,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"score\\\":0.92,\\\"text\\\":\\\"Passage matching query\\\"}\")}}],\"total\":3}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Index",
+        "summary": "Index or update a searchable document",
+        "defaultResponse": {
+          "statusCode": 201,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"id\":\"{{faker.uuid}}\",\"result\":\"created\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "mix"
+    },
+    "equivalents": {
+      "gcp": "gcp.vertex_search",
+      "azure": "azure.ai_search"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 9200
+      }
+    ],
+    "tags": [
+      "search",
+      "opensearch",
+      "elasticsearch",
+      "vector",
+      "rag",
+      "fts"
+    ],
+    "icon": "search"
+  },
+  {
+    "id": "aws.sagemaker_endpoint",
+    "provider": "aws",
+    "name": "SageMaker real-time endpoint",
+    "category": "AI & ML",
+    "kind": "ml",
+    "description": "SageMaker real-time endpoint — Managed real-time machine learning model prediction endpoint.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 50,
+      "p95": 300
+    },
+    "capacity": {
+      "type": "slots",
+      "fromInstanceType": true
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ModelThrottled",
+          "message": "Prediction endpoint concurrency exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "ModelError",
+          "message": "Model serving container failed",
+          "defaultRate": 0.0005
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Predict",
+        "summary": "Run synchronous model inference on feature input",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"predictions\":[{\"label\":\"positive\",\"score\":0.92}],\"modelVersion\":\"v1\"}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.vertex_endpoint",
+      "azure": "azure.ml_endpoint",
+      "oci": "oci.datascience_deployment"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ml",
+      "inference",
+      "endpoint",
+      "prediction",
+      "model"
+    ],
+    "icon": "ml"
+  },
+  {
+    "id": "aws.rekognition",
+    "provider": "aws",
+    "name": "Rekognition",
+    "category": "AI & ML",
+    "kind": "vision",
+    "description": "Rekognition — Computer vision API for image labels, faces, and OCR analysis.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 300,
+      "p95": 900
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "LimitExceeded",
+          "message": "Vision API quota throttled",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 400,
+          "name": "InvalidImage",
+          "message": "Malformed or unsupported image payload",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Analyze",
+        "summary": "Detect labels, text, or bounding boxes in an image",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"labels\":[{\"name\":\"ArchitectureDiagram\",\"confidence\":0.97}],\"requestId\":\"{{faker.uuid}}\"}",
+          "sizeBytes": 1024
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "unit"
+    },
+    "equivalents": {
+      "gcp": "gcp.vision",
+      "azure": "azure.ai_vision",
+      "oci": "oci.vision"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ai",
+      "vision",
+      "image",
+      "ocr",
+      "labels"
+    ],
+    "icon": "vision"
+  },
+  {
+    "id": "aws.textract",
+    "provider": "aws",
+    "name": "Textract (sync)",
+    "category": "AI & ML",
+    "kind": "doc-ai",
+    "description": "Textract (sync) — Document parsing API extracting structured fields and tables from PDFs and scans.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 1500,
+      "p95": 5000
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ProvisionedThroughputExceeded",
+          "message": "Document AI quota exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Extract",
+        "summary": "Extract structured text, key-values, and tables from a document",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"pages\":2,\"blocks\":[{\"type\":\"LINE\",\"text\":\"{{tokens(12)}}\"}]}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "unit"
+    },
+    "equivalents": {
+      "gcp": "gcp.document_ai",
+      "azure": "azure.doc_intelligence",
+      "oci": "oci.document_understanding"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ai",
+      "document",
+      "ocr",
+      "pdf",
+      "extract"
+    ],
+    "icon": "doc-ai"
+  },
+  {
+    "id": "aws.comprehend",
+    "provider": "aws",
+    "name": "Comprehend",
+    "category": "AI & ML",
+    "kind": "text-ai",
+    "description": "Comprehend — Natural language processing API for translation, sentiment, entities, and moderation.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 100,
+      "p95": 300
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequests",
+          "message": "Text AI quota exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Translate",
+        "summary": "Translate text between languages",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"translatedText\":\"{{tokens(16)}}\",\"sourceLanguageCode\":\"en\",\"targetLanguageCode\":\"es\"}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Analyze",
+        "summary": "Analyze sentiment, entities, or safety signals in text",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"sentiment\":\"NEUTRAL\",\"score\":0.84}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "unit"
+    },
+    "equivalents": {
+      "gcp": "gcp.natural_language",
+      "azure": "azure.ai_language",
+      "oci": "oci.language"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ai",
+      "nlp",
+      "translate",
+      "sentiment",
+      "text"
+    ],
+    "icon": "text-ai"
+  },
+  {
+    "id": "aws.transcribe",
+    "provider": "aws",
+    "name": "Transcribe (batch)",
+    "category": "AI & ML",
+    "kind": "speech",
+    "description": "Transcribe (batch) — Speech-to-text transcription and text-to-speech synthesis API.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 60000,
+      "p95": 240000
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "LimitExceeded",
+          "message": "Speech API rate limit exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Transcribe",
+        "summary": "Convert spoken audio into text transcript",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"transcript\":\"{{tokens(24)}}\",\"confidence\":0.95}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Synthesize",
+        "summary": "Synthesize spoken audio bytes from text",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "audio/mpeg"
+          },
+          "bodyTemplate": "{{binary(sizeBytes)}}",
+          "sizeBytes": 16384
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "unit"
+    },
+    "equivalents": {
+      "gcp": "gcp.speech_to_text",
+      "azure": "azure.ai_speech",
+      "oci": "oci.speech"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ai",
+      "speech",
+      "audio",
+      "transcribe",
+      "tts"
+    ],
+    "icon": "speech"
+  },
+  {
+    "id": "aws.polly",
+    "provider": "aws",
+    "name": "Polly",
+    "category": "AI & ML",
+    "kind": "speech",
+    "description": "Polly — Speech-to-text transcription and text-to-speech synthesis API.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 150,
+      "p95": 400
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "LimitExceeded",
+          "message": "Speech API rate limit exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Transcribe",
+        "summary": "Convert spoken audio into text transcript",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"transcript\":\"{{tokens(24)}}\",\"confidence\":0.95}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Synthesize",
+        "summary": "Synthesize spoken audio bytes from text",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "audio/mpeg"
+          },
+          "bodyTemplate": "{{binary(sizeBytes)}}",
+          "sizeBytes": 16384
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "unit"
+    },
+    "equivalents": {
+      "gcp": "gcp.text_to_speech",
+      "azure": "azure.ai_speech"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ai",
+      "speech",
+      "audio",
+      "transcribe",
+      "tts"
+    ],
+    "icon": "speech"
+  },
+  {
+    "id": "aws.translate",
+    "provider": "aws",
+    "name": "Translate",
+    "category": "AI & ML",
+    "kind": "text-ai",
+    "description": "Translate — Natural language processing API for translation, sentiment, entities, and moderation.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 100,
+      "p95": 300
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "TooManyRequests",
+          "message": "Text AI quota exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Translate",
+        "summary": "Translate text between languages",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"translatedText\":\"{{tokens(16)}}\",\"sourceLanguageCode\":\"en\",\"targetLanguageCode\":\"es\"}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Analyze",
+        "summary": "Analyze sentiment, entities, or safety signals in text",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"sentiment\":\"NEUTRAL\",\"score\":0.84}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "unit"
+    },
+    "equivalents": {
+      "gcp": "gcp.translation",
+      "azure": "azure.ai_translator"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ai",
+      "nlp",
+      "translate",
+      "sentiment",
+      "text"
+    ],
+    "icon": "text-ai"
+  },
+  {
+    "id": "aws.lex",
+    "provider": "aws",
+    "name": "Lex",
+    "category": "AI & ML",
+    "kind": "bot",
+    "description": "Lex — Conversational dialog orchestration service for intent detection and virtual agents.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 150,
+      "p95": 500
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottlingException",
+          "message": "Bot conversation quota exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Converse",
+        "summary": "Process a user utterance and return dialog intent and reply",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"sessionId\":\"sess-{{faker.uuid}}\",\"intent\":\"Help\",\"message\":\"{{tokens(20)}}\"}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": {
+      "gcp": "gcp.dialogflow",
+      "azure": "azure.bot_service",
+      "oci": "oci.digital_assistant"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ai",
+      "bot",
+      "chat",
+      "dialog",
+      "intent"
+    ],
+    "icon": "bot"
+  },
+  {
+    "id": "aws.kendra",
+    "provider": "aws",
+    "name": "Kendra",
+    "category": "AI & ML",
+    "kind": "search",
+    "description": "Kendra — Full-text and vector search engine supporting keyword and RAG retrieval.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 300,
+      "p95": 1000
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0003,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "EsRejectedExecutionException",
+          "message": "Search thread pool queue full",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 503,
+          "name": "SearchUnavailable",
+          "message": "Search shard unavailable",
+          "defaultRate": 0.0003
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Search",
+        "summary": "Run a full-text or vector similarity search query",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"hits\":[{{repeat(3,\"{\\\"id\\\":\\\"{{faker.uuid}}\\\",\\\"score\\\":0.92,\\\"text\\\":\\\"Passage matching query\\\"}\")}}],\"total\":3}",
+          "sizeBytes": 2048
+        },
+        "errors": [],
+        "idempotent": true
+      },
+      {
+        "name": "Index",
+        "summary": "Index or update a searchable document",
+        "defaultResponse": {
+          "statusCode": 201,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"id\":\"{{faker.uuid}}\",\"result\":\"created\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "hr"
+    },
+    "equivalents": {
+      "gcp": "gcp.vertex_search",
+      "azure": "azure.ai_search"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      },
+      {
+        "protocol": "http",
+        "port": 9200
+      }
+    ],
+    "tags": [
+      "search",
+      "opensearch",
+      "elasticsearch",
+      "vector",
+      "rag",
+      "fts"
+    ],
+    "icon": "search"
+  },
+  {
+    "id": "aws.personalize",
+    "provider": "aws",
+    "name": "Personalize (real-time recs)",
+    "category": "AI & ML",
+    "kind": "ml",
+    "description": "Personalize (real-time recs) — Managed real-time machine learning model prediction endpoint.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 50,
+      "p95": 150
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0005,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ModelThrottled",
+          "message": "Prediction endpoint concurrency exceeded",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "ModelError",
+          "message": "Model serving container failed",
+          "defaultRate": 0.0005
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Predict",
+        "summary": "Run synchronous model inference on feature input",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"predictions\":[{\"label\":\"positive\",\"score\":0.92}],\"modelVersion\":\"v1\"}",
+          "sizeBytes": 512
+        },
+        "errors": [],
+        "idempotent": true
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": "none",
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "ml",
+      "inference",
+      "endpoint",
+      "prediction",
+      "model"
+    ],
+    "icon": "ml"
+  },
+  {
+    "id": "aws.cloudwatch_logs",
+    "provider": "aws",
+    "name": "CloudWatch Logs (ingest)",
+    "category": "Observability",
+    "kind": "queue",
+    "description": "CloudWatch Logs (ingest) — Asynchronous message queue decoupling producers from background consumers.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 20,
+      "p95": 80
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "OverLimit",
+          "message": "Queue throughput throttled",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueueServiceError",
+          "message": "Queue operation failed",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Send",
+        "summary": "Enqueue a message asynchronously",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"MessageId\":\"{{faker.uuid}}\",\"MD5OfMessageBody\":\"{{faker.hex(32)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "Receive",
+        "summary": "Poll messages from queue backlog",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Messages\":[{\"MessageId\":\"{{faker.uuid}}\",\"ReceiptHandle\":\"{{faker.hex(24)}}\",\"Body\":\"{}\"}]}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      },
+      {
+        "name": "Delete",
+        "summary": "Acknowledge and delete processed message",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "gb-xfer"
+    },
+    "equivalents": {
+      "gcp": "gcp.cloud_logging",
+      "azure": "azure.monitor_logs",
+      "oci": "oci.logging"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "queue",
+      "sqs",
+      "messaging",
+      "async",
+      "buffer",
+      "dlq"
+    ],
+    "icon": "queue"
+  },
+  {
+    "id": "aws.xray",
+    "provider": "aws",
+    "name": "X-Ray",
+    "category": "Observability",
+    "kind": "queue",
+    "description": "X-Ray — Asynchronous message queue decoupling producers from background consumers.",
+    "scope": "regional",
+    "latency": {
+      "distribution": "lognormal",
+      "p50": 10,
+      "p95": 40
+    },
+    "capacity": {
+      "type": "elastic"
+    },
+    "failure": {
+      "errorRate": 0.0001,
+      "kinds": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "OverLimit",
+          "message": "Queue throughput throttled",
+          "defaultRate": 0
+        },
+        {
+          "kind": "server",
+          "statusCode": 500,
+          "name": "QueueServiceError",
+          "message": "Queue operation failed",
+          "defaultRate": 0.0001
+        }
+      ]
+    },
+    "operations": [
+      {
+        "name": "Send",
+        "summary": "Enqueue a message asynchronously",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"MessageId\":\"{{faker.uuid}}\",\"MD5OfMessageBody\":\"{{faker.hex(32)}}\"}",
+          "sizeBytes": 256
+        },
+        "errors": []
+      },
+      {
+        "name": "Receive",
+        "summary": "Poll messages from queue backlog",
+        "defaultResponse": {
+          "statusCode": 200,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "bodyTemplate": "{\"Messages\":[{\"MessageId\":\"{{faker.uuid}}\",\"ReceiptHandle\":\"{{faker.hex(24)}}\",\"Body\":\"{}\"}]}",
+          "sizeBytes": 512
+        },
+        "errors": []
+      },
+      {
+        "name": "Delete",
+        "summary": "Acknowledge and delete processed message",
+        "defaultResponse": {
+          "statusCode": 200,
+          "bodyTemplate": "{\"ok\":true}",
+          "sizeBytes": 64
+        },
+        "errors": []
+      }
+    ],
+    "pricing": {
+      "model": "req"
+    },
+    "equivalents": {
+      "azure": "azure.app_insights",
+      "oci": "oci.monitoring"
+    },
+    "ports": [
+      {
+        "protocol": "https",
+        "port": 443
+      }
+    ],
+    "tags": [
+      "queue",
+      "sqs",
+      "messaging",
+      "async",
+      "buffer",
+      "dlq"
+    ],
+    "icon": "queue"
+  }
+]

@@ -1,0 +1,41 @@
+{
+  "kind": "ml",
+  "description": "Managed real-time machine learning model prediction endpoint.",
+  "icon": "ml",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["ml", "inference", "endpoint", "prediction", "model"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ModelThrottled",
+        "message": "Prediction endpoint concurrency exceeded",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "ModelError",
+        "message": "Model serving container failed",
+        "defaultRate": 0.0005
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Predict",
+      "summary": "Run synchronous model inference on feature input",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"predictions\":[{\"label\":\"positive\",\"score\":0.92}],\"modelVersion\":\"v1\"}",
+        "sizeBytes": 512
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

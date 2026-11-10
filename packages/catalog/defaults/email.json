@@ -1,0 +1,43 @@
+{
+  "kind": "email",
+  "description": "Transactional email sending service with rate limits and delivery webhooks.",
+  "icon": "email",
+  "scope": "regional",
+  "ports": [
+    { "protocol": "https", "port": 443 },
+    { "protocol": "smtp", "port": 587 }
+  ],
+  "tags": ["email", "ses", "smtp", "notifications", "messaging"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "Throttling",
+        "message": "Maximum sending rate exceeded",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 400,
+        "name": "MessageRejected",
+        "message": "Email rejected or bounced",
+        "defaultRate": 0.0005
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Send",
+      "summary": "Send an email message",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"MessageId\":\"msg-{{faker.uuid}}\"}",
+        "sizeBytes": 128
+      },
+      "errors": []
+    }
+  ]
+}

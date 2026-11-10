@@ -1,0 +1,37 @@
+{
+  "kind": "dns",
+  "description": "Authoritative and traffic-routing DNS resolution service.",
+  "icon": "dns",
+  "scope": "global",
+  "ports": [
+    { "protocol": "dns", "port": 53 },
+    { "protocol": "udp", "port": 53 }
+  ],
+  "tags": ["dns", "domain", "routing", "resolution"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "SERVFAIL",
+        "message": "DNS resolution failure",
+        "defaultRate": 0.0001
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Resolve",
+      "summary": "Resolve hostname to IP address or alias target",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"answer\":\"10.0.1.15\",\"ttl\":60}",
+        "sizeBytes": 128
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

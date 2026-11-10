@@ -1,0 +1,41 @@
+{
+  "kind": "olap",
+  "description": "Analytical warehouse or serverless SQL query engine for large scans.",
+  "icon": "olap",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["analytics", "warehouse", "olap", "bigquery", "redshift", "athena"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "QueryTimeout",
+        "message": "Analytical query timed out",
+        "defaultRate": 0
+      },
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ConcurrencyLimitExceeded",
+        "message": "Too many concurrent analytical queries",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Query",
+      "summary": "Run an analytical scan or aggregation query",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"rows\":[{\"metric\":\"sales\",\"total\":{{faker.int(1000,99999)}}}],\"scannedMb\":256}",
+        "sizeBytes": 2048
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

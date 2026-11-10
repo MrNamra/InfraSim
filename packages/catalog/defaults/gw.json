@@ -1,0 +1,47 @@
+{
+  "kind": "gw",
+  "description": "Managed API gateway with routing, throttling, and integration timeouts.",
+  "icon": "gw",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["api-gateway", "gateway", "rest", "http", "graphql", "throttle"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "TooManyRequests",
+        "message": "API stage limit exceeded",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 502,
+        "name": "BadGateway",
+        "message": "Upstream integration error",
+        "defaultRate": 0.0002
+      },
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "GatewayTimeout",
+        "message": "Integration timeout exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Forward",
+      "summary": "Authorize, rate-limit, and forward API request",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"requestId\":\"{{faker.uuid}}\",\"status\":\"ok\"}",
+        "sizeBytes": 256
+      },
+      "errors": []
+    }
+  ]
+}

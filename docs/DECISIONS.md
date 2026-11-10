@@ -34,3 +34,11 @@ Recorded decisions where specs offered alternatives, flagged ambiguities, or int
 - **Charts & auto-layout choices (logged upfront for Phase 1 / Phase 5)**:
   - **Charts**: Lightweight custom SVG time-series charts with LTTB decimation (`<= 500` points) in Phase 1 (or Recharts if complex multi-axis tooltips become needed), minimizing First Load JS within the 400 KB gzip workbench budget.
   - **Auto-layout**: `elkjs` planned for nested Region/VPC/AZ/Subnet containers and Terraform import graph layout (Phase 5), since `dagre` does not natively support compound nested groups cleanly.
+
+## Phase 1 — Canvas + Core Simulation (MVP)
+
+### 5. Catalog Build Pipeline & Equivalents (`T1.1`)
+
+- **Dual build output (JSON + static TypeScript)**: `scripts/build-catalog.ts` emits normalized per-provider files in `packages/catalog/data/{aws,gcp,azure,oci,generic,index}.json` **and** `packages/catalog/src/generated/catalogData.ts` so browser bundles, Next.js client components, Vitest, and Web Workers import `@infrasim/catalog` without runtime filesystem reads or JSON import assertions. `pnpm catalog:check` verifies both artifacts match `docs/specs/07-10` and `packages/catalog/defaults/*`.
+- **Category heading cleanup**: Normalized Markdown `### AI & ML (mocked — see file 11)` headings to `"AI & ML"` in the generated catalog so palette grouping stays concise and uniform across providers.
+- **PostgreSQL equivalence on OCI**: Mapped PostgreSQL services (`aws.rds_postgres`, `gcp.cloud_sql_postgres`, `azure.postgres_flexible`) directly to `oci.postgres` present in `docs/specs/10-CATALOG-OCI.md` (while `aws.rds_mysql`, `gcp.cloud_sql_mysql`, and `azure.mysql_flexible` map to `oci.mysql_heatwave`), updating the earlier starter note in `06-SERVICE-CATALOG-SPEC.md` §8 which listed `oci.mysql_heatwave (closest)`.

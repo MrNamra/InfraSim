@@ -1,0 +1,37 @@
+{
+  "kind": "net",
+  "description": "Network gateway, firewall, proxy, or connectivity pass-through hop.",
+  "icon": "net",
+  "scope": "regional",
+  "ports": [
+    { "protocol": "tcp", "port": 443 },
+    { "protocol": "tcp", "port": 80 }
+  ],
+  "tags": ["network", "nat", "gateway", "peering", "vpn", "firewall", "proxy"],
+  "failure": {
+    "errorRate": 0,
+    "kinds": [
+      {
+        "kind": "conn_timeout",
+        "statusCode": 504,
+        "name": "ConnectionTimeout",
+        "message": "Packet dropped on network path",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Forward",
+      "summary": "Pass network traffic across gateway or tunnel",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"ok\":true}",
+        "sizeBytes": 64
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

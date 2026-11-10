@@ -1,0 +1,568 @@
+{
+  "aws.ec2": { "gcp": "gcp.compute_engine", "azure": "azure.vm", "oci": "oci.compute" },
+  "aws.lambda": {
+    "gcp": "gcp.cloud_functions",
+    "azure": "azure.functions",
+    "oci": "oci.functions"
+  },
+  "aws.fargate": {
+    "gcp": "gcp.cloud_run",
+    "azure": "azure.container_apps",
+    "oci": "oci.container_instances"
+  },
+  "aws.ecs_ec2": {
+    "gcp": "gcp.gke",
+    "azure": "azure.container_instances",
+    "oci": "oci.container_instances"
+  },
+  "aws.eks": { "gcp": "gcp.gke", "azure": "azure.aks", "oci": "oci.oke" },
+  "aws.app_runner": {
+    "gcp": "gcp.cloud_run",
+    "azure": "azure.container_apps",
+    "oci": "oci.container_instances"
+  },
+  "aws.beanstalk": { "gcp": "gcp.app_engine", "azure": "azure.app_service" },
+  "aws.lightsail": "none",
+  "aws.batch": { "gcp": "gcp.batch", "azure": "azure.batch", "oci": "oci.batch" },
+  "aws.route53": { "gcp": "gcp.cloud_dns", "azure": "azure.dns", "oci": "oci.dns" },
+  "aws.cloudfront": { "gcp": "gcp.cloud_cdn", "azure": "azure.front_door" },
+  "aws.alb": { "gcp": "gcp.lb_https", "azure": "azure.app_gateway", "oci": "oci.load_balancer" },
+  "aws.nlb": { "gcp": "gcp.lb_network", "azure": "azure.load_balancer", "oci": "oci.network_lb" },
+  "aws.gwlb": { "gcp": "gcp.lb_internal" },
+  "aws.apigw_rest": { "gcp": "gcp.api_gateway", "azure": "azure.apim", "oci": "oci.api_gateway" },
+  "aws.apigw_http": { "gcp": "gcp.api_gateway", "azure": "azure.apim", "oci": "oci.api_gateway" },
+  "aws.appsync": "none",
+  "aws.global_accelerator": { "azure": "azure.front_door" },
+  "aws.waf": { "gcp": "gcp.cloud_armor", "azure": "azure.waf", "oci": "oci.waf" },
+  "aws.nat_gw": { "gcp": "gcp.cloud_nat", "azure": "azure.nat_gateway", "oci": "oci.nat_gw" },
+  "aws.igw": { "oci": "oci.internet_gw" },
+  "aws.vpc_peering": {
+    "gcp": "gcp.vpc_peering",
+    "azure": "azure.vnet_peering",
+    "oci": "oci.vcn_peering"
+  },
+  "aws.tgw": { "oci": "oci.drg" },
+  "aws.privatelink": { "gcp": "gcp.psc", "azure": "azure.private_link", "oci": "oci.service_gw" },
+  "aws.direct_connect": {
+    "gcp": "gcp.interconnect",
+    "azure": "azure.expressroute",
+    "oci": "oci.fastconnect"
+  },
+  "aws.vpn": { "gcp": "gcp.vpn", "azure": "azure.vpn_gateway", "oci": "oci.site_vpn" },
+  "aws.s3": { "gcp": "gcp.cloud_storage", "azure": "azure.blob", "oci": "oci.object_storage" },
+  "aws.ebs": {
+    "gcp": "gcp.persistent_disk",
+    "azure": "azure.managed_disk",
+    "oci": "oci.block_volume"
+  },
+  "aws.efs": { "gcp": "gcp.filestore", "azure": "azure.files", "oci": "oci.file_storage" },
+  "aws.fsx": { "azure": "azure.netapp_files" },
+  "aws.glacier": {
+    "gcp": "gcp.cloud_storage_archive",
+    "azure": "azure.blob_archive",
+    "oci": "oci.archive_storage"
+  },
+  "aws.rds_postgres": {
+    "gcp": "gcp.cloud_sql_postgres",
+    "azure": "azure.postgres_flexible",
+    "oci": "oci.postgres"
+  },
+  "aws.rds_mysql": {
+    "gcp": "gcp.cloud_sql_mysql",
+    "azure": "azure.mysql_flexible",
+    "oci": "oci.mysql_heatwave"
+  },
+  "aws.rds_proxy": "none",
+  "aws.aurora_pg": { "gcp": "gcp.alloydb", "azure": "azure.cosmos_postgres" },
+  "aws.aurora_mysql": { "oci": "oci.mysql_heatwave" },
+  "aws.aurora_serverless": { "azure": "azure.sql_db", "oci": "oci.autonomous_atp" },
+  "aws.dynamodb": { "gcp": "gcp.firestore", "azure": "azure.cosmos_db", "oci": "oci.nosql" },
+  "aws.dax": "none",
+  "aws.elasticache_redis": {
+    "gcp": "gcp.memorystore_redis",
+    "azure": "azure.redis_cache",
+    "oci": "oci.cache_redis"
+  },
+  "aws.elasticache_memcached": { "gcp": "gcp.memorystore_memcached" },
+  "aws.memorydb": "none",
+  "aws.documentdb": { "gcp": "gcp.firestore", "azure": "azure.cosmos_db" },
+  "aws.neptune": { "azure": "azure.cosmos_gremlin" },
+  "aws.keyspaces": { "gcp": "gcp.bigtable", "azure": "azure.cosmos_db" },
+  "aws.timestream": "none",
+  "aws.redshift": { "gcp": "gcp.bigquery", "azure": "azure.synapse", "oci": "oci.autonomous_adw" },
+  "aws.athena": { "gcp": "gcp.bigquery", "azure": "azure.synapse" },
+  "aws.opensearch": {
+    "gcp": "gcp.vertex_search",
+    "azure": "azure.ai_search",
+    "oci": "oci.opensearch"
+  },
+  "aws.sqs": { "gcp": "gcp.cloud_tasks", "azure": "azure.service_bus", "oci": "oci.queue" },
+  "aws.sns": { "gcp": "gcp.pubsub", "azure": "azure.event_grid", "oci": "oci.notifications" },
+  "aws.eventbridge": { "gcp": "gcp.eventarc", "azure": "azure.event_grid", "oci": "oci.events" },
+  "aws.kinesis": { "gcp": "gcp.pubsub", "azure": "azure.event_hubs", "oci": "oci.streaming" },
+  "aws.msk": { "gcp": "gcp.managed_kafka", "azure": "azure.event_hubs", "oci": "oci.streaming" },
+  "aws.mq": { "azure": "azure.service_bus" },
+  "aws.stepfunctions_std": {
+    "gcp": "gcp.workflows",
+    "azure": "azure.logic_apps",
+    "oci": "oci.integration"
+  },
+  "aws.stepfunctions_express": { "gcp": "gcp.workflows", "azure": "azure.durable_functions" },
+  "aws.ses": { "azure": "azure.communication_email" },
+  "aws.cognito": {
+    "gcp": "gcp.identity_platform",
+    "azure": "azure.entra_b2c",
+    "oci": "oci.identity_domains"
+  },
+  "aws.sts": { "azure": "azure.entra_id", "oci": "oci.instance_principal" },
+  "aws.secrets_manager": {
+    "gcp": "gcp.secret_manager",
+    "azure": "azure.key_vault",
+    "oci": "oci.vault_secrets"
+  },
+  "aws.ssm_parameter": {
+    "gcp": "gcp.secret_manager",
+    "azure": "azure.key_vault",
+    "oci": "oci.vault_secrets"
+  },
+  "aws.kms": { "gcp": "gcp.kms", "azure": "azure.key_vault_keys", "oci": "oci.vault_keys" },
+  "aws.bedrock": { "gcp": "gcp.vertex_gemini", "azure": "azure.openai", "oci": "oci.genai" },
+  "aws.bedrock_kb": { "gcp": "gcp.vertex_search", "azure": "azure.ai_search" },
+  "aws.sagemaker_endpoint": {
+    "gcp": "gcp.vertex_endpoint",
+    "azure": "azure.ml_endpoint",
+    "oci": "oci.datascience_deployment"
+  },
+  "aws.rekognition": { "gcp": "gcp.vision", "azure": "azure.ai_vision", "oci": "oci.vision" },
+  "aws.textract": {
+    "gcp": "gcp.document_ai",
+    "azure": "azure.doc_intelligence",
+    "oci": "oci.document_understanding"
+  },
+  "aws.comprehend": {
+    "gcp": "gcp.natural_language",
+    "azure": "azure.ai_language",
+    "oci": "oci.language"
+  },
+  "aws.transcribe": {
+    "gcp": "gcp.speech_to_text",
+    "azure": "azure.ai_speech",
+    "oci": "oci.speech"
+  },
+  "aws.polly": { "gcp": "gcp.text_to_speech", "azure": "azure.ai_speech" },
+  "aws.translate": { "gcp": "gcp.translation", "azure": "azure.ai_translator" },
+  "aws.lex": {
+    "gcp": "gcp.dialogflow",
+    "azure": "azure.bot_service",
+    "oci": "oci.digital_assistant"
+  },
+  "aws.kendra": { "gcp": "gcp.vertex_search", "azure": "azure.ai_search" },
+  "aws.personalize": "none",
+  "aws.cloudwatch_logs": {
+    "gcp": "gcp.cloud_logging",
+    "azure": "azure.monitor_logs",
+    "oci": "oci.logging"
+  },
+  "aws.xray": { "azure": "azure.app_insights", "oci": "oci.monitoring" },
+
+  "gcp.compute_engine": { "aws": "aws.ec2", "azure": "azure.vm", "oci": "oci.compute" },
+  "gcp.cloud_run": {
+    "aws": "aws.fargate",
+    "azure": "azure.container_apps",
+    "oci": "oci.container_instances"
+  },
+  "gcp.cloud_functions": {
+    "aws": "aws.lambda",
+    "azure": "azure.functions",
+    "oci": "oci.functions"
+  },
+  "gcp.gke": { "aws": "aws.eks", "azure": "azure.aks", "oci": "oci.oke" },
+  "gcp.app_engine": { "aws": "aws.beanstalk", "azure": "azure.app_service" },
+  "gcp.batch": { "aws": "aws.batch", "azure": "azure.batch", "oci": "oci.batch" },
+  "gcp.cloud_dns": { "aws": "aws.route53", "azure": "azure.dns", "oci": "oci.dns" },
+  "gcp.cloud_cdn": { "aws": "aws.cloudfront", "azure": "azure.front_door" },
+  "gcp.lb_https": { "aws": "aws.alb", "azure": "azure.app_gateway", "oci": "oci.load_balancer" },
+  "gcp.lb_network": { "aws": "aws.nlb", "azure": "azure.load_balancer", "oci": "oci.network_lb" },
+  "gcp.lb_internal": { "aws": "aws.gwlb", "azure": "azure.load_balancer", "oci": "oci.network_lb" },
+  "gcp.api_gateway": { "aws": "aws.apigw_http", "azure": "azure.apim", "oci": "oci.api_gateway" },
+  "gcp.apigee": { "aws": "aws.apigw_rest", "azure": "azure.apim", "oci": "oci.api_gateway" },
+  "gcp.cloud_armor": { "aws": "aws.waf", "azure": "azure.waf", "oci": "oci.waf" },
+  "gcp.cloud_nat": { "aws": "aws.nat_gw", "azure": "azure.nat_gateway", "oci": "oci.nat_gw" },
+  "gcp.vpc_peering": {
+    "aws": "aws.vpc_peering",
+    "azure": "azure.vnet_peering",
+    "oci": "oci.vcn_peering"
+  },
+  "gcp.psc": { "aws": "aws.privatelink", "azure": "azure.private_link", "oci": "oci.service_gw" },
+  "gcp.vpn": { "aws": "aws.vpn", "azure": "azure.vpn_gateway", "oci": "oci.site_vpn" },
+  "gcp.interconnect": {
+    "aws": "aws.direct_connect",
+    "azure": "azure.expressroute",
+    "oci": "oci.fastconnect"
+  },
+  "gcp.cloud_storage": { "aws": "aws.s3", "azure": "azure.blob", "oci": "oci.object_storage" },
+  "gcp.cloud_storage_archive": {
+    "aws": "aws.glacier",
+    "azure": "azure.blob_archive",
+    "oci": "oci.archive_storage"
+  },
+  "gcp.persistent_disk": {
+    "aws": "aws.ebs",
+    "azure": "azure.managed_disk",
+    "oci": "oci.block_volume"
+  },
+  "gcp.filestore": { "aws": "aws.efs", "azure": "azure.files", "oci": "oci.file_storage" },
+  "gcp.cloud_sql_postgres": {
+    "aws": "aws.rds_postgres",
+    "azure": "azure.postgres_flexible",
+    "oci": "oci.postgres"
+  },
+  "gcp.cloud_sql_mysql": {
+    "aws": "aws.rds_mysql",
+    "azure": "azure.mysql_flexible",
+    "oci": "oci.mysql_heatwave"
+  },
+  "gcp.alloydb": { "aws": "aws.aurora_pg", "azure": "azure.cosmos_postgres" },
+  "gcp.spanner": { "azure": "azure.cosmos_postgres" },
+  "gcp.firestore": { "aws": "aws.dynamodb", "azure": "azure.cosmos_db", "oci": "oci.nosql" },
+  "gcp.bigtable": { "aws": "aws.dynamodb", "azure": "azure.cosmos_db", "oci": "oci.nosql" },
+  "gcp.memorystore_redis": {
+    "aws": "aws.elasticache_redis",
+    "azure": "azure.redis_cache",
+    "oci": "oci.cache_redis"
+  },
+  "gcp.memorystore_memcached": { "aws": "aws.elasticache_memcached" },
+  "gcp.bigquery": { "aws": "aws.redshift", "azure": "azure.synapse", "oci": "oci.autonomous_adw" },
+  "gcp.pubsub": { "aws": "aws.sns", "azure": "azure.event_grid", "oci": "oci.notifications" },
+  "gcp.cloud_tasks": { "aws": "aws.sqs", "azure": "azure.service_bus", "oci": "oci.queue" },
+  "gcp.eventarc": { "aws": "aws.eventbridge", "azure": "azure.event_grid", "oci": "oci.events" },
+  "gcp.workflows": {
+    "aws": "aws.stepfunctions_std",
+    "azure": "azure.logic_apps",
+    "oci": "oci.integration"
+  },
+  "gcp.managed_kafka": { "aws": "aws.msk", "azure": "azure.event_hubs", "oci": "oci.streaming" },
+  "gcp.secret_manager": {
+    "aws": "aws.secrets_manager",
+    "azure": "azure.key_vault",
+    "oci": "oci.vault_secrets"
+  },
+  "gcp.kms": { "aws": "aws.kms", "azure": "azure.key_vault_keys", "oci": "oci.vault_keys" },
+  "gcp.identity_platform": {
+    "aws": "aws.cognito",
+    "azure": "azure.entra_b2c",
+    "oci": "oci.identity_domains"
+  },
+  "gcp.firebase_auth": {
+    "aws": "aws.cognito",
+    "azure": "azure.entra_b2c",
+    "oci": "oci.identity_domains"
+  },
+  "gcp.vertex_gemini": { "aws": "aws.bedrock", "azure": "azure.openai", "oci": "oci.genai" },
+  "gcp.vertex_endpoint": {
+    "aws": "aws.sagemaker_endpoint",
+    "azure": "azure.ml_endpoint",
+    "oci": "oci.datascience_deployment"
+  },
+  "gcp.vertex_search": {
+    "aws": "aws.opensearch",
+    "azure": "azure.ai_search",
+    "oci": "oci.opensearch"
+  },
+  "gcp.vision": { "aws": "aws.rekognition", "azure": "azure.ai_vision", "oci": "oci.vision" },
+  "gcp.speech_to_text": {
+    "aws": "aws.transcribe",
+    "azure": "azure.ai_speech",
+    "oci": "oci.speech"
+  },
+  "gcp.text_to_speech": { "aws": "aws.polly", "azure": "azure.ai_speech" },
+  "gcp.translation": { "aws": "aws.translate", "azure": "azure.ai_translator" },
+  "gcp.natural_language": {
+    "aws": "aws.comprehend",
+    "azure": "azure.ai_language",
+    "oci": "oci.language"
+  },
+  "gcp.document_ai": {
+    "aws": "aws.textract",
+    "azure": "azure.doc_intelligence",
+    "oci": "oci.document_understanding"
+  },
+  "gcp.dialogflow": {
+    "aws": "aws.lex",
+    "azure": "azure.bot_service",
+    "oci": "oci.digital_assistant"
+  },
+  "gcp.video_intelligence": { "aws": "aws.rekognition" },
+  "gcp.cloud_logging": {
+    "aws": "aws.cloudwatch_logs",
+    "azure": "azure.monitor_logs",
+    "oci": "oci.logging"
+  },
+
+  "azure.vm": { "aws": "aws.ec2", "gcp": "gcp.compute_engine", "oci": "oci.compute" },
+  "azure.app_service": { "aws": "aws.beanstalk", "gcp": "gcp.app_engine" },
+  "azure.functions": { "aws": "aws.lambda", "gcp": "gcp.cloud_functions", "oci": "oci.functions" },
+  "azure.functions_flex": {
+    "aws": "aws.lambda",
+    "gcp": "gcp.cloud_functions",
+    "oci": "oci.functions"
+  },
+  "azure.container_apps": {
+    "aws": "aws.fargate",
+    "gcp": "gcp.cloud_run",
+    "oci": "oci.container_instances"
+  },
+  "azure.container_instances": {
+    "aws": "aws.fargate",
+    "gcp": "gcp.cloud_run",
+    "oci": "oci.container_instances"
+  },
+  "azure.aks": { "aws": "aws.eks", "gcp": "gcp.gke", "oci": "oci.oke" },
+  "azure.batch": { "aws": "aws.batch", "gcp": "gcp.batch", "oci": "oci.batch" },
+  "azure.dns": { "aws": "aws.route53", "gcp": "gcp.cloud_dns", "oci": "oci.dns" },
+  "azure.traffic_manager": { "aws": "aws.route53", "gcp": "gcp.cloud_dns", "oci": "oci.dns" },
+  "azure.front_door": { "aws": "aws.cloudfront", "gcp": "gcp.cloud_cdn" },
+  "azure.cdn": { "aws": "aws.cloudfront", "gcp": "gcp.cloud_cdn" },
+  "azure.app_gateway": { "aws": "aws.alb", "gcp": "gcp.lb_https", "oci": "oci.load_balancer" },
+  "azure.load_balancer": { "aws": "aws.nlb", "gcp": "gcp.lb_network", "oci": "oci.network_lb" },
+  "azure.apim": { "aws": "aws.apigw_http", "gcp": "gcp.api_gateway", "oci": "oci.api_gateway" },
+  "azure.waf": { "aws": "aws.waf", "gcp": "gcp.cloud_armor", "oci": "oci.waf" },
+  "azure.firewall": { "oci": "oci.network_firewall" },
+  "azure.nat_gateway": { "aws": "aws.nat_gw", "gcp": "gcp.cloud_nat", "oci": "oci.nat_gw" },
+  "azure.vnet_peering": {
+    "aws": "aws.vpc_peering",
+    "gcp": "gcp.vpc_peering",
+    "oci": "oci.vcn_peering"
+  },
+  "azure.private_link": { "aws": "aws.privatelink", "gcp": "gcp.psc", "oci": "oci.service_gw" },
+  "azure.vpn_gateway": { "aws": "aws.vpn", "gcp": "gcp.vpn", "oci": "oci.site_vpn" },
+  "azure.expressroute": {
+    "aws": "aws.direct_connect",
+    "gcp": "gcp.interconnect",
+    "oci": "oci.fastconnect"
+  },
+  "azure.blob": { "aws": "aws.s3", "gcp": "gcp.cloud_storage", "oci": "oci.object_storage" },
+  "azure.blob_archive": {
+    "aws": "aws.glacier",
+    "gcp": "gcp.cloud_storage_archive",
+    "oci": "oci.archive_storage"
+  },
+  "azure.managed_disk": {
+    "aws": "aws.ebs",
+    "gcp": "gcp.persistent_disk",
+    "oci": "oci.block_volume"
+  },
+  "azure.files": { "aws": "aws.efs", "gcp": "gcp.filestore", "oci": "oci.file_storage" },
+  "azure.netapp_files": { "aws": "aws.fsx" },
+  "azure.sql_db": { "aws": "aws.aurora_serverless", "oci": "oci.autonomous_atp" },
+  "azure.sql_managed_instance": { "aws": "aws.rds_postgres", "oci": "oci.base_db" },
+  "azure.postgres_flexible": {
+    "aws": "aws.rds_postgres",
+    "gcp": "gcp.cloud_sql_postgres",
+    "oci": "oci.postgres"
+  },
+  "azure.mysql_flexible": {
+    "aws": "aws.rds_mysql",
+    "gcp": "gcp.cloud_sql_mysql",
+    "oci": "oci.mysql_heatwave"
+  },
+  "azure.cosmos_db": { "aws": "aws.dynamodb", "gcp": "gcp.firestore", "oci": "oci.nosql" },
+  "azure.cosmos_postgres": { "aws": "aws.aurora_pg", "gcp": "gcp.alloydb" },
+  "azure.table_storage": { "aws": "aws.dynamodb", "gcp": "gcp.bigtable", "oci": "oci.nosql" },
+  "azure.redis_cache": {
+    "aws": "aws.elasticache_redis",
+    "gcp": "gcp.memorystore_redis",
+    "oci": "oci.cache_redis"
+  },
+  "azure.synapse": { "aws": "aws.redshift", "gcp": "gcp.bigquery", "oci": "oci.autonomous_adw" },
+  "azure.data_explorer": "none",
+  "azure.cosmos_gremlin": { "aws": "aws.neptune" },
+  "azure.service_bus": { "aws": "aws.sqs", "gcp": "gcp.cloud_tasks", "oci": "oci.queue" },
+  "azure.storage_queue": { "aws": "aws.sqs", "gcp": "gcp.cloud_tasks", "oci": "oci.queue" },
+  "azure.event_hubs": { "aws": "aws.kinesis", "gcp": "gcp.pubsub", "oci": "oci.streaming" },
+  "azure.event_grid": { "aws": "aws.sns", "gcp": "gcp.pubsub", "oci": "oci.notifications" },
+  "azure.logic_apps": {
+    "aws": "aws.stepfunctions_std",
+    "gcp": "gcp.workflows",
+    "oci": "oci.integration"
+  },
+  "azure.durable_functions": { "aws": "aws.stepfunctions_express", "gcp": "gcp.workflows" },
+  "azure.signalr": "none",
+  "azure.communication_email": { "aws": "aws.ses" },
+  "azure.key_vault": {
+    "aws": "aws.secrets_manager",
+    "gcp": "gcp.secret_manager",
+    "oci": "oci.vault_secrets"
+  },
+  "azure.key_vault_keys": { "aws": "aws.kms", "gcp": "gcp.kms", "oci": "oci.vault_keys" },
+  "azure.entra_b2c": {
+    "aws": "aws.cognito",
+    "gcp": "gcp.identity_platform",
+    "oci": "oci.identity_domains"
+  },
+  "azure.entra_id": { "aws": "aws.sts", "oci": "oci.identity_domains" },
+  "azure.managed_identity": { "aws": "aws.sts", "oci": "oci.instance_principal" },
+  "azure.openai": { "aws": "aws.bedrock", "gcp": "gcp.vertex_gemini", "oci": "oci.genai" },
+  "azure.ai_search": {
+    "aws": "aws.opensearch",
+    "gcp": "gcp.vertex_search",
+    "oci": "oci.opensearch"
+  },
+  "azure.ml_endpoint": {
+    "aws": "aws.sagemaker_endpoint",
+    "gcp": "gcp.vertex_endpoint",
+    "oci": "oci.datascience_deployment"
+  },
+  "azure.ai_vision": { "aws": "aws.rekognition", "gcp": "gcp.vision", "oci": "oci.vision" },
+  "azure.ai_speech": { "aws": "aws.transcribe", "gcp": "gcp.speech_to_text", "oci": "oci.speech" },
+  "azure.ai_translator": { "aws": "aws.translate", "gcp": "gcp.translation" },
+  "azure.ai_language": {
+    "aws": "aws.comprehend",
+    "gcp": "gcp.natural_language",
+    "oci": "oci.language"
+  },
+  "azure.doc_intelligence": {
+    "aws": "aws.textract",
+    "gcp": "gcp.document_ai",
+    "oci": "oci.document_understanding"
+  },
+  "azure.bot_service": {
+    "aws": "aws.lex",
+    "gcp": "gcp.dialogflow",
+    "oci": "oci.digital_assistant"
+  },
+  "azure.content_safety": { "aws": "aws.comprehend", "gcp": "gcp.natural_language" },
+  "azure.monitor_logs": {
+    "aws": "aws.cloudwatch_logs",
+    "gcp": "gcp.cloud_logging",
+    "oci": "oci.logging"
+  },
+  "azure.app_insights": { "aws": "aws.xray", "oci": "oci.monitoring" },
+
+  "oci.compute": { "aws": "aws.ec2", "gcp": "gcp.compute_engine", "azure": "azure.vm" },
+  "oci.functions": {
+    "aws": "aws.lambda",
+    "gcp": "gcp.cloud_functions",
+    "azure": "azure.functions"
+  },
+  "oci.container_instances": {
+    "aws": "aws.fargate",
+    "gcp": "gcp.cloud_run",
+    "azure": "azure.container_apps"
+  },
+  "oci.oke": { "aws": "aws.eks", "gcp": "gcp.gke", "azure": "azure.aks" },
+  "oci.batch": { "aws": "aws.batch", "gcp": "gcp.batch", "azure": "azure.batch" },
+  "oci.dns": { "aws": "aws.route53", "gcp": "gcp.cloud_dns", "azure": "azure.dns" },
+  "oci.load_balancer": { "aws": "aws.alb", "gcp": "gcp.lb_https", "azure": "azure.app_gateway" },
+  "oci.network_lb": { "aws": "aws.nlb", "gcp": "gcp.lb_network", "azure": "azure.load_balancer" },
+  "oci.api_gateway": { "aws": "aws.apigw_http", "gcp": "gcp.api_gateway", "azure": "azure.apim" },
+  "oci.waf": { "aws": "aws.waf", "gcp": "gcp.cloud_armor", "azure": "azure.waf" },
+  "oci.network_firewall": { "azure": "azure.firewall" },
+  "oci.internet_gw": { "aws": "aws.igw" },
+  "oci.nat_gw": { "aws": "aws.nat_gw", "gcp": "gcp.cloud_nat", "azure": "azure.nat_gateway" },
+  "oci.service_gw": { "aws": "aws.privatelink", "gcp": "gcp.psc", "azure": "azure.private_link" },
+  "oci.drg": { "aws": "aws.tgw" },
+  "oci.vcn_peering": {
+    "aws": "aws.vpc_peering",
+    "gcp": "gcp.vpc_peering",
+    "azure": "azure.vnet_peering"
+  },
+  "oci.fastconnect": {
+    "aws": "aws.direct_connect",
+    "gcp": "gcp.interconnect",
+    "azure": "azure.expressroute"
+  },
+  "oci.site_vpn": { "aws": "aws.vpn", "gcp": "gcp.vpn", "azure": "azure.vpn_gateway" },
+  "oci.object_storage": { "aws": "aws.s3", "gcp": "gcp.cloud_storage", "azure": "azure.blob" },
+  "oci.archive_storage": {
+    "aws": "aws.glacier",
+    "gcp": "gcp.cloud_storage_archive",
+    "azure": "azure.blob_archive"
+  },
+  "oci.block_volume": {
+    "aws": "aws.ebs",
+    "gcp": "gcp.persistent_disk",
+    "azure": "azure.managed_disk"
+  },
+  "oci.file_storage": { "aws": "aws.efs", "gcp": "gcp.filestore", "azure": "azure.files" },
+  "oci.autonomous_atp": { "aws": "aws.aurora_serverless", "azure": "azure.sql_db" },
+  "oci.autonomous_adw": { "aws": "aws.redshift", "gcp": "gcp.bigquery", "azure": "azure.synapse" },
+  "oci.base_db": { "aws": "aws.rds_postgres", "azure": "azure.sql_managed_instance" },
+  "oci.mysql_heatwave": {
+    "aws": "aws.rds_mysql",
+    "gcp": "gcp.cloud_sql_mysql",
+    "azure": "azure.mysql_flexible"
+  },
+  "oci.postgres": {
+    "aws": "aws.rds_postgres",
+    "gcp": "gcp.cloud_sql_postgres",
+    "azure": "azure.postgres_flexible"
+  },
+  "oci.nosql": { "aws": "aws.dynamodb", "gcp": "gcp.firestore", "azure": "azure.cosmos_db" },
+  "oci.cache_redis": {
+    "aws": "aws.elasticache_redis",
+    "gcp": "gcp.memorystore_redis",
+    "azure": "azure.redis_cache"
+  },
+  "oci.opensearch": {
+    "aws": "aws.opensearch",
+    "gcp": "gcp.vertex_search",
+    "azure": "azure.ai_search"
+  },
+  "oci.queue": { "aws": "aws.sqs", "gcp": "gcp.cloud_tasks", "azure": "azure.service_bus" },
+  "oci.notifications": { "aws": "aws.sns", "gcp": "gcp.pubsub", "azure": "azure.event_grid" },
+  "oci.streaming": { "aws": "aws.kinesis", "gcp": "gcp.pubsub", "azure": "azure.event_hubs" },
+  "oci.events": { "aws": "aws.eventbridge", "gcp": "gcp.eventarc", "azure": "azure.event_grid" },
+  "oci.connector_hub": "none",
+  "oci.integration": {
+    "aws": "aws.stepfunctions_std",
+    "gcp": "gcp.workflows",
+    "azure": "azure.logic_apps"
+  },
+  "oci.vault_secrets": {
+    "aws": "aws.secrets_manager",
+    "gcp": "gcp.secret_manager",
+    "azure": "azure.key_vault"
+  },
+  "oci.vault_keys": { "aws": "aws.kms", "gcp": "gcp.kms", "azure": "azure.key_vault_keys" },
+  "oci.identity_domains": {
+    "aws": "aws.cognito",
+    "gcp": "gcp.identity_platform",
+    "azure": "azure.entra_b2c"
+  },
+  "oci.instance_principal": { "aws": "aws.sts", "azure": "azure.managed_identity" },
+  "oci.genai": { "aws": "aws.bedrock", "gcp": "gcp.vertex_gemini", "azure": "azure.openai" },
+  "oci.genai_embed": { "aws": "aws.bedrock", "gcp": "gcp.vertex_gemini", "azure": "azure.openai" },
+  "oci.datascience_deployment": {
+    "aws": "aws.sagemaker_endpoint",
+    "gcp": "gcp.vertex_endpoint",
+    "azure": "azure.ml_endpoint"
+  },
+  "oci.language": {
+    "aws": "aws.comprehend",
+    "gcp": "gcp.natural_language",
+    "azure": "azure.ai_language"
+  },
+  "oci.vision": { "aws": "aws.rekognition", "gcp": "gcp.vision", "azure": "azure.ai_vision" },
+  "oci.speech": {
+    "aws": "aws.transcribe",
+    "gcp": "gcp.speech_to_text",
+    "azure": "azure.ai_speech"
+  },
+  "oci.document_understanding": {
+    "aws": "aws.textract",
+    "gcp": "gcp.document_ai",
+    "azure": "azure.doc_intelligence"
+  },
+  "oci.digital_assistant": {
+    "aws": "aws.lex",
+    "gcp": "gcp.dialogflow",
+    "azure": "azure.bot_service"
+  },
+  "oci.logging": {
+    "aws": "aws.cloudwatch_logs",
+    "gcp": "gcp.cloud_logging",
+    "azure": "azure.monitor_logs"
+  },
+  "oci.monitoring": { "aws": "aws.xray", "azure": "azure.app_insights" }
+}

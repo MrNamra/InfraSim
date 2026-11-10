@@ -1,0 +1,46 @@
+{
+  "kind": "speech",
+  "description": "Speech-to-text transcription and text-to-speech synthesis API.",
+  "icon": "speech",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["ai", "speech", "audio", "transcribe", "tts"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "LimitExceeded",
+        "message": "Speech API rate limit exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Transcribe",
+      "summary": "Convert spoken audio into text transcript",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"transcript\":\"{{tokens(24)}}\",\"confidence\":0.95}",
+        "sizeBytes": 512
+      },
+      "errors": [],
+      "idempotent": true
+    },
+    {
+      "name": "Synthesize",
+      "summary": "Synthesize spoken audio bytes from text",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "audio/mpeg" },
+        "bodyTemplate": "{{binary(sizeBytes)}}",
+        "sizeBytes": 16384
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

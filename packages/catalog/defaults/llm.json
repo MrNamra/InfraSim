@@ -1,0 +1,78 @@
+{
+  "kind": "llm",
+  "description": "Hosted foundation model inference endpoint with token throughput limits and streaming.",
+  "icon": "llm",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["ai", "llm", "genai", "tokens", "inference", "streaming"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ThrottlingException",
+        "message": "RPM or TPM quota exceeded",
+        "defaultRate": 0
+      },
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "ModelTimeoutException",
+        "message": "Generation timed out",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "ModelErrorException",
+        "message": "Upstream model inference error",
+        "defaultRate": 0.0005
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Invoke",
+      "summary": "Generate a full model completion",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"id\":\"resp-{{faker.hex(12)}}\",\"output\":{\"message\":{\"role\":\"assistant\",\"content\":[{\"text\":\"{{tokens(64)}}\"}]}},\"usage\":{\"inputTokens\":128,\"outputTokens\":64,\"totalTokens\":192}}",
+        "sizeBytes": 1024
+      },
+      "errors": [
+        {
+          "kind": "throttled",
+          "statusCode": 429,
+          "name": "ThrottlingException",
+          "message": "TPM/RPM quota exceeded",
+          "defaultRate": 0
+        }
+      ]
+    },
+    {
+      "name": "InvokeStream",
+      "summary": "Stream generated tokens as server-sent chunks",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "text/event-stream" },
+        "bodyTemplate": "data: {\"chunk\":\"{{tokens(64)}}\",\"finishReason\":\"stop\"}\n\n",
+        "sizeBytes": 1024
+      },
+      "errors": []
+    },
+    {
+      "name": "Embed",
+      "summary": "Compute dense embedding vector for input text",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"embedding\":[0.012,-0.034,0.056,0.078],\"usage\":{\"inputTokens\":64}}",
+        "sizeBytes": 2048
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

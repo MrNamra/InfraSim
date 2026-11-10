@@ -1,0 +1,33 @@
+{
+  "kind": "topic",
+  "description": "Fan-out pub/sub messaging topic broadcasting events to subscribers.",
+  "icon": "topic",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["pubsub", "sns", "topic", "fanout", "notifications"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "ThrottledException",
+        "message": "Publish quota exceeded",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Publish",
+      "summary": "Publish a message to all topic subscribers",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"MessageId\":\"{{faker.uuid}}\"}",
+        "sizeBytes": 128
+      },
+      "errors": []
+    }
+  ]
+}

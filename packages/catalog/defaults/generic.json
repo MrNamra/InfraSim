@@ -1,0 +1,175 @@
+[
+  {
+    "id": "generic.client",
+    "provider": "generic",
+    "name": "Client / Load Generator",
+    "category": "Traffic & Entry",
+    "kind": "net",
+    "description": "Entry load generator emitting virtual user requests according to scenario traffic.",
+    "scope": "global",
+    "latency": { "distribution": "fixed", "p50": 0, "p95": 0 },
+    "capacity": { "type": "passthrough" },
+    "failure": { "errorRate": 0, "kinds": [] },
+    "operations": [
+      {
+        "name": "Emit",
+        "summary": "Generate synthetic client requests into the entry service",
+        "defaultResponse": { "statusCode": 200, "bodyTemplate": "{\"ok\":true}", "sizeBytes": 0 },
+        "errors": []
+      }
+    ],
+    "pricing": { "model": "free" },
+    "equivalents": "none",
+    "ports": [{ "protocol": "https", "port": 443 }],
+    "tags": ["client", "load", "generator", "traffic", "users", "entry"],
+    "icon": "client"
+  },
+  {
+    "id": "generic.internet",
+    "provider": "generic",
+    "name": "Internet",
+    "category": "Traffic & Entry",
+    "kind": "net",
+    "description": "Public internet transit cloud for external callers and outbound SaaS calls.",
+    "scope": "global",
+    "latency": { "distribution": "lognormal", "p50": 25, "p95": 80 },
+    "capacity": { "type": "passthrough" },
+    "failure": { "errorRate": 0, "kinds": [] },
+    "operations": [
+      {
+        "name": "Forward",
+        "summary": "Route traffic across the public internet",
+        "defaultResponse": { "statusCode": 200, "bodyTemplate": "{\"ok\":true}", "sizeBytes": 64 },
+        "errors": []
+      }
+    ],
+    "pricing": { "model": "free" },
+    "equivalents": "none",
+    "ports": [
+      { "protocol": "https", "port": 443 },
+      { "protocol": "http", "port": 80 }
+    ],
+    "tags": ["internet", "public", "wan", "edge", "external"],
+    "icon": "internet"
+  },
+  {
+    "id": "generic.users",
+    "provider": "generic",
+    "name": "Users",
+    "category": "Traffic & Entry",
+    "kind": "net",
+    "description": "End-user browsers or mobile clients initiating traffic flows.",
+    "scope": "global",
+    "latency": { "distribution": "lognormal", "p50": 20, "p95": 75 },
+    "capacity": { "type": "passthrough" },
+    "failure": { "errorRate": 0, "kinds": [] },
+    "operations": [
+      {
+        "name": "Emit",
+        "summary": "Emit end-user application requests",
+        "defaultResponse": { "statusCode": 200, "bodyTemplate": "{\"ok\":true}", "sizeBytes": 64 },
+        "errors": []
+      }
+    ],
+    "pricing": { "model": "free" },
+    "equivalents": "none",
+    "ports": [{ "protocol": "https", "port": 443 }],
+    "tags": ["users", "browser", "mobile", "clients", "entry"],
+    "icon": "users"
+  },
+  {
+    "id": "generic.lb",
+    "provider": "generic",
+    "name": "Load Balancer",
+    "category": "Networking & Delivery",
+    "kind": "lb",
+    "description": "Provider-neutral load balancer spreading traffic across backend instances.",
+    "scope": "regional",
+    "latency": { "distribution": "lognormal", "p50": 2, "p95": 8 },
+    "capacity": { "type": "elastic" },
+    "equivalents": {
+      "aws": "aws.alb",
+      "gcp": "gcp.lb_https",
+      "azure": "azure.app_gateway",
+      "oci": "oci.load_balancer"
+    },
+    "pricing": { "model": "free" },
+    "icon": "lb"
+  },
+  {
+    "id": "generic.cache",
+    "provider": "generic",
+    "name": "Cache",
+    "category": "Databases & Caches",
+    "kind": "cache",
+    "description": "Provider-neutral in-memory key cache absorbing read load on cache hits.",
+    "scope": "regional",
+    "latency": { "distribution": "lognormal", "p50": 0.5, "p95": 2 },
+    "capacity": { "type": "slots", "fromInstanceType": true },
+    "equivalents": {
+      "aws": "aws.elasticache_redis",
+      "gcp": "gcp.memorystore_redis",
+      "azure": "azure.redis_cache",
+      "oci": "oci.cache_redis"
+    },
+    "pricing": { "model": "free" },
+    "icon": "cache"
+  },
+  {
+    "id": "generic.db",
+    "provider": "generic",
+    "name": "Database",
+    "category": "Databases & Caches",
+    "kind": "sql",
+    "description": "Provider-neutral relational database with bounded connection pool.",
+    "scope": "regional",
+    "latency": { "distribution": "lognormal", "p50": 4, "p95": 18 },
+    "capacity": { "type": "conn", "default": 100 },
+    "equivalents": {
+      "aws": "aws.rds_postgres",
+      "gcp": "gcp.cloud_sql_postgres",
+      "azure": "azure.postgres_flexible",
+      "oci": "oci.postgres"
+    },
+    "pricing": { "model": "free" },
+    "icon": "sql"
+  },
+  {
+    "id": "generic.queue",
+    "provider": "generic",
+    "name": "Queue",
+    "category": "Messaging & Integration",
+    "kind": "queue",
+    "description": "Provider-neutral asynchronous message queue buffering spikes.",
+    "scope": "regional",
+    "latency": { "distribution": "lognormal", "p50": 10, "p95": 30 },
+    "capacity": { "type": "elastic" },
+    "equivalents": {
+      "aws": "aws.sqs",
+      "gcp": "gcp.cloud_tasks",
+      "azure": "azure.service_bus",
+      "oci": "oci.queue"
+    },
+    "pricing": { "model": "free" },
+    "icon": "queue"
+  },
+  {
+    "id": "generic.service",
+    "provider": "generic",
+    "name": "Service",
+    "category": "Compute",
+    "kind": "compute",
+    "description": "Provider-neutral application service hosting business logic.",
+    "scope": "zonal",
+    "latency": { "distribution": "lognormal", "p50": 20, "p95": 80 },
+    "capacity": { "type": "slots", "fromInstanceType": true },
+    "equivalents": {
+      "aws": "aws.ec2",
+      "gcp": "gcp.compute_engine",
+      "azure": "azure.vm",
+      "oci": "oci.compute"
+    },
+    "pricing": { "model": "free" },
+    "icon": "compute"
+  }
+]

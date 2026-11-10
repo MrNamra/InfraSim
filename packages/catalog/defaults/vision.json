@@ -1,0 +1,41 @@
+{
+  "kind": "vision",
+  "description": "Computer vision API for image labels, faces, and OCR analysis.",
+  "icon": "vision",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["ai", "vision", "image", "ocr", "labels"],
+  "failure": {
+    "errorRate": 0.0005,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "LimitExceeded",
+        "message": "Vision API quota throttled",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 400,
+        "name": "InvalidImage",
+        "message": "Malformed or unsupported image payload",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Analyze",
+      "summary": "Detect labels, text, or bounding boxes in an image",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"labels\":[{\"name\":\"ArchitectureDiagram\",\"confidence\":0.97}],\"requestId\":\"{{faker.uuid}}\"}",
+        "sizeBytes": 1024
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

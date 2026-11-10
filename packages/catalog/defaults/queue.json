@@ -1,0 +1,61 @@
+{
+  "kind": "queue",
+  "description": "Asynchronous message queue decoupling producers from background consumers.",
+  "icon": "queue",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["queue", "sqs", "messaging", "async", "buffer", "dlq"],
+  "failure": {
+    "errorRate": 0.0001,
+    "kinds": [
+      {
+        "kind": "throttled",
+        "statusCode": 429,
+        "name": "OverLimit",
+        "message": "Queue throughput throttled",
+        "defaultRate": 0
+      },
+      {
+        "kind": "server",
+        "statusCode": 500,
+        "name": "QueueServiceError",
+        "message": "Queue operation failed",
+        "defaultRate": 0.0001
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "Send",
+      "summary": "Enqueue a message asynchronously",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"MessageId\":\"{{faker.uuid}}\",\"MD5OfMessageBody\":\"{{faker.hex(32)}}\"}",
+        "sizeBytes": 256
+      },
+      "errors": []
+    },
+    {
+      "name": "Receive",
+      "summary": "Poll messages from queue backlog",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"Messages\":[{\"MessageId\":\"{{faker.uuid}}\",\"ReceiptHandle\":\"{{faker.hex(24)}}\",\"Body\":\"{}\"}]}",
+        "sizeBytes": 512
+      },
+      "errors": []
+    },
+    {
+      "name": "Delete",
+      "summary": "Acknowledge and delete processed message",
+      "defaultResponse": {
+        "statusCode": 200,
+        "bodyTemplate": "{\"ok\":true}",
+        "sizeBytes": 64
+      },
+      "errors": []
+    }
+  ]
+}

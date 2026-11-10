@@ -1,0 +1,45 @@
+{
+  "kind": "workflow",
+  "description": "Serverless state machine orchestrating multi-step distributed workflows.",
+  "icon": "workflow",
+  "scope": "regional",
+  "ports": [{ "protocol": "https", "port": 443 }],
+  "tags": ["workflow", "stepfunctions", "orchestration", "saga"],
+  "failure": {
+    "errorRate": 0.0002,
+    "kinds": [
+      {
+        "kind": "timeout",
+        "statusCode": 504,
+        "name": "ExecutionTimedOut",
+        "message": "Workflow state timeout",
+        "defaultRate": 0
+      }
+    ]
+  },
+  "operations": [
+    {
+      "name": "StartExecution",
+      "summary": "Start workflow execution instance",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"executionId\":\"{{faker.uuid}}\",\"startDate\":\"{{now.iso}}\"}",
+        "sizeBytes": 256
+      },
+      "errors": []
+    },
+    {
+      "name": "Describe",
+      "summary": "Inspect workflow execution status",
+      "defaultResponse": {
+        "statusCode": 200,
+        "headers": { "content-type": "application/json" },
+        "bodyTemplate": "{\"status\":\"SUCCEEDED\",\"output\":\"{}\"}",
+        "sizeBytes": 256
+      },
+      "errors": [],
+      "idempotent": true
+    }
+  ]
+}

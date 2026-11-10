@@ -25,6 +25,9 @@ jobs:
       - name: Check design JSON Schema parity
         run: pnpm schema:check
 
+      - name: Build and validate service catalog
+        run: pnpm catalog:check
+
       - name: Build packages and web app
         run: pnpm build
 
