@@ -28,3 +28,73 @@ body {
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+/* React Flow Graphite theme overrides */
+.react-flow {
+  --xy-background-color-default: var(--bg-canvas);
+  --xy-edge-stroke-default: var(--border-strong);
+  --xy-edge-stroke-selected-default: var(--accent);
+  --xy-connectionline-stroke-default: var(--accent);
+  --xy-controls-button-background-color-default: var(--bg-surface);
+  --xy-controls-button-background-color-hover-default: var(--bg-raised);
+  --xy-controls-button-color-default: var(--text-secondary);
+  --xy-controls-button-color-hover-default: var(--text-primary);
+  --xy-controls-button-border-color-default: var(--border-hairline);
+  --xy-minimap-background-color-default: var(--bg-sunken);
+  --xy-minimap-mask-background-color-default: rgba(15, 15, 16, 0.45);
+}
+
+[data-theme='light'] .react-flow {
+  --xy-minimap-mask-background-color-default: rgba(244, 244, 245, 0.6);
+}
+
+.react-flow__controls {
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.react-flow__minimap {
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Overloaded node horizontal shake (~80ms period) and reduced-motion outline fallback */
+@keyframes infrasim-node-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(calc(var(--shake-amplitude, 2px) * -1));
+  }
+  75% {
+    transform: translateX(var(--shake-amplitude, 2px));
+  }
+}
+
+@keyframes infrasim-node-pulse-outline {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px var(--status-overloaded);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.25);
+  }
+}
+
+.infrasim-shake {
+  animation: infrasim-node-shake 80ms linear infinite;
+}
+
+.infrasim-pulse-overloaded {
+  animation: infrasim-node-pulse-outline 900ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .infrasim-shake {
+    animation: infrasim-node-pulse-outline 900ms ease-in-out infinite;
+  }
+}

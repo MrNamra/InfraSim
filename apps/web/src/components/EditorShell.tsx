@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   ChevronDown,
@@ -24,11 +24,17 @@ import {
   Undo2,
   User,
 } from 'lucide-react';
-import { getService } from '@infrasim/catalog';
+import type { GroupInstance, Provider } from '@infrasim/shared-types';
 import { Button, Keycap, LogoMark } from '@infrasim/ui-kit';
 import { fetchCurrentUser, getStoredToken, setStoredToken, type AuthUser } from '../lib/api';
-import { DRAG_SERVICE_MIME } from '../lib/palette';
+import {
+  loadActiveDesignFromIndexedDb,
+  loadPresetsFromIndexedDb,
+  saveDesignToIndexedDb,
+} from '../lib/autosave';
+import { useDesignStore } from '../store/designStore';
 import { AccountModal } from './AccountModal';
+import { Canvas } from './canvas/Canvas';
 import { CommandPalette, type CommandItem } from './CommandPalette';
 import { Palette } from './Palette';
 
@@ -55,7 +61,7 @@ const DOCK_TABS: { id: DockTab; label: string; icon: typeof Activity }[] = [
   { id: 'insights', label: 'Insights', icon: HelpCircle },
 ];
 
-/** Top-level InfraSim workbench shell (Phase 0 empty panels + theme + command palette). */
+/** Top-level InfraSim workbench shell wired to catalog palette, React Flow canvas, and IndexedDB autosave. */
 export function EditorShell() {
   const [theme, setTheme] = useState<Theme>('dark');
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('config');
@@ -67,17 +73,32 @@ export function EditorShell() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
-  const [stagedServices, setStagedServices] = useState<string[]>([]);
+  const [primaryRegion, setPrimaryRegion] = useState('us-east-1');
+  const [editingTitle, setEditingTitle] = useState(false);
 
-  const handleStageService = (serviceId: string) => {
-    const def = getService(serviceId);
-    if (!def) {
-      return;
-    }
-    setStagedServices((prev) => [...prev, def.name]);
-    setStatusNotice(`Queued ${def.name} for canvas`);
-  };
+  const viewportCenterGetterRef = useRef<() => { x: number; y: number }>(() => ({
+    x: 240,
+    y: 180,
+  }));
+  const autosaveHydratedRef = useRef(false);
 
+  const design = useDesignStore((s) => s.design);
+  const canUndo = useDesignStore((s) => s.past.length > 0);
+  const canRedo = useDesignStore((s) => s.future.length > 0);
+  const selectedNodeId = useDesignStore((s) => s.selectedNodeId);
+  const selectedGroupId = useDesignStore((s) => s.selectedGroupId);
+  const reduceMotionOverride = useDesignStore((s) => s.reduceMotionOverride);
+
+  const loadDesign = useDesignStore((s) => s.loadDesign);
+  const setPresets = useDesignStore((s) => s.setPresets);
+  const updateDesignMeta = useDesignStore((s) => s.updateDesignMeta);
+  const addServiceNode = useDesignStore((s) => s.addServiceNode);
+  const addGroup = useDesignStore((s) => s.addGroup);
+  const updateGroup = useDesignStore((s) => s.updateGroup);
+  const undo = useDesignStore((s) => s.undo);
+  const redo = useDesignStore((s) => s.redo);
+
+  // Hydrate theme, auth session, and autosaved design + custom presets on boot
   useEffect(() => {
     const saved = window.localStorage.getItem('infrasim.theme');
     if (saved === 'light' || saved === 'dark') {
@@ -97,7 +118,34 @@ export function EditorShell() {
           setToken(null);
         });
     }
-  }, []);
+
+    Promise.all([loadActiveDesignFromIndexedDb(), loadPresetsFromIndexedDb()])
+      .then(([savedDesign, savedPresets]) => {
+        if (savedDesign && savedDesign.nodes.length + savedDesign.groups.length > 0) {
+          loadDesign(savedDesign, true);
+        }
+        if (savedPresets.length > 0) {
+          setPresets(savedPresets);
+        }
+      })
+      .catch(() => {
+        // Ignore IndexedDB unavailability in restricted contexts
+      })
+      .finally(() => {
+        autosaveHydratedRef.current = true;
+      });
+  }, [loadDesign, setPresets]);
+
+  // Debounced autosave to IndexedDB whenever Design changes
+  useEffect(() => {
+    if (!autosaveHydratedRef.current) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void saveDesignToIndexedDb(design);
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [design]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -117,6 +165,36 @@ export function EditorShell() {
 
   const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
 
+  const handleAddServiceAtCenter = useCallback(
+    (serviceId: string) => {
+      const center = viewportCenterGetterRef.current();
+      const offset = (design.nodes.length % 5) * 24;
+      addServiceNode(serviceId, { x: center.x + offset, y: center.y + offset });
+    },
+    [addServiceNode, design.nodes.length],
+  );
+
+  const handleAddGroupAtCenter = useCallback(
+    (kind: GroupInstance['kind']) => {
+      const center = viewportCenterGetterRef.current();
+      addGroup(kind, { x: center.x - 160, y: center.y - 120 });
+    },
+    [addGroup],
+  );
+
+  const handleInspectNode = useCallback((_nodeId: string, tab: 'config' | 'latency' | 'why') => {
+    setInspectorTab(tab);
+  }, []);
+
+  const selectedNode = useMemo(
+    () => (selectedNodeId ? (design.nodes.find((n) => n.id === selectedNodeId) ?? null) : null),
+    [design.nodes, selectedNodeId],
+  );
+  const selectedGroup = useMemo(
+    () => (selectedGroupId ? (design.groups.find((g) => g.id === selectedGroupId) ?? null) : null),
+    [design.groups, selectedGroupId],
+  );
+
   const commands = useMemo<CommandItem[]>(
     () => [
       {
@@ -124,6 +202,20 @@ export function EditorShell() {
         group: 'Appearance',
         label: `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`,
         onSelect: toggleTheme,
+      },
+      {
+        id: 'undo',
+        group: 'Edit',
+        label: 'Undo last canvas edit',
+        shortcut: 'Ctrl+Z',
+        onSelect: undo,
+      },
+      {
+        id: 'redo',
+        group: 'Edit',
+        label: 'Redo last canvas edit',
+        shortcut: 'Ctrl+Shift+Z',
+        onSelect: redo,
       },
       {
         id: 'toggle-dock',
@@ -153,7 +245,7 @@ export function EditorShell() {
         onSelect: () => setAccountOpen(true),
       },
     ],
-    [theme, dockCollapsed, user],
+    [theme, dockCollapsed, user, undo, redo],
   );
 
   return (
@@ -173,19 +265,43 @@ export function EditorShell() {
 
           <div className="h-4 w-px bg-[var(--border-hairline)]" />
 
-          <button
-            type="button"
-            onClick={() => setStatusNotice('Templates and saved designs arrive in Phase 1')}
-            className="flex h-8 items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-raised)]"
-          >
-            <FolderOpen className="h-4 w-4 text-[var(--text-muted)]" strokeWidth={1.5} />
-            <span className="truncate">Untitled architecture</span>
-            <ChevronDown className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
-          </button>
+          {editingTitle ? (
+            <input
+              type="text"
+              autoFocus
+              aria-label="Design name"
+              value={design.name}
+              onChange={(e) => updateDesignMeta({ name: e.target.value })}
+              onBlur={() => setEditingTitle(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Escape') {
+                  setEditingTitle(false);
+                }
+              }}
+              className="h-8 w-44 rounded-[8px] border border-[var(--accent)] bg-[var(--bg-raised)] px-2 text-[13px] font-medium text-[var(--text-primary)] focus:outline-none"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingTitle(true)}
+              title="Click to rename architecture"
+              className="flex h-8 max-w-[200px] items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-raised)]"
+            >
+              <FolderOpen className="h-4 w-4 shrink-0 text-[var(--text-muted)]" strokeWidth={1.5} />
+              <span className="truncate">{design.name}</span>
+              <ChevronDown
+                className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]"
+                strokeWidth={1.5}
+              />
+            </button>
+          )}
 
           <select
             aria-label="Primary provider"
-            defaultValue="aws"
+            value={design.settings.primaryProvider ?? 'aws'}
+            onChange={(e) =>
+              updateDesignMeta({ settings: { primaryProvider: e.target.value as Provider } })
+            }
             className="h-8 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
           >
             <option value="aws">AWS</option>
@@ -196,7 +312,8 @@ export function EditorShell() {
 
           <select
             aria-label="Primary region"
-            defaultValue="us-east-1"
+            value={primaryRegion}
+            onChange={(e) => setPrimaryRegion(e.target.value)}
             className="h-8 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 font-mono text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
           >
             <option value="us-east-1">us-east-1</option>
@@ -212,7 +329,7 @@ export function EditorShell() {
             <Button
               variant="primary"
               size="sm"
-              onClick={() => setStatusNotice('Simulation runner connects in Phase 1')}
+              onClick={() => setStatusNotice('Simulation runner activates once T1.5–T1.9 complete')}
               className="h-7 px-3 text-[12px]"
             >
               <Play className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -262,16 +379,20 @@ export function EditorShell() {
             <button
               type="button"
               aria-label="Undo"
-              disabled
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-muted)] hover:bg-[var(--bg-raised)] disabled:opacity-40"
+              disabled={!canUndo}
+              onClick={undo}
+              title="Undo (Ctrl+Z)"
+              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] disabled:opacity-40"
             >
               <Undo2 className="h-4 w-4" strokeWidth={1.5} />
             </button>
             <button
               type="button"
               aria-label="Redo"
-              disabled
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-muted)] hover:bg-[var(--bg-raised)] disabled:opacity-40"
+              disabled={!canRedo}
+              onClick={redo}
+              title="Redo (Ctrl+Shift+Z)"
+              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] disabled:opacity-40"
             >
               <Redo2 className="h-4 w-4" strokeWidth={1.5} />
             </button>
@@ -326,58 +447,29 @@ export function EditorShell() {
 
       {/* Main 3-column Workbench */}
       <div className="flex min-h-0 flex-1">
-        {/* Left Palette */}
         <Palette
-          onAddService={handleStageService}
+          customServices={design.customServices}
+          onAddService={handleAddServiceAtCenter}
+          onAddGroup={handleAddGroupAtCenter}
           onRequestCustomService={() =>
             setStatusNotice('Custom service editor arrives in Phase 2 (T2.3)')
           }
         />
 
-        {/* Center Canvas */}
-        <main
-          data-testid="canvas-panel"
-          onDragOver={(e) => {
-            if (e.dataTransfer.types.includes(DRAG_SERVICE_MIME)) {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'copy';
+        <main className="relative flex min-w-0 flex-1">
+          <Canvas
+            reducedMotion={reduceMotionOverride}
+            onInspectNode={handleInspectNode}
+            onLoadTemplateClick={() =>
+              setStatusNotice('Starter 3-tier & Cache templates activate in T1.11')
             }
-          }}
-          onDrop={(e) => {
-            const serviceId =
-              e.dataTransfer.getData(DRAG_SERVICE_MIME) || e.dataTransfer.getData('text/plain');
-            if (serviceId) {
-              e.preventDefault();
-              handleStageService(serviceId);
-            }
-          }}
-          className="canvas-dot-grid relative flex min-w-0 flex-1 flex-col items-center justify-center p-6"
-        >
-          <div className="max-w-md rounded-[14px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-6 text-center shadow-[var(--shadow-floating)]">
-            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-[10px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] text-[var(--accent)]">
-              <LogoMark className="h-5 w-5" />
-            </div>
-            <h1 className="text-[16px] font-medium text-[var(--text-primary)]">
-              Architecture canvas
-            </h1>
-            <p className="mt-1.5 text-[13px] leading-5 text-[var(--text-secondary)]">
-              {stagedServices.length > 0
-                ? `${stagedServices.length} service${stagedServices.length === 1 ? '' : 's'} queued: ${stagedServices.slice(-3).join(', ')}. Interactive React Flow nodes arrive in T1.3.`
-                : 'Drag or double-click services from the palette to add them to your design.'}
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setCommandOpen(true)}>
-                <span>Open commands</span>
-                <Keycap>Ctrl+K</Keycap>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setAccountOpen(true)}>
-                {user ? `Signed in as ${user.name}` : 'Sign in'}
-              </Button>
-            </div>
-          </div>
+            registerViewportCenterGetter={(getter) => {
+              viewportCenterGetterRef.current = getter;
+            }}
+          />
 
           {statusNotice ? (
-            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--text-secondary)] shadow-[var(--shadow-floating)]">
+            <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--text-secondary)] shadow-[var(--shadow-floating)]">
               <span>{statusNotice}</span>
               <button
                 type="button"
@@ -415,13 +507,65 @@ export function EditorShell() {
             })}
           </div>
 
-          <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-            <Sliders className="mb-2 h-4 w-4 text-[var(--text-muted)]" strokeWidth={1.5} />
-            <p className="text-[13px] font-medium text-[var(--text-secondary)]">No node selected</p>
-            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
-              Select a node or edge on the canvas to inspect {inspectorTab} properties.
-            </p>
-          </div>
+          {selectedGroup ? (
+            <div className="flex-1 space-y-3 overflow-y-auto p-4 text-[12px]">
+              <div>
+                <div className="text-[11px] font-medium text-[var(--text-muted)]">
+                  Container ({selectedGroup.kind})
+                </div>
+                <label className="mt-2 block">
+                  <span className="text-[11px] text-[var(--text-secondary)]">Label</span>
+                  <input
+                    type="text"
+                    value={selectedGroup.label}
+                    onChange={(e) => updateGroup(selectedGroup.id, { label: e.target.value })}
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+                  />
+                </label>
+                {selectedGroup.kind === 'vpc' || selectedGroup.kind === 'subnet' ? (
+                  <label className="mt-2.5 block">
+                    <span className="text-[11px] text-[var(--text-secondary)]">CIDR block</span>
+                    <input
+                      type="text"
+                      value={selectedGroup.cidr ?? ''}
+                      onChange={(e) => updateGroup(selectedGroup.id, { cidr: e.target.value })}
+                      className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 font-mono text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+                    />
+                  </label>
+                ) : null}
+                {selectedGroup.kind === 'subnet' ? (
+                  <label className="mt-3 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selectedGroup.public)}
+                      onChange={(e) => updateGroup(selectedGroup.id, { public: e.target.checked })}
+                    />
+                    <span className="text-[12px] text-[var(--text-primary)]">Public subnet</span>
+                  </label>
+                ) : null}
+              </div>
+            </div>
+          ) : selectedNode ? (
+            <div className="flex-1 p-4 text-[12px]">
+              <div className="font-medium text-[var(--text-primary)]">{selectedNode.label}</div>
+              <div className="mt-0.5 font-mono text-[11px] text-[var(--text-muted)]">
+                {selectedNode.serviceId}
+              </div>
+              <p className="mt-3 text-[var(--text-secondary)]">
+                Full Config & Latency & Mock inspector activates in T1.4.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+              <Sliders className="mb-2 h-4 w-4 text-[var(--text-muted)]" strokeWidth={1.5} />
+              <p className="text-[13px] font-medium text-[var(--text-secondary)]">
+                No node selected
+              </p>
+              <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                Select a node, group, or edge on the canvas to inspect {inspectorTab} properties.
+              </p>
+            </div>
+          )}
         </aside>
       </div>
 
