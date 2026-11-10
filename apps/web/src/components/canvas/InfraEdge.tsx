@@ -14,6 +14,7 @@ export interface InfraEdgeData extends Record<string, unknown> {
   edgeInstance: EdgeInstance;
   frame?: EdgeFrame;
   particleCount?: number;
+  reducedMotion?: boolean;
   blockedReason?: string;
 }
 
@@ -42,6 +43,7 @@ function InfraEdgeComponent({
   const edge = data?.edgeInstance;
   const frame = data?.frame;
   const blocked = Boolean(data?.blockedReason);
+  const reducedMotion = Boolean(data?.reducedMotion);
   const isAsync = edge?.callType === 'async';
 
   const strokeColor = blocked
@@ -83,7 +85,7 @@ function InfraEdgeComponent({
         }}
       />
 
-      {particleCount > 0 && !blocked ? (
+      {particleCount > 0 && !blocked && !reducedMotion ? (
         <g aria-hidden="true" className="pointer-events-none">
           {Array.from({ length: particleCount }).map((_, idx) => (
             <circle key={idx} r={2.5} fill={particleColor}>
@@ -96,6 +98,15 @@ function InfraEdgeComponent({
             </circle>
           ))}
         </g>
+      ) : particleCount > 0 && !blocked && reducedMotion ? (
+        <circle
+          cx={(sourceX + targetX) / 2}
+          cy={(sourceY + targetY) / 2}
+          r={2.5}
+          fill={particleColor}
+          aria-hidden="true"
+          className="pointer-events-none"
+        />
       ) : null}
 
       <EdgeLabelRenderer>

@@ -1596,6 +1596,10 @@ export async function runSimulation(
     retryCfg.onSettled({ ok: false, errorKind: 'timeout', bytesOut: 0 });
   };
 
+  if (signal?.aborted) {
+    throw new SimulationAbortedError();
+  }
+
   while (!heap.isEmpty() || !timeoutHeap.isEmpty()) {
     pruneSettledTimeouts();
     const topTimeout = timeoutHeap.peek();
@@ -1626,17 +1630,19 @@ export async function runSimulation(
     now = ev.t;
     processedEvents += 1;
 
-    if ((processedEvents & 8191) === 0) {
+    if ((processedEvents & 1023) === 0) {
       if (signal?.aborted) {
         throw new SimulationAbortedError();
       }
-      const wall = nowWallMs();
-      if (wall - lastYieldWall > 8) {
-        await cooperativeYield();
-        if (signal?.aborted) {
-          throw new SimulationAbortedError();
+      if ((processedEvents & 8191) === 0) {
+        const wall = nowWallMs();
+        if (wall - lastYieldWall > 8) {
+          await cooperativeYield();
+          if (signal?.aborted) {
+            throw new SimulationAbortedError();
+          }
+          lastYieldWall = nowWallMs();
         }
-        lastYieldWall = nowWallMs();
       }
     }
 

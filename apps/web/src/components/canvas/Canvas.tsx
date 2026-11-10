@@ -205,6 +205,7 @@ function CanvasInner({
           edgeInstance: edge,
           frame,
           particleCount,
+          reducedMotion,
         },
       };
     });

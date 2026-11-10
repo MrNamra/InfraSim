@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Accessibility,
   Activity,
+  AlertTriangle,
   ChevronDown,
   ChevronUp,
   Command,
@@ -19,6 +21,7 @@ import {
   RotateCcw,
   Share2,
   Sliders,
+  Square,
   Sun,
   Terminal,
   Undo2,
@@ -33,7 +36,9 @@ import {
   loadPresetsFromIndexedDb,
   saveDesignToIndexedDb,
 } from '../lib/autosave';
+import { formatVirtualTime } from '../lib/timeFormat';
 import { useDesignStore } from '../store/designStore';
+import { type SimSpeed, useSimulationStore } from '../store/simulationStore';
 import { AccountModal } from './AccountModal';
 import { Canvas } from './canvas/Canvas';
 import { CommandPalette, type CommandItem } from './CommandPalette';
@@ -71,7 +76,6 @@ export function EditorShell() {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('config');
   const [dockTab, setDockTab] = useState<DockTab>('metrics');
   const [dockCollapsed, setDockCollapsed] = useState(false);
-  const [speed, setSpeed] = useState<'1' | '5' | '20' | 'max'>('1');
   const [commandOpen, setCommandOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -80,6 +84,7 @@ export function EditorShell() {
   const [primaryRegion, setPrimaryRegion] = useState('us-east-1');
   const [editingTitle, setEditingTitle] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
+  const [systemReducedMotion, setSystemReducedMotion] = useState(false);
 
   const viewportCenterGetterRef = useRef<() => { x: number; y: number }>(() => ({
     x: 240,
@@ -105,13 +110,74 @@ export function EditorShell() {
   const setActiveScenario = useDesignStore((s) => s.setActiveScenario);
   const addServiceNode = useDesignStore((s) => s.addServiceNode);
   const addGroup = useDesignStore((s) => s.addGroup);
+  const connectEdge = useDesignStore((s) => s.connectEdge);
+  const selectNode = useDesignStore((s) => s.selectNode);
   const updateGroup = useDesignStore((s) => s.updateGroup);
   const updateNodeLabel = useDesignStore((s) => s.updateNodeLabel);
   const updateNodePlacement = useDesignStore((s) => s.updateNodePlacement);
   const updateNodeConfig = useDesignStore((s) => s.updateNodeConfig);
   const resetNodeToDefaults = useDesignStore((s) => s.resetNodeToDefaults);
+  const setReduceMotionOverride = useDesignStore((s) => s.setReduceMotionOverride);
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
+
+  const simStatus = useSimulationStore((s) => s.status);
+  const simFrames = useSimulationStore((s) => s.frames);
+  const playbackIdx = useSimulationStore((s) => s.playbackIdx);
+  const simPlaying = useSimulationStore((s) => s.playing);
+  const speed = useSimulationStore((s) => s.speed);
+  const simDurationS = useSimulationStore((s) => s.durationS);
+  const simResult = useSimulationStore((s) => s.result);
+  const simError = useSimulationStore((s) => s.errorMessage);
+  const missingClientPromptOpen = useSimulationStore((s) => s.missingClientPromptOpen);
+
+  const startSimulation = useSimulationStore((s) => s.runSimulation);
+  const cancelSimulation = useSimulationStore((s) => s.cancelRun);
+  const togglePausePlayback = useSimulationStore((s) => s.togglePausePlayback);
+  const scrubTo = useSimulationStore((s) => s.scrubTo);
+  const advancePlayback = useSimulationStore((s) => s.advancePlayback);
+  const setSpeed = useSimulationStore((s) => s.setSpeed);
+  const dismissMissingClientPrompt = useSimulationStore((s) => s.dismissMissingClientPrompt);
+  const resetSimulation = useSimulationStore((s) => s.resetSimulation);
+
+  const reducedMotion = systemReducedMotion || reduceMotionOverride;
+
+  const currentFrame = useMemo(
+    () =>
+      playbackIdx >= 0 && playbackIdx < simFrames.length ? (simFrames[playbackIdx] ?? null) : null,
+    [simFrames, playbackIdx],
+  );
+
+  // Sync OS prefers-reduced-motion media query
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setSystemReducedMotion(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setSystemReducedMotion(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // Animate buffered frames smoothly at 1x / 5x / 20x playback speeds
+  useEffect(() => {
+    if (!simPlaying) {
+      return;
+    }
+    let rafId = 0;
+    let lastTs = performance.now();
+    const tick = (nowTs: number) => {
+      const dt = Math.min(100, nowTs - lastTs);
+      lastTs = nowTs;
+      advancePlayback(dt);
+      if (useSimulationStore.getState().playing) {
+        rafId = window.requestAnimationFrame(tick);
+      }
+    };
+    rafId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [simPlaying, advancePlayback]);
 
   // Hydrate theme, auth session, and autosaved design + custom presets on boot
   useEffect(() => {
@@ -197,9 +263,73 @@ export function EditorShell() {
     [addGroup],
   );
 
-  const handleInspectNode = useCallback((_nodeId: string, tab: 'config' | 'latency' | 'why') => {
-    setInspectorTab(tab);
-  }, []);
+  const handleInspectNode = useCallback(
+    (nodeId: string, tab: 'config' | 'latency' | 'why') => {
+      selectNode(nodeId);
+      setInspectorTab(tab);
+    },
+    [selectNode],
+  );
+
+  // Map top diagnostic short reason onto each node card / tooltip
+  const nodeReasons = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    if (!simResult) {
+      return map;
+    }
+    for (const insight of simResult.insights) {
+      for (const nid of insight.nodeIds) {
+        if (!map[nid]) {
+          map[nid] = insight.title;
+        }
+      }
+    }
+    return map;
+  }, [simResult]);
+
+  // Auto-open Why? tab when clicking an overloaded or down node after a run
+  const prevSelectedNodeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedNodeId && selectedNodeId !== prevSelectedNodeRef.current) {
+      const h = currentFrame?.nodes[selectedNodeId]?.health;
+      if (h === 'overloaded' || h === 'down') {
+        setInspectorTab('why');
+      }
+    }
+    prevSelectedNodeRef.current = selectedNodeId;
+  }, [selectedNodeId, currentFrame]);
+
+  const handleRunSimulation = useCallback(async () => {
+    setScenarioOpen(false);
+    await startSimulation(useDesignStore.getState().design, activeScenarioId);
+  }, [activeScenarioId, startSimulation]);
+
+  const handleAddLoadGeneratorAndRun = useCallback(() => {
+    const state = useDesignStore.getState();
+    const curDesign = state.design;
+    const incomingSet = new Set(curDesign.edges.map((e) => e.to));
+    const targetNode =
+      curDesign.nodes.find((n) => !incomingSet.has(n.id)) ?? curDesign.nodes[0] ?? null;
+
+    const clientPos = targetNode
+      ? { x: Math.max(40, targetNode.position.x - 280), y: targetNode.position.y }
+      : viewportCenterGetterRef.current();
+
+    const clientId = addServiceNode('generic.client', clientPos);
+    if (!clientId) {
+      return;
+    }
+    if (targetNode) {
+      connectEdge(clientId, targetNode.id);
+    }
+    const targetScenarioId = state.activeScenarioId;
+    updateScenario(targetScenarioId, (s) => {
+      s.entryNodeId = clientId;
+    });
+    dismissMissingClientPrompt();
+    const updatedDesign = useDesignStore.getState().design;
+    void startSimulation(updatedDesign, targetScenarioId);
+  }, [addServiceNode, connectEdge, dismissMissingClientPrompt, startSimulation, updateScenario]);
 
   const selectedNode = useMemo(
     () => (selectedNodeId ? (design.nodes.find((n) => n.id === selectedNodeId) ?? null) : null),
@@ -221,6 +351,30 @@ export function EditorShell() {
 
   const commands = useMemo<CommandItem[]>(
     () => [
+      {
+        id: 'run-sim',
+        group: 'Simulation',
+        label: simStatus === 'running' ? 'Stop simulation' : 'Run simulation',
+        onSelect: () => {
+          if (simStatus === 'running') {
+            cancelSimulation();
+          } else {
+            void handleRunSimulation();
+          }
+        },
+      },
+      {
+        id: 'reset-sim',
+        group: 'Simulation',
+        label: 'Reset simulation results',
+        onSelect: () => resetSimulation(false),
+      },
+      {
+        id: 'toggle-reduce-motion',
+        group: 'Accessibility',
+        label: reduceMotionOverride ? 'Disable reduce motion override' : 'Enable reduce motion',
+        onSelect: () => setReduceMotionOverride(!reduceMotionOverride),
+      },
       {
         id: 'toggle-theme',
         group: 'Appearance',
@@ -257,10 +411,25 @@ export function EditorShell() {
         },
       },
       {
+        id: 'tab-insights',
+        group: 'Dock',
+        label: 'Open Insights panel',
+        onSelect: () => {
+          setDockCollapsed(false);
+          setDockTab('insights');
+        },
+      },
+      {
         id: 'tab-latency',
         group: 'Inspector',
         label: 'Open Latency & Mock tab',
         onSelect: () => setInspectorTab('latency'),
+      },
+      {
+        id: 'tab-why',
+        group: 'Inspector',
+        label: 'Open Why? diagnostics tab',
+        onSelect: () => setInspectorTab('why'),
       },
       {
         id: 'open-account',
@@ -269,7 +438,19 @@ export function EditorShell() {
         onSelect: () => setAccountOpen(true),
       },
     ],
-    [theme, dockCollapsed, user, undo, redo],
+    [
+      simStatus,
+      cancelSimulation,
+      handleRunSimulation,
+      resetSimulation,
+      reduceMotionOverride,
+      setReduceMotionOverride,
+      theme,
+      dockCollapsed,
+      user,
+      undo,
+      redo,
+    ],
   );
 
   return (
@@ -403,28 +584,52 @@ export function EditorShell() {
         {/* Center run controls */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-[10px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-1">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setStatusNotice('Simulation runner activates once T1.5–T1.9 complete')}
-              className="h-7 px-3 text-[12px]"
-            >
-              <Play className="h-3.5 w-3.5" strokeWidth={1.5} />
-              Run
-            </Button>
+            {simStatus === 'running' ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="stop-sim-button"
+                onClick={cancelSimulation}
+                className="h-7 px-3 text-[12px] text-[var(--status-overloaded)]"
+              >
+                <Square className="h-3.5 w-3.5" strokeWidth={1.5} />
+                <span>Stop</span>
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                data-testid="run-sim-button"
+                onClick={() => void handleRunSimulation()}
+                className="h-7 px-3 text-[12px]"
+              >
+                <Play className="h-3.5 w-3.5" strokeWidth={1.5} />
+                <span>Run</span>
+              </Button>
+            )}
+
             <button
               type="button"
-              aria-label="Pause simulation"
-              disabled
-              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-muted)] disabled:opacity-40"
+              data-testid="pause-sim-button"
+              aria-label={simPlaying ? 'Pause playback' : 'Play buffered frames'}
+              disabled={simStatus === 'running' || simFrames.length === 0}
+              onClick={togglePausePlayback}
+              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] disabled:opacity-40"
             >
-              <Pause className="h-3.5 w-3.5" strokeWidth={1.5} />
+              {simPlaying ? (
+                <Pause className="h-3.5 w-3.5" strokeWidth={1.5} />
+              ) : (
+                <Play className="h-3.5 w-3.5" strokeWidth={1.5} />
+              )}
             </button>
+
             <button
               type="button"
+              data-testid="reset-sim-button"
               aria-label="Reset simulation"
-              disabled
-              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-muted)] disabled:opacity-40"
+              disabled={simFrames.length === 0 && !simResult && simStatus === 'idle'}
+              onClick={() => resetSimulation(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] disabled:opacity-40"
             >
               <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
@@ -432,8 +637,9 @@ export function EditorShell() {
 
           <select
             aria-label="Playback speed"
+            data-testid="sim-speed-select"
             value={speed}
-            onChange={(e) => setSpeed(e.target.value as typeof speed)}
+            onChange={(e) => setSpeed(e.target.value as SimSpeed)}
             className="h-8 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
           >
             <option value="1">1× speed</option>
@@ -441,6 +647,15 @@ export function EditorShell() {
             <option value="20">20× speed</option>
             <option value="max">Max</option>
           </select>
+
+          {simResult?.scaled ? (
+            <span
+              title={`Scaled DES mode: 1 simulated event represents ${simResult.scaled.factor} requests`}
+              className="rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] tabular-nums text-[var(--status-warm)]"
+            >
+              Scaled ×{simResult.scaled.factor}
+            </span>
+          ) : null}
 
           <div
             title="Monthly estimate activates after price snapshot sync in Phase 2"
@@ -498,6 +713,22 @@ export function EditorShell() {
 
           <button
             type="button"
+            data-testid="reduce-motion-toggle"
+            aria-pressed={reducedMotion}
+            aria-label={reducedMotion ? 'Reduce motion enabled' : 'Reduce motion'}
+            title={`Reduce motion (${reduceMotionOverride ? 'manual on' : systemReducedMotion ? 'OS setting' : 'off'})`}
+            onClick={() => setReduceMotionOverride(!reduceMotionOverride)}
+            className={`flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors ${
+              reducedMotion
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Accessibility className="h-4 w-4" strokeWidth={1.5} />
+          </button>
+
+          <button
+            type="button"
             data-testid="theme-toggle"
             aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
             onClick={toggleTheme}
@@ -535,7 +766,9 @@ export function EditorShell() {
 
         <main className="relative flex min-w-0 flex-1">
           <Canvas
-            reducedMotion={reduceMotionOverride}
+            currentFrame={currentFrame}
+            nodeReasons={nodeReasons}
+            reducedMotion={reducedMotion}
             onInspectNode={handleInspectNode}
             onLoadTemplateClick={() =>
               setStatusNotice('Starter 3-tier & Cache templates activate in T1.11')
@@ -544,6 +777,67 @@ export function EditorShell() {
               viewportCenterGetterRef.current = getter;
             }}
           />
+
+          {missingClientPromptOpen ? (
+            <div
+              data-testid="missing-client-prompt"
+              role="status"
+              className="absolute left-1/2 top-4 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3.5 py-2.5 text-[12px] shadow-[var(--shadow-floating)]"
+            >
+              <AlertTriangle
+                className="h-4 w-4 shrink-0 text-[var(--status-warm)]"
+                strokeWidth={1.5}
+              />
+              <span className="text-[var(--text-primary)]">
+                {design.nodes.length === 0
+                  ? 'Add services or a Load Generator before running a simulation'
+                  : 'No Load Generator on canvas'}
+              </span>
+              <Button
+                variant="primary"
+                size="sm"
+                data-testid="add-load-generator-btn"
+                onClick={handleAddLoadGeneratorAndRun}
+                className="h-7 px-2.5 text-[11px]"
+              >
+                Add Load Generator
+              </Button>
+              {design.nodes.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void startSimulation(design, activeScenarioId, { allowMissingClient: true })
+                  }
+                  className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  Run from first node
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={dismissMissingClientPrompt}
+                className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
+
+          {simError ? (
+            <div
+              role="alert"
+              className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--status-overloaded)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--status-overloaded)] shadow-[var(--shadow-floating)]"
+            >
+              <span>Simulation failed: {simError}</span>
+              <button
+                type="button"
+                onClick={() => resetSimulation(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Clear
+              </button>
+            </div>
+          ) : null}
 
           {statusNotice ? (
             <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--text-secondary)] shadow-[var(--shadow-floating)]">
@@ -714,8 +1008,36 @@ export function EditorShell() {
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="font-mono text-[12px] tabular-nums text-[var(--text-muted)]">
-              t = 00:00.0 / 01:00.0
+            {simFrames.length > 1 ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  aria-label="Simulation timeline scrubber"
+                  data-testid="sim-scrubber"
+                  min={0}
+                  max={simFrames.length - 1}
+                  value={Math.max(0, playbackIdx)}
+                  onChange={(e) => scrubTo(Number(e.target.value))}
+                  className="h-1.5 w-36 cursor-pointer accent-[var(--accent)]"
+                />
+                {activeScenario && activeScenario.chaos.length > 0 ? (
+                  <span
+                    title={`${activeScenario.chaos.length} chaos marker(s) in scenario`}
+                    className="font-mono text-[10px] text-[var(--status-warm)]"
+                  >
+                    {activeScenario.chaos.length}c
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            <span
+              data-testid="sim-time-readout"
+              className="font-mono text-[12px] tabular-nums text-[var(--text-muted)]"
+            >
+              t = {formatVirtualTime(currentFrame?.tVirtualMs ?? 0)} /{' '}
+              {formatVirtualTime(
+                (simFrames.length > 0 ? simDurationS : (activeScenario?.durationS ?? 60)) * 1000,
+              )}
             </span>
             <button
               type="button"

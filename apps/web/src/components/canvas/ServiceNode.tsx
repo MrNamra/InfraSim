@@ -84,6 +84,11 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
       data-testid={`canvas-node-${nodeInstance.id}`}
       data-service-id={nodeInstance.serviceId}
       data-health={health ?? 'idle'}
+      aria-label={
+        frame
+          ? `${nodeInstance.label}: ${healthInfo?.label.toLowerCase() ?? 'idle'}, ${Math.round(utilization * 100)}% utilization${dropCount > 0 ? `, ${Math.round(dropCount)} errors per second` : ''}`
+          : `${nodeInstance.label} (${service?.name ?? nodeInstance.serviceId})`
+      }
       style={{ '--shake-amplitude': shakeAmp } as React.CSSProperties}
       className={`group relative w-[216px] overflow-hidden rounded-[10px] border bg-[var(--bg-surface)] text-[var(--text-primary)] transition-colors ${motionClass} ${
         selected
@@ -234,10 +239,12 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
           </div>
         ) : null}
 
-        {isOverloaded && frame && dropCount > 0 ? (
-          <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--status-overloaded)]">
+        {isOverloaded && frame ? (
+          <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[var(--status-overloaded)]">
             <span className="truncate">{topReason ?? 'Capacity saturated'}</span>
-            <span className="shrink-0 font-mono tabular-nums">{Math.round(dropCount)} err/s</span>
+            <span className="shrink-0 font-mono tabular-nums">
+              {dropCount > 0 ? `${Math.round(dropCount)} err/s` : 'Overloaded'}
+            </span>
           </div>
         ) : null}
       </div>
