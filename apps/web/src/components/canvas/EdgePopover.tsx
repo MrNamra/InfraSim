@@ -45,7 +45,7 @@ export function EdgePopover({
   return (
     <div
       data-testid="edge-popover"
-      className="absolute right-4 top-14 z-30 w-80 rounded-[12px] border border-[var(--border-strong)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-floating)]"
+      className="absolute right-4 top-14 z-30 max-h-[calc(100%-64px)] w-72 overflow-y-auto rounded-[12px] border border-[var(--border-strong)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-floating)]"
     >
       <div className="flex items-start justify-between gap-2 border-b border-[var(--border-hairline)] pb-2.5">
         <div className="min-w-0">

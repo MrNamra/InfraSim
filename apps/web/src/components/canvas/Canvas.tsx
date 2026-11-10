@@ -71,6 +71,7 @@ export interface CanvasProps {
   nodeCosts?: Record<string, NodeCostChipInfo>;
   reducedMotion?: boolean;
   onInspectNode?: (nodeId: string, tab: 'config' | 'latency' | 'cost' | 'why') => void;
+  onInjectChaosNode?: (nodeId: string, az?: string) => void;
   onLoadTemplateClick?: () => void;
   registerViewportCenterGetter?: (getter: () => { x: number; y: number }) => void;
 }
@@ -88,6 +89,7 @@ function CanvasInner({
   nodeCosts = {},
   reducedMotion = false,
   onInspectNode,
+  onInjectChaosNode,
   onLoadTemplateClick,
   registerViewportCenterGetter,
 }: CanvasProps) {
@@ -720,6 +722,20 @@ function CanvasInner({
           >
             Why?
           </button>
+          {onInjectChaosNode ? (
+            <button
+              type="button"
+              data-testid="context-menu-inject-chaos"
+              onClick={() => {
+                const target = design.nodes.find((n) => n.id === contextMenu.nodeId);
+                onInjectChaosNode(contextMenu.nodeId, target?.az);
+                setContextMenu(null);
+              }}
+              className="flex h-7 w-full items-center rounded-[5px] px-2 text-left text-[12px] text-[var(--status-warm)] hover:bg-[var(--bg-raised)]"
+            >
+              Inject chaos…
+            </button>
+          ) : null}
           <div className="my-1 h-px bg-[var(--border-hairline)]" />
           <button
             type="button"

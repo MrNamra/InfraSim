@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { getService } from '@infrasim/catalog';
 import { computeErlangC } from '@infrasim/sim-engine';
-import type { Design, SimulationResult } from '@infrasim/shared-types';
+import type { ChaosEvent, Design, SimulationResult } from '@infrasim/shared-types';
 import { chartClientXToTimeS, chartTimeSToPercent } from '../../lib/chartCursor';
 import { downsampleLttb } from '../../lib/lttb';
 import { computeTheoreticalMaxRps } from '../../lib/nodeDefaults';
@@ -21,6 +21,7 @@ export interface MetricsDockTabProps {
   design: Design;
   result: SimulationResult | null;
   previousResult: SimulationResult | null;
+  chaos?: readonly ChaosEvent[];
   selectedNodeId: string | null;
   currentTimeS: number | null;
   elapsedWallMs: number | null;
@@ -83,6 +84,7 @@ export function MetricsDockTab({
   design,
   result,
   previousResult,
+  chaos = [],
   selectedNodeId,
   currentTimeS,
   elapsedWallMs,
@@ -679,6 +681,44 @@ export function MetricsDockTab({
                     );
                   })}
 
+                  {/* Chaos window shaded bands */}
+                  <g clipPath={`url(#${clipId})`}>
+                    {chaos.map((ev, idx) => {
+                      const plotW = svgWidth - padX * 2;
+                      const safeMaxX = Math.max(1, maxX);
+                      const startX =
+                        padX + (Math.max(0, Math.min(safeMaxX, ev.atS)) / safeMaxX) * plotW;
+                      const endX =
+                        padX +
+                        (Math.max(0, Math.min(safeMaxX, ev.atS + Math.max(0.25, ev.durationS))) /
+                          safeMaxX) *
+                          plotW;
+                      const widthPx = Math.max(2, endX - startX);
+                      return (
+                        <g key={`chaos-band-${idx}`} data-testid="metrics-chaos-band">
+                          <rect
+                            x={startX}
+                            y={padY}
+                            width={widthPx}
+                            height={svgHeight - padY * 2}
+                            fill="var(--status-warm)"
+                            fillOpacity={0.1}
+                          />
+                          <line
+                            x1={startX}
+                            x2={startX}
+                            y1={padY}
+                            y2={svgHeight - padY}
+                            stroke="var(--status-warm)"
+                            strokeWidth={1}
+                            strokeDasharray="2 2"
+                            opacity={0.55}
+                          />
+                        </g>
+                      );
+                    })}
+                  </g>
+
                   {/* Series polylines */}
                   <g clipPath={`url(#${clipId})`}>
                     {seriesLines.map((line) => (
@@ -770,6 +810,12 @@ export function MetricsDockTab({
                     <span>{line.label}</span>
                   </span>
                 ))}
+                {chaos.length > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[var(--status-warm)]">
+                    <span className="inline-block h-2 w-2.5 rounded-[2px] border border-[var(--status-warm)] bg-[rgba(229,160,13,0.18)]" />
+                    <span>Chaos ({chaos.length})</span>
+                  </span>
+                ) : null}
               </div>
               <span className="font-mono tabular-nums">
                 {hoverTimeS !== null && !isScrubbing

@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accessibility,
   Activity,
@@ -78,6 +78,7 @@ import type { CommandItem } from './CommandPalette';
 import { MetricsDockTab } from './dock/MetricsDockTab';
 import { Palette } from './Palette';
 import { ServiceIcon } from './ServiceIcon';
+import type { WhyTabProps } from './inspector/WhyTab';
 
 const ConfigTab = dynamic(() => import('./inspector/ConfigTab').then((m) => m.ConfigTab), {
   ssr: false,
@@ -107,9 +108,46 @@ const LatencyMockTab = dynamic(
 const CostTab = dynamic(() => import('./inspector/CostTab').then((m) => m.CostTab), {
   ssr: false,
 });
-const WhyTab = dynamic(() => import('./inspector/WhyTab').then((m) => m.WhyTab), {
-  ssr: false,
-});
+
+type WhyTabComponent = ComponentType<WhyTabProps>;
+let cachedWhyTab: WhyTabComponent | null = null;
+let whyTabPromise: Promise<WhyTabComponent> | null = null;
+
+function preloadWhyTab(): Promise<WhyTabComponent> {
+  if (cachedWhyTab) {
+    return Promise.resolve(cachedWhyTab);
+  }
+  if (!whyTabPromise) {
+    whyTabPromise = import('./inspector/WhyTab').then((m) => {
+      cachedWhyTab = m.WhyTab;
+      return m.WhyTab;
+    });
+  }
+  return whyTabPromise;
+}
+
+/** Preloaded lazy wrapper so Why? renders synchronously on first overloaded node click. */
+function WhyTabSlot(props: WhyTabProps) {
+  const [LoadedWhyTab, setLoadedWhyTab] = useState<WhyTabComponent | null>(() => cachedWhyTab);
+
+  useEffect(() => {
+    if (LoadedWhyTab) return;
+    let active = true;
+    void preloadWhyTab().then((Comp) => {
+      if (active) {
+        setLoadedWhyTab(() => Comp);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [LoadedWhyTab]);
+
+  if (!LoadedWhyTab) {
+    return null;
+  }
+  return <LoadedWhyTab {...props} />;
+}
 const InsightsDockTab = dynamic(
   () => import('./dock/InsightsDockTab').then((m) => m.InsightsDockTab),
   { ssr: false },
@@ -121,6 +159,13 @@ const ProviderSwitchModal = dynamic(
   () => import('./ProviderSwitchModal').then((m) => m.ProviderSwitchModal),
   { ssr: false },
 );
+const ChaosTimelineEditor = dynamic(
+  () => import('./ChaosTimelineEditor').then((m) => m.ChaosTimelineEditor),
+  { ssr: false },
+);
+const TracesDockTab = dynamic(() => import('./dock/TracesDockTab').then((m) => m.TracesDockTab), {
+  ssr: false,
+});
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -160,6 +205,11 @@ export function EditorShell() {
   const [primaryRegion, setPrimaryRegion] = useState('us-east-1');
   const [editingTitle, setEditingTitle] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
+  const [scenarioPopoverTab, setScenarioPopoverTab] = useState<'traffic' | 'chaos'>('traffic');
+  const [chaosTargetNode, setChaosTargetNode] = useState<{
+    nodeId: string;
+    az?: string;
+  } | null>(null);
   const [costPopoverOpen, setCostPopoverOpen] = useState(false);
   const [providerSwitchModal, setProviderSwitchModal] = useState<{
     open: boolean;
@@ -428,6 +478,13 @@ export function EditorShell() {
     return map;
   }, [simResult]);
 
+  // Preload Why? tab chunk once simulation runs so clicking an overloaded node opens instantaneously
+  useEffect(() => {
+    if (simStatus === 'running' || simStatus === 'completed') {
+      void preloadWhyTab();
+    }
+  }, [simStatus]);
+
   // Auto-open Why? tab when clicking an overloaded or down node after a run
   const prevSelectedNodeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -571,6 +628,7 @@ export function EditorShell() {
     if (targetNode) {
       connectEdge(clientId, targetNode.id);
     }
+    selectNode(clientId);
     const targetScenarioId = state.activeScenarioId;
     updateScenario(targetScenarioId, (s) => {
       s.entryNodeId = clientId;
@@ -578,7 +636,14 @@ export function EditorShell() {
     dismissMissingClientPrompt();
     const updatedDesign = useDesignStore.getState().design;
     void startSimulation(updatedDesign, targetScenarioId);
-  }, [addServiceNode, connectEdge, dismissMissingClientPrompt, startSimulation, updateScenario]);
+  }, [
+    addServiceNode,
+    connectEdge,
+    dismissMissingClientPrompt,
+    selectNode,
+    startSimulation,
+    updateScenario,
+  ]);
 
   const availableCustomServices = useMemo(
     () => mergeCustomServices(userCustomServices, design.customServices),
@@ -606,6 +671,16 @@ export function EditorShell() {
     () => listRegionsForProvider(design.settings.primaryProvider ?? 'aws'),
     [design.settings.primaryProvider],
   );
+
+  // Keep primaryRegion consistent when design changes via undo/redo, templates, or provider switch
+  useEffect(() => {
+    if (
+      primaryProviderRegions.length > 0 &&
+      !primaryProviderRegions.some((r) => r.code === primaryRegion)
+    ) {
+      setPrimaryRegion(primaryProviderRegions[0]!.code);
+    }
+  }, [primaryProviderRegions, primaryRegion]);
 
   const { snapshotProviders, snapshotRegions } = useMemo(() => {
     const provSet = new Set<string>();
@@ -797,6 +872,25 @@ export function EditorShell() {
         },
       },
       {
+        id: 'tab-traces',
+        group: 'Dock',
+        label: 'Open Traces waterfall',
+        onSelect: () => {
+          setDockCollapsed(false);
+          setDockTab('traces');
+        },
+      },
+      {
+        id: 'edit-scenario-chaos',
+        group: 'Simulation',
+        label: 'Edit scenario chaos events',
+        onSelect: () => {
+          setCostPopoverOpen(false);
+          setScenarioPopoverTab('chaos');
+          setScenarioOpen(true);
+        },
+      },
+      {
         id: 'tab-cost',
         group: 'Dock',
         label: 'Open Cost breakdown panel',
@@ -900,8 +994,8 @@ export function EditorShell() {
         data-testid="topbar"
         className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] px-3"
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div className="flex shrink-0 items-center gap-2 pr-1">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 2xl:gap-2">
+          <div className="flex shrink-0 items-center gap-2 pr-0.5">
             <LogoMark className="h-5 w-5 text-[var(--text-primary)]" />
             <span className="text-[16px] font-medium tracking-[-0.01em] text-[var(--text-primary)]">
               InfraSim
@@ -923,14 +1017,14 @@ export function EditorShell() {
                   setEditingTitle(false);
                 }
               }}
-              className="h-8 w-40 shrink rounded-[8px] border border-[var(--accent)] bg-[var(--bg-raised)] px-2 text-[13px] font-medium text-[var(--text-primary)] focus:outline-none"
+              className="h-8 w-36 shrink rounded-[8px] border border-[var(--accent)] bg-[var(--bg-raised)] px-2 text-[13px] font-medium text-[var(--text-primary)] focus:outline-none"
             />
           ) : (
             <button
               type="button"
               onClick={() => setEditingTitle(true)}
-              title="Click to rename architecture"
-              className="flex h-8 min-w-0 max-w-[176px] shrink items-center gap-1.5 rounded-[8px] px-2 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-raised)]"
+              title={`${design.name} — click to rename architecture`}
+              className="flex h-8 min-w-0 max-w-[96px] shrink items-center gap-1 rounded-[8px] px-1.5 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-raised)] xl:max-w-[116px] 2xl:max-w-[176px]"
             >
               <FolderOpen className="h-4 w-4 shrink-0 text-[var(--text-muted)]" strokeWidth={1.5} />
               <span className="truncate">{design.name}</span>
@@ -944,12 +1038,13 @@ export function EditorShell() {
           <button
             type="button"
             data-testid="open-templates-button"
+            aria-label="Templates"
             onClick={() => setTemplatesOpen(true)}
             title="Starter templates"
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2.5 text-[12px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[12px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
           >
             <LayoutTemplate className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
-            <span>Templates</span>
+            <span className="hidden xl:inline">Templates</span>
           </button>
 
           <select
@@ -966,7 +1061,7 @@ export function EditorShell() {
                 setPrimaryRegion(regionsForNext[0]!.code);
               }
             }}
-            className="h-8 shrink-0 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
+            className="h-8 shrink-0 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-1.5 text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
           >
             <option value="aws">AWS</option>
             <option value="gcp">GCP</option>
@@ -1008,24 +1103,46 @@ export function EditorShell() {
           </select>
 
           {activeScenario ? (
-            <div className="relative shrink-0">
+            <div className="relative min-w-0 max-w-[164px] shrink 2xl:max-w-[260px]">
               <button
                 type="button"
                 data-testid="scenario-button"
-                onClick={() => setScenarioOpen((prev) => !prev)}
-                className="flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2.5 text-[12px] text-[var(--text-primary)] hover:border-[var(--border-strong)]"
+                title={`${activeScenario.name} (${activeScenario.profile.kind})`}
+                onClick={() => {
+                  setCostPopoverOpen(false);
+                  setScenarioOpen((prev) => {
+                    const next = !prev;
+                    if (next) {
+                      setScenarioPopoverTab('traffic');
+                      setChaosTargetNode(null);
+                    }
+                    return next;
+                  });
+                }}
+                className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[12px] text-[var(--text-primary)] hover:border-[var(--border-strong)]"
               >
-                <span className="max-w-[112px] truncate">{activeScenario.name}</span>
-                <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                <span className="min-w-0 flex-1 truncate">{activeScenario.name}</span>
+                <span className="hidden shrink-0 font-mono text-[11px] text-[var(--text-muted)] 2xl:inline">
                   {activeScenario.profile.kind}
                 </span>
-                <ChevronDown className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+                {activeScenario.chaos.length > 0 ? (
+                  <span
+                    data-testid="scenario-chaos-count"
+                    className="shrink-0 rounded-[4px] bg-[rgba(229,160,13,0.16)] px-1 font-mono text-[10px] tabular-nums text-[var(--status-warm)]"
+                  >
+                    {activeScenario.chaos.length} chaos
+                  </span>
+                ) : null}
+                <ChevronDown
+                  className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]"
+                  strokeWidth={1.5}
+                />
               </button>
 
               {scenarioOpen ? (
                 <div
                   data-testid="scenario-popover"
-                  className="absolute left-0 top-10 z-40 w-80 rounded-[12px] border border-[var(--border-strong)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-floating)]"
+                  className="absolute left-0 top-10 z-40 max-h-[calc(100vh-80px)] w-96 overflow-y-auto rounded-[12px] border border-[var(--border-strong)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-floating)]"
                 >
                   <div className="mb-3 flex items-center justify-between gap-2 border-b border-[var(--border-hairline)] pb-2">
                     <select
@@ -1049,12 +1166,61 @@ export function EditorShell() {
                     </button>
                   </div>
 
-                  <TrafficProfileEditor
-                    scenario={activeScenario}
-                    seed={design.settings.seed}
-                    onUpdateScenario={(updater) => updateScenario(activeScenario.id, updater)}
-                    onUpdateSeed={(seed) => updateDesignMeta({ settings: { seed } })}
-                  />
+                  <div
+                    role="tablist"
+                    aria-label="Scenario editor mode"
+                    className="mb-3 grid grid-cols-2 gap-1 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-1"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={scenarioPopoverTab === 'traffic'}
+                      data-testid="scenario-tab-traffic"
+                      onClick={() => setScenarioPopoverTab('traffic')}
+                      className={`h-7 rounded-[6px] text-[12px] font-medium transition-colors ${
+                        scenarioPopoverTab === 'traffic'
+                          ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                      }`}
+                    >
+                      Traffic
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={scenarioPopoverTab === 'chaos'}
+                      data-testid="scenario-tab-chaos"
+                      onClick={() => setScenarioPopoverTab('chaos')}
+                      className={`flex h-7 items-center justify-center gap-1.5 rounded-[6px] text-[12px] font-medium transition-colors ${
+                        scenarioPopoverTab === 'chaos'
+                          ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                      }`}
+                    >
+                      <span>Chaos</span>
+                      <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+                        ({activeScenario.chaos.length})
+                      </span>
+                    </button>
+                  </div>
+
+                  {scenarioPopoverTab === 'traffic' ? (
+                    <TrafficProfileEditor
+                      scenario={activeScenario}
+                      seed={design.settings.seed}
+                      onUpdateScenario={(updater) => updateScenario(activeScenario.id, updater)}
+                      onUpdateSeed={(seed) => updateDesignMeta({ settings: { seed } })}
+                    />
+                  ) : (
+                    <ChaosTimelineEditor
+                      scenario={activeScenario}
+                      nodes={design.nodes}
+                      groups={design.groups}
+                      preselectedNodeId={chaosTargetNode?.nodeId ?? selectedNodeId}
+                      preselectedAz={chaosTargetNode?.az}
+                      onUpdateScenario={(updater) => updateScenario(activeScenario.id, updater)}
+                    />
+                  )}
                 </div>
               ) : null}
             </div>
@@ -1400,7 +1566,7 @@ export function EditorShell() {
             className="hidden sm:inline-flex"
           >
             <Command className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
-            <span className="hidden lg:inline">Commands</span>
+            <span className="hidden 2xl:inline">Commands</span>
             <Keycap className="hidden 2xl:inline-flex">Ctrl+K</Keycap>
           </Button>
 
@@ -1490,6 +1656,12 @@ export function EditorShell() {
             nodeCosts={nodeCosts}
             reducedMotion={reducedMotion}
             onInspectNode={handleInspectNode}
+            onInjectChaosNode={(nodeId, az) => {
+              setCostPopoverOpen(false);
+              setChaosTargetNode({ nodeId, ...(az ? { az } : {}) });
+              setScenarioPopoverTab('chaos');
+              setScenarioOpen(true);
+            }}
             onLoadTemplateClick={() => setTemplatesOpen(true)}
             registerViewportCenterGetter={(getter) => {
               viewportCenterGetterRef.current = getter;
@@ -1574,9 +1746,9 @@ export function EditorShell() {
         {/* Right Inspector */}
         <aside
           data-testid="inspector-panel"
-          className="flex w-80 shrink-0 flex-col border-l border-[var(--border-hairline)] bg-[var(--bg-surface)]"
+          className="flex w-80 shrink-0 flex-col border-l border-[var(--border-hairline)] bg-[var(--bg-surface)] xl:w-[348px]"
         >
-          <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--border-hairline)] px-2 py-2">
+          <div className="flex items-center gap-0.5 overflow-x-auto border-b border-[var(--border-hairline)] px-2 py-2">
             {INSPECTOR_TABS.map((tab) => {
               const active = inspectorTab === tab.id;
               const badgeCount = tab.id === 'why' ? selectedNodeInsightCount : 0;
@@ -1586,7 +1758,7 @@ export function EditorShell() {
                   type="button"
                   data-testid={`inspector-tab-${tab.id}`}
                   onClick={() => setInspectorTab(tab.id)}
-                  className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-[6px] px-2.5 text-[12px] font-medium transition-colors ${
+                  className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-[6px] px-1.5 text-[11px] font-medium transition-colors ${
                     active
                       ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
@@ -1594,7 +1766,7 @@ export function EditorShell() {
                 >
                   <span>{tab.label}</span>
                   {badgeCount > 0 ? (
-                    <span className="rounded-full bg-[rgba(229,72,77,0.16)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--status-overloaded)]">
+                    <span className="rounded-full bg-[rgba(229,72,77,0.16)] px-1 py-0.5 font-mono text-[10px] tabular-nums text-[var(--status-overloaded)]">
                       {badgeCount}
                     </span>
                   ) : null}
@@ -1754,7 +1926,7 @@ export function EditorShell() {
                   }}
                 />
               ) : inspectorTab === 'why' ? (
-                <WhyTab
+                <WhyTabSlot
                   design={design}
                   node={selectedNode}
                   service={selectedNodeService}
@@ -1879,11 +2051,21 @@ export function EditorShell() {
               design={design}
               result={simResult}
               previousResult={simPreviousResult}
+              chaos={activeScenario?.chaos ?? []}
               selectedNodeId={selectedNodeId}
               currentTimeS={currentFrame ? currentFrame.tVirtualMs / 1000 : null}
               elapsedWallMs={simElapsedWallMs}
               onSeekToTimeS={seekToTimeS}
               onSelectBottleneck={(nodeId) => handleInspectNode(nodeId, 'why')}
+            />
+          ) : dockTab === 'traces' ? (
+            <TracesDockTab
+              design={design}
+              result={simResult}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={(nodeId, openWhy) =>
+                handleInspectNode(nodeId, openWhy ? 'why' : 'latency')
+              }
             />
           ) : dockTab === 'cost' ? (
             <CostDockTab

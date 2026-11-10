@@ -931,6 +931,12 @@ export async function runSimulation(
     if (call.span) {
       call.span.serviceMs = Number(Math.max(0, now - call.serviceStartMs).toFixed(2));
       call.span.status = ok ? 'ok' : (errorKind ?? 'server');
+      if (call.callerTimedOut) {
+        call.span.attrs = {
+          ...(call.span.attrs ?? {}),
+          zombie: 1,
+        };
+      }
     }
   };
 
@@ -1153,6 +1159,11 @@ export async function runSimulation(
     };
 
     if (targetCall.parentTraceSpans) {
+      const spanAttrs: Record<string, string | number> = {};
+      if (attemptState.attemptIndex > 0) {
+        spanAttrs.attempt = attemptState.attemptIndex + 1;
+        spanAttrs.retried = 1;
+      }
       targetCall.span = {
         spanId: `sp-${targetCall.id}`,
         parentId: attemptState.callerCall?.span?.spanId,
@@ -1162,6 +1173,7 @@ export async function runSimulation(
         waitMs: 0,
         serviceMs: 0,
         status: 'ok',
+        ...(Object.keys(spanAttrs).length > 0 ? { attrs: spanAttrs } : {}),
       };
       targetCall.parentTraceSpans.push(targetCall.span);
     }
@@ -1538,6 +1550,12 @@ export async function runSimulation(
       }
       if (isCold) {
         call.coldStarted = true;
+        if (call.span) {
+          call.span.attrs = {
+            ...(call.span.attrs ?? {}),
+            coldStart: 1,
+          };
+        }
         coldExtraMs = sampleLatency(
           {
             distribution: 'lognormal',
@@ -1891,6 +1909,13 @@ export async function runSimulation(
     if (token.targetCall) {
       token.targetCall.callerTimedOut = true;
       token.targetCall.settledWithCaller = true;
+      if (token.targetCall.span) {
+        token.targetCall.span.attrs = {
+          ...(token.targetCall.span.attrs ?? {}),
+          timedOut: 1,
+        };
+        token.targetCall.span.status = 'timeout';
+      }
     }
     token.attempt.edgeState.winCount += 1;
     token.attempt.edgeState.winErrors += 1;
