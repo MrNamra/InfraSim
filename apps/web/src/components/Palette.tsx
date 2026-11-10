@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
-import { ChevronDown, ChevronRight, Plus, Search, Star, X } from 'lucide-react';
-import type { ServiceDefinition } from '@infrasim/shared-types';
+import { ChevronDown, ChevronRight, Pencil, Plus, Search, Star, Trash2, X } from 'lucide-react';
+import type { CustomServiceDefinition, ServiceDefinition } from '@infrasim/shared-types';
 import {
   DRAG_SERVICE_MIME,
   FAVORITES_STORAGE_KEY,
@@ -30,10 +30,12 @@ const PROVIDER_TABS: { id: PaletteProviderFilter; label: string }[] = [
 ];
 
 export interface PaletteProps {
-  customServices?: readonly ServiceDefinition[];
+  customServices?: readonly CustomServiceDefinition[];
   onAddService: (serviceId: string) => void;
   onAddGroup?: (kind: 'region' | 'vpc' | 'az' | 'subnet' | 'cluster' | 'compartment') => void;
   onRequestCustomService?: () => void;
+  onEditCustomService?: (service: CustomServiceDefinition) => void;
+  onDeleteCustomService?: (serviceId: string) => void;
 }
 
 /** Searchable service catalog sidebar supporting drag-to-canvas and double-click insert. */
@@ -42,6 +44,8 @@ export function Palette({
   onAddService,
   onAddGroup,
   onRequestCustomService,
+  onEditCustomService,
+  onDeleteCustomService,
 }: PaletteProps) {
   const [providerTab, setProviderTab] = useState<PaletteProviderFilter>('all');
   const [search, setSearch] = useState('');
@@ -105,6 +109,12 @@ export function Palette({
   const renderServiceRow = (service: ServiceDefinition, keyPrefix: string) => {
     const isFav = favoriteIds.includes(service.id);
     const meta = PROVIDER_META[service.provider];
+    const customColor =
+      service.provider === 'custom' && 'color' in service && typeof service.color === 'string'
+        ? service.color
+        : undefined;
+    const stripeColor = customColor ?? meta.stripeColor;
+    const isCustom = service.provider === 'custom';
 
     return (
       <div
@@ -126,13 +136,14 @@ export function Palette({
       >
         <span
           className="h-3.5 w-[2px] shrink-0 rounded-full"
-          style={{ backgroundColor: meta.stripeColor }}
+          style={{ backgroundColor: stripeColor }}
           aria-hidden="true"
         />
         <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-[3px] text-[var(--text-secondary)]">
           <ServiceIcon
             icon={service.icon}
             serviceId={service.id}
+            color={customColor}
             className="h-4 w-4 shrink-0 rounded-[3px]"
           />
         </span>
@@ -146,6 +157,34 @@ export function Palette({
           <span className="w-8 shrink-0 text-right font-mono text-[10px] text-[var(--text-muted)]">
             {meta.short}
           </span>
+        ) : null}
+        {isCustom && onEditCustomService ? (
+          <button
+            type="button"
+            aria-label={`Edit ${service.name}`}
+            data-testid={`edit-custom-service-${service.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditCustomService(service as CustomServiceDefinition);
+            }}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] text-[var(--text-muted)] opacity-0 transition-colors hover:text-[var(--text-primary)] group-hover:opacity-100 group-focus:opacity-100"
+          >
+            <Pencil className="h-3 w-3" strokeWidth={1.5} />
+          </button>
+        ) : null}
+        {isCustom && onDeleteCustomService ? (
+          <button
+            type="button"
+            aria-label={`Delete ${service.name}`}
+            data-testid={`delete-custom-service-${service.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteCustomService(service.id);
+            }}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] text-[var(--text-muted)] opacity-0 transition-colors hover:text-[var(--status-overloaded)] group-hover:opacity-100 group-focus:opacity-100"
+          >
+            <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+          </button>
         ) : null}
         <button
           type="button"
@@ -258,17 +297,31 @@ export function Palette({
 
       {/* Scrollable service list */}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+        {providerTab === 'custom' && onRequestCustomService && customServices.length > 0 ? (
+          <div className="mb-2 px-1">
+            <button
+              type="button"
+              data-testid="palette-new-custom-service"
+              onClick={onRequestCustomService}
+              className="inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-[6px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-2.5 text-[12px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-raised)]"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+              <span>New service</span>
+            </button>
+          </div>
+        ) : null}
         {providerTab === 'custom' && customServices.length === 0 ? (
           <div className="p-4 text-center">
             <p className="text-[12px] font-medium text-[var(--text-secondary)]">
               No custom services defined
             </p>
             <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-              Create custom HTTP or SaaS blocks in Phase 2 to model external dependencies.
+              Create custom HTTP, SaaS, or domain service blocks for your architectures.
             </p>
             {onRequestCustomService ? (
               <button
                 type="button"
+                data-testid="palette-new-custom-service"
                 onClick={onRequestCustomService}
                 className="mt-3 inline-flex h-7 items-center gap-1.5 rounded-[6px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-2.5 text-[12px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-raised)]"
               >
@@ -355,6 +408,11 @@ export function Palette({
                 <ServiceIcon
                   icon={hoveredService.icon}
                   serviceId={hoveredService.id}
+                  color={
+                    'color' in hoveredService && typeof hoveredService.color === 'string'
+                      ? hoveredService.color
+                      : undefined
+                  }
                   className="h-5 w-5 shrink-0 rounded-[3px]"
                 />
               </span>

@@ -36,6 +36,7 @@ import {
   worldToFlowPosition,
 } from '../../lib/canvasGeometry';
 import { DRAG_SERVICE_MIME } from '../../lib/palette';
+import { mergeCustomServices } from '../../lib/customServices';
 import { useDesignStore } from '../../store/designStore';
 import {
   CanvasSimStateContext,
@@ -89,6 +90,7 @@ function CanvasInner({
   const rfInstanceRef = useRef<ReactFlowInstance<CanvasFlowNode, InfraFlowEdge> | null>(null);
 
   const design = useDesignStore((s) => s.design);
+  const userCustomServices = useDesignStore((s) => s.userCustomServices);
   const selectedNodeId = useDesignStore((s) => s.selectedNodeId);
   const selectedEdgeId = useDesignStore((s) => s.selectedEdgeId);
   const selectedGroupId = useDesignStore((s) => s.selectedGroupId);
@@ -136,7 +138,9 @@ function CanvasInner({
   const derivedNodes = useMemo<CanvasFlowNode[]>(() => {
     const groupsSorted = sortGroupsParentsFirst(design.groups);
     const groupsById = new Map(design.groups.map((g) => [g.id, g]));
-    const customMap = new Map((design.customServices ?? []).map((s) => [s.id, s]));
+    const customMap = new Map(
+      mergeCustomServices(design.customServices, userCustomServices).map((s) => [s.id, s]),
+    );
 
     const flowGroups: GroupFlowNode[] = groupsSorted.map((group) => {
       const rect = getGroupRect(group);
@@ -170,7 +174,14 @@ function CanvasInner({
     });
 
     return [...flowGroups, ...flowServices];
-  }, [design.groups, design.nodes, design.customServices, selectedGroupId, selectedNodeId]);
+  }, [
+    design.groups,
+    design.nodes,
+    design.customServices,
+    userCustomServices,
+    selectedGroupId,
+    selectedNodeId,
+  ]);
 
   const liveNodesRef = useRef<CanvasFlowNode[]>(liveNodes);
   useEffect(() => {

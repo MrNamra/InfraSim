@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   Command,
+  Copy,
   DollarSign,
   FileCode2,
   FolderOpen,
@@ -28,15 +29,33 @@ import {
   Undo2,
   User,
 } from 'lucide-react';
-import type { GroupInstance, Provider } from '@infrasim/shared-types';
+import type {
+  CustomServiceDefinition,
+  GroupInstance,
+  Provider,
+  ServiceDefinition,
+} from '@infrasim/shared-types';
 import { getService } from '@infrasim/catalog';
 import { Button, Keycap, LogoMark } from '@infrasim/ui-kit';
-import { fetchCurrentUser, getStoredToken, setStoredToken, type AuthUser } from '../lib/api';
 import {
+  createCustomServiceApi,
+  deleteCustomServiceApi,
+  fetchCurrentUser,
+  fetchCustomServicesApi,
+  getStoredToken,
+  setStoredToken,
+  updateCustomServiceApi,
+  type AuthUser,
+} from '../lib/api';
+import {
+  deleteCustomServiceFromIndexedDb,
   loadActiveDesignFromIndexedDb,
+  loadCustomServicesFromIndexedDb,
   loadPresetsFromIndexedDb,
+  saveCustomServiceToIndexedDb,
   saveDesignToIndexedDb,
 } from '../lib/autosave';
+import { mergeCustomServices } from '../lib/customServices';
 import { formatVirtualTime } from '../lib/timeFormat';
 import { STARTER_TEMPLATES, type StarterTemplate } from '../lib/templates';
 import { useDesignStore } from '../store/designStore';
@@ -44,6 +63,7 @@ import { type SimSpeed, useSimulationStore } from '../store/simulationStore';
 import { AccountModal } from './AccountModal';
 import { Canvas } from './canvas/Canvas';
 import { CommandPalette, type CommandItem } from './CommandPalette';
+import { CustomServiceModal } from './CustomServiceModal';
 import { InsightsDockTab } from './dock/InsightsDockTab';
 import { MetricsDockTab } from './dock/MetricsDockTab';
 import { ConfigTab } from './inspector/ConfigTab';
@@ -94,6 +114,19 @@ export function EditorShell() {
   const [scenarioOpen, setScenarioOpen] = useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
+  const [customModal, setCustomModal] = useState<{
+    open: boolean;
+    mode: 'create' | 'edit' | 'duplicate';
+    source: ServiceDefinition | CustomServiceDefinition | null;
+    targetNodeId: string | null;
+    targetNodeLabel: string | null;
+  }>({
+    open: false,
+    mode: 'create',
+    source: null,
+    targetNodeId: null,
+    targetNodeLabel: null,
+  });
 
   const viewportCenterGetterRef = useRef<() => { x: number; y: number }>(() => ({
     x: 240,
@@ -103,6 +136,7 @@ export function EditorShell() {
 
   const design = useDesignStore((s) => s.design);
   const presets = useDesignStore((s) => s.presets);
+  const userCustomServices = useDesignStore((s) => s.userCustomServices);
   const activeScenarioId = useDesignStore((s) => s.activeScenarioId);
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
@@ -114,6 +148,10 @@ export function EditorShell() {
   const applyPatchedDesign = useDesignStore((s) => s.applyPatchedDesign);
   const setPresets = useDesignStore((s) => s.setPresets);
   const addPreset = useDesignStore((s) => s.addPreset);
+  const setUserCustomServices = useDesignStore((s) => s.setUserCustomServices);
+  const upsertCustomService = useDesignStore((s) => s.upsertCustomService);
+  const deleteCustomService = useDesignStore((s) => s.deleteCustomService);
+  const replaceNodeServiceId = useDesignStore((s) => s.replaceNodeServiceId);
   const applyPresetToNode = useDesignStore((s) => s.applyPresetToNode);
   const updateDesignMeta = useDesignStore((s) => s.updateDesignMeta);
   const updateScenario = useDesignStore((s) => s.updateScenario);
@@ -206,21 +244,42 @@ export function EditorShell() {
     const storedToken = getStoredToken();
     if (storedToken) {
       setToken(storedToken);
-      fetchCurrentUser(storedToken)
-        .then((u) => setUser(u))
+      Promise.all([fetchCurrentUser(storedToken), fetchCustomServicesApi(storedToken)])
+        .then(([u, remoteCustom]) => {
+          setUser(u);
+          if (remoteCustom.length > 0) {
+            const localNow = useDesignStore.getState().userCustomServices;
+            const merged = mergeCustomServices(
+              remoteCustom.map((r) => r.definition),
+              localNow,
+            );
+            setUserCustomServices(merged);
+            for (const item of merged) {
+              void saveCustomServiceToIndexedDb(item);
+            }
+          }
+        })
         .catch(() => {
           setStoredToken(null);
           setToken(null);
         });
     }
 
-    Promise.all([loadActiveDesignFromIndexedDb(), loadPresetsFromIndexedDb()])
-      .then(([savedDesign, savedPresets]) => {
+    Promise.all([
+      loadActiveDesignFromIndexedDb(),
+      loadPresetsFromIndexedDb(),
+      loadCustomServicesFromIndexedDb(),
+    ])
+      .then(([savedDesign, savedPresets, savedCustom]) => {
         if (savedDesign && savedDesign.nodes.length + savedDesign.groups.length > 0) {
           loadDesign(savedDesign, true);
         }
         if (savedPresets.length > 0) {
           setPresets(savedPresets);
+        }
+        if (savedCustom.length > 0) {
+          const existing = useDesignStore.getState().userCustomServices;
+          setUserCustomServices(mergeCustomServices(existing, savedCustom));
         }
       })
       .catch(() => {
@@ -229,7 +288,7 @@ export function EditorShell() {
       .finally(() => {
         autosaveHydratedRef.current = true;
       });
-  }, [loadDesign, setPresets]);
+  }, [loadDesign, setPresets, setUserCustomServices]);
 
   // Debounced autosave to IndexedDB whenever Design changes
   useEffect(() => {
@@ -332,6 +391,56 @@ export function EditorShell() {
     void startSimulation(useDesignStore.getState().design, activeScenarioId);
   }, [activeScenarioId, startSimulation]);
 
+  const handleSaveCustomService = useCallback(
+    async (
+      service: CustomServiceDefinition,
+      options: { previousId?: string; switchTargetNode: boolean },
+    ): Promise<{ error?: string }> => {
+      if (token) {
+        try {
+          if (options.previousId) {
+            await updateCustomServiceApi(token, options.previousId, service);
+          } else {
+            await createCustomServiceApi(token, service);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unable to sync custom service';
+          // Distinguish network outage (offline mode continues locally) vs HTTP validation errors
+          if (!(err instanceof TypeError)) {
+            return { error: message };
+          }
+          setStatusNotice('Saved locally — backend unreachable for sync');
+        }
+      }
+
+      upsertCustomService(service, { previousId: options.previousId });
+      if (options.previousId && options.previousId !== service.id) {
+        void deleteCustomServiceFromIndexedDb(options.previousId);
+      }
+      void saveCustomServiceToIndexedDb(service);
+
+      if (options.switchTargetNode && customModal.targetNodeId) {
+        replaceNodeServiceId(customModal.targetNodeId, service);
+      }
+
+      return {};
+    },
+    [token, upsertCustomService, replaceNodeServiceId, customModal.targetNodeId],
+  );
+
+  const handleDeleteCustomService = useCallback(
+    (serviceId: string) => {
+      deleteCustomService(serviceId);
+      void deleteCustomServiceFromIndexedDb(serviceId);
+      if (token) {
+        void deleteCustomServiceApi(token, serviceId).catch(() => {
+          // Ignore 404 or network issues when cleaning up local library items
+        });
+      }
+    },
+    [deleteCustomService, token],
+  );
+
   const handleLoadTemplate = useCallback(
     (template: StarterTemplate) => {
       loadDesign(structuredClone(template.design), true);
@@ -375,14 +484,18 @@ export function EditorShell() {
     void startSimulation(updatedDesign, targetScenarioId);
   }, [addServiceNode, connectEdge, dismissMissingClientPrompt, startSimulation, updateScenario]);
 
+  const availableCustomServices = useMemo(
+    () => mergeCustomServices(userCustomServices, design.customServices),
+    [userCustomServices, design.customServices],
+  );
+
   const selectedNode = useMemo(
     () => (selectedNodeId ? (design.nodes.find((n) => n.id === selectedNodeId) ?? null) : null),
     [design.nodes, selectedNodeId],
   );
   const selectedNodeService = useMemo(
-    () =>
-      selectedNode ? getService(selectedNode.serviceId, design.customServices ?? []) : undefined,
-    [selectedNode, design.customServices],
+    () => (selectedNode ? getService(selectedNode.serviceId, availableCustomServices) : undefined),
+    [selectedNode, availableCustomServices],
   );
   const selectedGroup = useMemo(
     () => (selectedGroupId ? (design.groups.find((g) => g.id === selectedGroupId) ?? null) : null),
@@ -474,6 +587,19 @@ export function EditorShell() {
         group: 'Inspector',
         label: 'Open Why? diagnostics tab',
         onSelect: () => setInspectorTab('why'),
+      },
+      {
+        id: 'create-custom-service',
+        group: 'Catalog',
+        label: 'Create custom service',
+        onSelect: () =>
+          setCustomModal({
+            open: true,
+            mode: 'create',
+            source: null,
+            targetNodeId: null,
+            targetNodeLabel: null,
+          }),
       },
       {
         id: 'open-templates',
@@ -827,12 +953,28 @@ export function EditorShell() {
       {/* Main 3-column Workbench */}
       <div className="flex min-h-0 flex-1">
         <Palette
-          customServices={design.customServices}
+          customServices={availableCustomServices}
           onAddService={handleAddServiceAtCenter}
           onAddGroup={handleAddGroupAtCenter}
           onRequestCustomService={() =>
-            setStatusNotice('Custom service editor arrives in Phase 2 (T2.3)')
+            setCustomModal({
+              open: true,
+              mode: 'create',
+              source: null,
+              targetNodeId: null,
+              targetNodeLabel: null,
+            })
           }
+          onEditCustomService={(svc) =>
+            setCustomModal({
+              open: true,
+              mode: 'edit',
+              source: svc,
+              targetNodeId: null,
+              targetNodeLabel: null,
+            })
+          }
+          onDeleteCustomService={handleDeleteCustomService}
         />
 
         <main className="relative flex min-w-0 flex-1">
@@ -1002,6 +1144,13 @@ export function EditorShell() {
                       <ServiceIcon
                         icon={selectedNodeService?.icon ?? 'generic'}
                         serviceId={selectedNode.serviceId}
+                        color={
+                          selectedNodeService &&
+                          'color' in selectedNodeService &&
+                          typeof selectedNodeService.color === 'string'
+                            ? selectedNodeService.color
+                            : undefined
+                        }
                         className="h-4 w-4 shrink-0 rounded-[3px]"
                       />
                     </span>
@@ -1014,9 +1163,33 @@ export function EditorShell() {
                       </div>
                     </div>
                   </div>
-                  <span className="shrink-0 rounded-[4px] bg-[var(--bg-raised)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
-                    {selectedNodeService?.kind ?? 'node'}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {selectedNodeService ? (
+                      <button
+                        type="button"
+                        data-testid="duplicate-as-custom-button"
+                        title="Duplicate service as editable custom block"
+                        onClick={() =>
+                          setCustomModal({
+                            open: true,
+                            mode: selectedNodeService.provider === 'custom' ? 'edit' : 'duplicate',
+                            source: selectedNodeService,
+                            targetNodeId: selectedNode.id,
+                            targetNodeLabel: selectedNode.label,
+                          })
+                        }
+                        className="inline-flex h-6 items-center gap-1 rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-1.5 text-[10px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+                      >
+                        <Copy className="h-3 w-3" strokeWidth={1.5} />
+                        <span>
+                          {selectedNodeService.provider === 'custom' ? 'Edit custom' : 'Customize'}
+                        </span>
+                      </button>
+                    ) : null}
+                    <span className="rounded-[4px] bg-[var(--bg-raised)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
+                      {selectedNodeService?.kind ?? 'node'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1216,7 +1389,42 @@ export function EditorShell() {
         onAuthChange={(nextUser, nextToken) => {
           setUser(nextUser);
           setToken(nextToken);
+          if (nextToken) {
+            void fetchCustomServicesApi(nextToken)
+              .then((remoteCustom) => {
+                if (remoteCustom.length > 0) {
+                  const localNow = useDesignStore.getState().userCustomServices;
+                  const merged = mergeCustomServices(
+                    remoteCustom.map((r) => r.definition),
+                    localNow,
+                  );
+                  setUserCustomServices(merged);
+                  for (const item of merged) {
+                    void saveCustomServiceToIndexedDb(item);
+                  }
+                }
+              })
+              .catch(() => {
+                // Ignore sync failure if offline
+              });
+          }
         }}
+      />
+
+      <CustomServiceModal
+        open={customModal.open}
+        mode={customModal.mode}
+        initialSource={customModal.source}
+        targetNodeLabel={customModal.targetNodeLabel}
+        existingCustomIds={availableCustomServices.map((s) => s.id)}
+        isSignedIn={Boolean(token)}
+        onClose={() =>
+          setCustomModal((prev) => ({
+            ...prev,
+            open: false,
+          }))
+        }
+        onSave={handleSaveCustomService}
       />
     </div>
   );

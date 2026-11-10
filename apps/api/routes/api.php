@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CustomServiceController;
 use App\Http\Controllers\HealthController;
 use Illuminate\Support\Facades\Route;
 
@@ -15,5 +16,12 @@ Route::middleware('throttle:api')->group(function (): void {
             Route::post('/logout', [AuthController::class, 'logout']);
             Route::get('/me', [AuthController::class, 'me']);
         });
+    });
+
+    Route::middleware('auth:sanctum')->group(function (): void {
+        Route::get('/custom-services', [CustomServiceController::class, 'index']);
+        Route::post('/custom-services', [CustomServiceController::class, 'store']);
+        Route::put('/custom-services/{customService}', [CustomServiceController::class, 'update']);
+        Route::delete('/custom-services/{customService}', [CustomServiceController::class, 'destroy']);
     });
 });

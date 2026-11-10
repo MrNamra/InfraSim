@@ -44,6 +44,11 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
   const service = customService ?? getService(nodeInstance.serviceId);
   const provider = service?.provider ?? 'generic';
   const meta = PROVIDER_META[provider];
+  const customColor =
+    service && 'color' in service && typeof service.color === 'string' && service.color
+      ? service.color
+      : undefined;
+  const stripeColor = customColor ?? meta.stripeColor;
 
   const effectiveLatency = nodeInstance.config.latency ?? service?.latency;
   const p50 = effectiveLatency?.p50 ?? 0;
@@ -111,7 +116,7 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
       {/* Left provider stripe */}
       <div
         className="absolute bottom-0 left-0 top-0 w-[3px]"
-        style={{ backgroundColor: meta.stripeColor }}
+        style={{ backgroundColor: stripeColor }}
         aria-hidden="true"
       />
 
@@ -128,6 +133,7 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
             <ServiceIcon
               icon={service?.icon ?? 'generic'}
               serviceId={nodeInstance.serviceId}
+              color={customColor}
               className="h-4 w-4 shrink-0 rounded-[3px]"
             />
           </span>

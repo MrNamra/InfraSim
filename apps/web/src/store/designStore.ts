@@ -3,6 +3,7 @@ import { current } from 'immer';
 import { immer } from 'zustand/middleware/immer';
 import type {
   CustomPreset,
+  CustomServiceDefinition,
   Design,
   DesignSettings,
   EdgeInstance,
@@ -22,6 +23,7 @@ import {
   resolveInheritedPlacement,
   snapPoint,
 } from '../lib/canvasGeometry';
+import { mergeCustomServices } from '../lib/customServices';
 import { createInitialNodeConfig } from '../lib/nodeDefaults';
 
 export const MAX_HISTORY_STEPS = 120;
@@ -71,6 +73,7 @@ export interface DesignStoreState {
   snapEnabled: boolean;
   reduceMotionOverride: boolean;
   presets: CustomPreset[];
+  userCustomServices: CustomServiceDefinition[];
   clipboard: { nodes: NodeInstance[]; edges: EdgeInstance[] } | null;
 
   // Actions
@@ -112,6 +115,13 @@ export interface DesignStoreState {
   setActiveScenario: (scenarioId: string) => void;
   addPreset: (preset: CustomPreset) => void;
   setPresets: (presets: CustomPreset[]) => void;
+  setUserCustomServices: (services: CustomServiceDefinition[]) => void;
+  upsertCustomService: (
+    service: CustomServiceDefinition,
+    opts?: { previousId?: string; embedInDesign?: boolean },
+  ) => void;
+  deleteCustomService: (serviceId: string) => void;
+  replaceNodeServiceId: (nodeId: string, service: CustomServiceDefinition) => void;
 
   selectNode: (nodeId: string | null) => void;
   selectEdge: (edgeId: string | null) => void;
@@ -157,6 +167,7 @@ export const useDesignStore = create<DesignStoreState>()(
       snapEnabled: true,
       reduceMotionOverride: false,
       presets: [],
+      userCustomServices: [],
       clipboard: null,
 
       loadDesign: (design, resetHistory = true) => {
@@ -220,7 +231,10 @@ export const useDesignStore = create<DesignStoreState>()(
       },
 
       addServiceNode: (serviceId, rawPos, explicitParentGroupId) => {
-        const customList = get().design.customServices ?? [];
+        const customList = mergeCustomServices(
+          get().design.customServices,
+          get().userCustomServices,
+        );
         const service = getService(serviceId, customList);
         if (!service) {
           return null;
@@ -229,6 +243,16 @@ export const useDesignStore = create<DesignStoreState>()(
         const nodeId = createId('node');
 
         commit((draft) => {
+          // Ensure shared/simulated Design embeds any custom.* definition used on canvas
+          if (service.provider === 'custom') {
+            const embedded = draft.customServices ?? [];
+            if (!embedded.some((c) => c.id === service.id)) {
+              draft.customServices = [
+                ...embedded,
+                structuredClone(service as CustomServiceDefinition),
+              ];
+            }
+          }
           const parentGroup = explicitParentGroupId
             ? draft.groups.find((g) => g.id === explicitParentGroupId)
             : findDeepestContainingGroup({ x: snapped.x + 88, y: snapped.y + 36 }, draft.groups);
@@ -485,12 +509,16 @@ export const useDesignStore = create<DesignStoreState>()(
       },
 
       resetNodeToDefaults: (nodeId) => {
+        const libraryCustom = get().userCustomServices;
         commit((draft) => {
           const node = draft.nodes.find((n) => n.id === nodeId);
           if (!node) {
             return;
           }
-          const service = getService(node.serviceId, draft.customServices ?? []);
+          const service = getService(
+            node.serviceId,
+            mergeCustomServices(draft.customServices, libraryCustom),
+          );
           node.config = createInitialNodeConfig(service);
         });
       },
@@ -539,7 +567,7 @@ export const useDesignStore = create<DesignStoreState>()(
           return null;
         }
 
-        const customList = design.customServices ?? [];
+        const customList = mergeCustomServices(design.customServices, get().userCustomServices);
         const sourceNode = design.nodes.find((n) => n.id === from);
         const targetNode = design.nodes.find((n) => n.id === to);
         if (!sourceNode || !targetNode) {
@@ -651,6 +679,72 @@ export const useDesignStore = create<DesignStoreState>()(
       setPresets: (presets) => {
         set((state) => {
           state.presets = structuredClone(presets);
+        });
+      },
+
+      setUserCustomServices: (services) => {
+        set((state) => {
+          state.userCustomServices = structuredClone(services);
+        });
+      },
+
+      upsertCustomService: (service, opts) => {
+        const previousId = opts?.previousId;
+        const cloned = structuredClone(service);
+        set((state) => {
+          state.userCustomServices = [
+            cloned,
+            ...state.userCustomServices.filter((s) => s.id !== cloned.id && s.id !== previousId),
+          ];
+
+          const existingEmbedded = state.design.customServices ?? [];
+          const hasMatch = existingEmbedded.some(
+            (s) => s.id === cloned.id || (previousId !== undefined && s.id === previousId),
+          );
+          const isUsedOnCanvas = state.design.nodes.some(
+            (n) =>
+              n.serviceId === cloned.id || (previousId !== undefined && n.serviceId === previousId),
+          );
+
+          if (hasMatch || isUsedOnCanvas || opts?.embedInDesign) {
+            state.design.customServices = [
+              structuredClone(cloned),
+              ...existingEmbedded.filter((s) => s.id !== cloned.id && s.id !== previousId),
+            ];
+          }
+          if (previousId && previousId !== cloned.id) {
+            for (const node of state.design.nodes) {
+              if (node.serviceId === previousId) {
+                node.serviceId = cloned.id;
+              }
+            }
+          }
+        });
+      },
+
+      deleteCustomService: (serviceId) => {
+        set((state) => {
+          state.userCustomServices = state.userCustomServices.filter((s) => s.id !== serviceId);
+          const stillUsed = state.design.nodes.some((n) => n.serviceId === serviceId);
+          if (!stillUsed && state.design.customServices) {
+            state.design.customServices = state.design.customServices.filter(
+              (s) => s.id !== serviceId,
+            );
+          }
+        });
+      },
+
+      replaceNodeServiceId: (nodeId, service) => {
+        const cloned = structuredClone(service);
+        commit((draft) => {
+          const embedded = draft.customServices ?? [];
+          draft.customServices = [cloned, ...embedded.filter((s) => s.id !== cloned.id)];
+          const node = draft.nodes.find((n) => n.id === nodeId);
+          if (node) {
+            node.serviceId = cloned.id;
+            node.label = cloned.name;
+            node.config = createInitialNodeConfig(cloned);
+          }
         });
       },
 

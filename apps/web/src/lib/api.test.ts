@@ -1,13 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createCustomServiceApi,
+  deleteCustomServiceApi,
   fetchCurrentUser,
+  fetchCustomServicesApi,
   getApiBaseUrl,
   getStoredToken,
   loginAccount,
   logoutAccount,
   registerAccount,
   setStoredToken,
+  updateCustomServiceApi,
 } from './api';
+import { buildCustomServiceDefinition, createCustomServiceDraft } from './customServices';
 
 describe('api client', () => {
   const originalFetch = globalThis.fetch;
@@ -111,5 +116,42 @@ describe('api client', () => {
     await expect(
       registerAccount({ name: 'Ada', email: 'ada@example.com', password: 'password123' }),
     ).rejects.toThrow('The email has already been taken.');
+  });
+
+  it('lists, creates, updates, and deletes custom services with bearer token', async () => {
+    installMockStorage();
+    const def = buildCustomServiceDefinition(createCustomServiceDraft());
+    const apiRecord = {
+      id: '11111111-1111-1111-1111-111111111111',
+      serviceId: def.id,
+      definition: def,
+    };
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ customServices: [apiRecord] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ customService: apiRecord }), { status: 201 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ customService: apiRecord }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ deleted: true }), { status: 200 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const list = await fetchCustomServicesApi('tok');
+    expect(list).toHaveLength(1);
+    expect(list[0]?.serviceId).toBe(def.id);
+
+    const created = await createCustomServiceApi('tok', def);
+    expect(created.id).toBe(apiRecord.id);
+
+    const updated = await updateCustomServiceApi('tok', def.id, def);
+    expect(updated.serviceId).toBe(def.id);
+
+    await deleteCustomServiceApi('tok', def.id);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });

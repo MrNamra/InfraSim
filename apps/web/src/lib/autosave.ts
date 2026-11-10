@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { CustomPreset, Design } from '@infrasim/shared-types';
+import type { CustomPreset, CustomServiceDefinition, Design } from '@infrasim/shared-types';
 
 export interface StoredDesignRecord {
   id: string;
@@ -15,6 +15,13 @@ export interface StoredPresetRecord {
   preset: CustomPreset;
 }
 
+export interface StoredCustomServiceRecord {
+  id: string;
+  name: string;
+  updatedAt: number;
+  service: CustomServiceDefinition;
+}
+
 export interface StoredMetaRecord {
   key: string;
   value: string;
@@ -23,6 +30,7 @@ export interface StoredMetaRecord {
 class InfraSimDatabase extends Dexie {
   designs!: EntityTable<StoredDesignRecord, 'id'>;
   presets!: EntityTable<StoredPresetRecord, 'id'>;
+  customServices!: EntityTable<StoredCustomServiceRecord, 'id'>;
   meta!: EntityTable<StoredMetaRecord, 'key'>;
 
   constructor() {
@@ -30,6 +38,12 @@ class InfraSimDatabase extends Dexie {
     this.version(1).stores({
       designs: 'id, updatedAt',
       presets: 'id, updatedAt',
+      meta: 'key',
+    });
+    this.version(2).stores({
+      designs: 'id, updatedAt',
+      presets: 'id, updatedAt',
+      customServices: 'id, updatedAt',
       meta: 'key',
     });
   }
@@ -103,4 +117,39 @@ export async function loadPresetsFromIndexedDb(): Promise<CustomPreset[]> {
   }
   const rows = await db.presets.orderBy('updatedAt').reverse().toArray();
   return rows.map((row) => row.preset);
+}
+
+/** Persists a custom service definition to IndexedDB. */
+export async function saveCustomServiceToIndexedDb(
+  service: CustomServiceDefinition,
+): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    return;
+  }
+  await db.customServices.put({
+    id: service.id,
+    name: service.name,
+    updatedAt: Date.now(),
+    service: structuredClone(service),
+  });
+}
+
+/** Loads all user custom services from IndexedDB newest first. */
+export async function loadCustomServicesFromIndexedDb(): Promise<CustomServiceDefinition[]> {
+  const db = getDb();
+  if (!db) {
+    return [];
+  }
+  const rows = await db.customServices.orderBy('updatedAt').reverse().toArray();
+  return rows.map((row) => row.service);
+}
+
+/** Removes a custom service definition from IndexedDB. */
+export async function deleteCustomServiceFromIndexedDb(serviceId: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    return;
+  }
+  await db.customServices.delete(serviceId);
 }

@@ -88,6 +88,7 @@ export interface ServiceIconProps {
   icon: string;
   serviceId?: string;
   className?: string;
+  color?: string;
 }
 
 /** Resolves the bundled static SVG icon URL for a cloud service ID, if present. */
@@ -96,7 +97,12 @@ export function getServiceIconPath(serviceId?: string): string | undefined {
 }
 
 /** Renders the per-service provider SVG when available, falling back to 1.5-stroke line icons for generic/custom blocks. */
-export function ServiceIcon({ icon, serviceId, className = 'h-4 w-4 shrink-0' }: ServiceIconProps) {
+export function ServiceIcon({
+  icon,
+  serviceId,
+  className = 'h-4 w-4 shrink-0',
+  color,
+}: ServiceIconProps) {
   const src = getServiceIconPath(serviceId);
   if (src) {
     return (
@@ -111,7 +117,14 @@ export function ServiceIcon({ icon, serviceId, className = 'h-4 w-4 shrink-0' }:
     );
   }
   const Icon = ICON_MAP[icon] ?? Box;
-  return <Icon className={className} strokeWidth={1.5} aria-hidden="true" />;
+  return (
+    <Icon
+      className={className}
+      strokeWidth={1.5}
+      style={color ? { color } : undefined}
+      aria-hidden="true"
+    />
+  );
 }
 
 export const PROVIDER_META: Record<
