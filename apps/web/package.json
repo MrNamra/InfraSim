@@ -1,0 +1,15 @@
+{
+  "name": "@infrasim/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'Next.js app implemented in T0.4'",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@infrasim/shared-types": "workspace:*",
+    "@infrasim/ui-kit": "workspace:*"
+  }
+}

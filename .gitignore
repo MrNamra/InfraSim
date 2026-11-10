@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+vendor/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Test & coverage
+coverage/
+playwright-report/
+test-results/
+
+# Environments & secrets
+.env
+.env.local
+.env.*.local
+apps/api/.env
+apps/api/.env.testing
+apps/web/.env.local
+
+# Laravel runtime
+apps/api/storage/*.key
+apps/api/storage/logs/*.log
+apps/api/bootstrap/cache/*.php
+
+# Generated / downloaded seed snapshots
+packages/cost-engine/seed/prices.seed.json
+
+# OS / Editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
