@@ -8,4 +8,5 @@ apps/api
 docs/specs
 pnpm-lock.yaml
 packages/*/schemas/*.json
+packages/shared-types/src/generated/**
 packages/catalog/data/*.json

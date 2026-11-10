@@ -10,10 +10,19 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./schemas/design.schema.json": "./schemas/design.schema.json"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "ts-json-schema-generator": "^2.3.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "schema:generate": "tsx scripts/generate-schemas.ts",
+    "schema:check": "tsx scripts/generate-schemas.ts --check"
   }
 }
