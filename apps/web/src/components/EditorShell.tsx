@@ -17,7 +17,6 @@ import {
   Play,
   Redo2,
   RotateCcw,
-  Search,
   Share2,
   Sliders,
   Sun,
@@ -25,25 +24,17 @@ import {
   Undo2,
   User,
 } from 'lucide-react';
+import { getService } from '@infrasim/catalog';
 import { Button, Keycap, LogoMark } from '@infrasim/ui-kit';
 import { fetchCurrentUser, getStoredToken, setStoredToken, type AuthUser } from '../lib/api';
+import { DRAG_SERVICE_MIME } from '../lib/palette';
 import { AccountModal } from './AccountModal';
 import { CommandPalette, type CommandItem } from './CommandPalette';
+import { Palette } from './Palette';
 
 type Theme = 'dark' | 'light';
-type ProviderTab = 'all' | 'aws' | 'gcp' | 'azure' | 'oci' | 'generic' | 'custom';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
 type DockTab = 'metrics' | 'logs' | 'traces' | 'reachability' | 'terraform' | 'cost' | 'insights';
-
-const PROVIDER_TABS: { id: ProviderTab; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'aws', label: 'AWS' },
-  { id: 'gcp', label: 'GCP' },
-  { id: 'azure', label: 'Azure' },
-  { id: 'oci', label: 'OCI' },
-  { id: 'generic', label: 'Generic' },
-  { id: 'custom', label: 'Custom' },
-];
 
 const INSPECTOR_TABS: { id: InspectorTab; label: string }[] = [
   { id: 'config', label: 'Config' },
@@ -67,17 +58,25 @@ const DOCK_TABS: { id: DockTab; label: string; icon: typeof Activity }[] = [
 /** Top-level InfraSim workbench shell (Phase 0 empty panels + theme + command palette). */
 export function EditorShell() {
   const [theme, setTheme] = useState<Theme>('dark');
-  const [providerTab, setProviderTab] = useState<ProviderTab>('all');
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('config');
   const [dockTab, setDockTab] = useState<DockTab>('metrics');
   const [dockCollapsed, setDockCollapsed] = useState(false);
-  const [paletteSearch, setPaletteSearch] = useState('');
   const [speed, setSpeed] = useState<'1' | '5' | '20' | 'max'>('1');
   const [commandOpen, setCommandOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [stagedServices, setStagedServices] = useState<string[]>([]);
+
+  const handleStageService = (serviceId: string) => {
+    const def = getService(serviceId);
+    if (!def) {
+      return;
+    }
+    setStagedServices((prev) => [...prev, def.name]);
+    setStatusNotice(`Queued ${def.name} for canvas`);
+  };
 
   useEffect(() => {
     const saved = window.localStorage.getItem('infrasim.theme');
@@ -328,56 +327,30 @@ export function EditorShell() {
       {/* Main 3-column Workbench */}
       <div className="flex min-h-0 flex-1">
         {/* Left Palette */}
-        <aside
-          data-testid="palette-panel"
-          className="flex w-64 shrink-0 flex-col border-r border-[var(--border-hairline)] bg-[var(--bg-sunken)]"
-        >
-          <div className="border-b border-[var(--border-hairline)] p-3">
-            <div className="flex h-8 items-center gap-2 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2.5">
-              <Search className="h-4 w-4 shrink-0 text-[var(--text-muted)]" strokeWidth={1.5} />
-              <input
-                type="text"
-                value={paletteSearch}
-                onChange={(e) => setPaletteSearch(e.target.value)}
-                placeholder="Search services"
-                className="w-full bg-transparent text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
-              />
-            </div>
-
-            <div className="mt-2 flex flex-wrap gap-1">
-              {PROVIDER_TABS.map((tab) => {
-                const active = providerTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setProviderTab(tab.id)}
-                    className={`h-7 rounded-[6px] px-2 text-[12px] font-medium transition-colors ${
-                      active
-                        ? 'bg-[var(--bg-raised)] text-[var(--text-primary)] ring-1 ring-[var(--border-strong)]'
-                        : 'text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-secondary)]'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex flex-1 flex-col items-center justify-center p-4 text-center">
-            <p className="text-[13px] font-medium text-[var(--text-secondary)]">
-              Service catalog empty
-            </p>
-            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
-              243 AWS, GCP, Azure, and OCI services will appear here once the catalog builds.
-            </p>
-          </div>
-        </aside>
+        <Palette
+          onAddService={handleStageService}
+          onRequestCustomService={() =>
+            setStatusNotice('Custom service editor arrives in Phase 2 (T2.3)')
+          }
+        />
 
         {/* Center Canvas */}
         <main
           data-testid="canvas-panel"
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes(DRAG_SERVICE_MIME)) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }
+          }}
+          onDrop={(e) => {
+            const serviceId =
+              e.dataTransfer.getData(DRAG_SERVICE_MIME) || e.dataTransfer.getData('text/plain');
+            if (serviceId) {
+              e.preventDefault();
+              handleStageService(serviceId);
+            }
+          }}
           className="canvas-dot-grid relative flex min-w-0 flex-1 flex-col items-center justify-center p-6"
         >
           <div className="max-w-md rounded-[14px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-6 text-center shadow-[var(--shadow-floating)]">
@@ -388,8 +361,9 @@ export function EditorShell() {
               Architecture canvas
             </h1>
             <p className="mt-1.5 text-[13px] leading-5 text-[var(--text-secondary)]">
-              Workspace shell booted cleanly. Interactive React Flow nodes, edges, and simulated
-              load visualization arrive in Phase 1.
+              {stagedServices.length > 0
+                ? `${stagedServices.length} service${stagedServices.length === 1 ? '' : 's'} queued: ${stagedServices.slice(-3).join(', ')}. Interactive React Flow nodes arrive in T1.3.`
+                : 'Drag or double-click services from the palette to add them to your design.'}
             </p>
             <div className="mt-4 flex items-center justify-center gap-2">
               <Button variant="secondary" size="sm" onClick={() => setCommandOpen(true)}>

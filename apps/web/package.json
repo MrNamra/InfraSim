@@ -12,12 +12,20 @@
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.1.1",
     "@fontsource/jetbrains-mono": "^5.1.1",
+    "@infrasim/catalog": "workspace:*",
+    "@infrasim/diagnosis": "workspace:*",
     "@infrasim/shared-types": "workspace:*",
+    "@infrasim/sim-engine": "workspace:*",
     "@infrasim/ui-kit": "workspace:*",
+    "@xyflow/react": "^12.12.1",
+    "comlink": "^4.4.2",
+    "dexie": "^4.4.7",
+    "immer": "^11.2.9",
     "lucide-react": "^0.475.0",
     "next": "^15.2.3",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.10",

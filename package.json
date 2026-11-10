@@ -29,6 +29,7 @@
     "ajv": "^8.20.0",
     "eslint": "^9.21.0",
     "eslint-config-prettier": "^10.0.1",
+    "fast-check": "^4.10.2",
     "prettier": "^3.5.2",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
