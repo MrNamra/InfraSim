@@ -606,7 +606,7 @@ export async function runSimulation(
   }
 
   // Schedule Chaos start/end markers
-  for (const chaos of scenario.chaos) {
+  for (const chaos of scenario.chaos ?? []) {
     const startMs = Math.max(0, chaos.atS * 1000);
     const stopMs = startMs + Math.max(0, chaos.durationS * 1000);
     if (startMs < endMs) {

@@ -105,7 +105,7 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
       title={
         frame
           ? `${nodeInstance.label} — ${Math.round(utilization * 100)}% util (${healthInfo?.label ?? ''}), p95 ${Math.round(frame.latency.p95)} ms${topReason ? ` — ${topReason}` : ''}`
-          : `${nodeInstance.label} (${service?.id ?? nodeInstance.serviceId})`
+          : `${nodeInstance.label} (${service?.id ?? nodeInstance.serviceId}) — ${isEdited ? 'edited config' : 'typical default — edit me in Inspector'}`
       }
     >
       {/* Left provider stripe */}

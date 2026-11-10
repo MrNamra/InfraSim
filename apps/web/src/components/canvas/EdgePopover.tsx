@@ -168,7 +168,12 @@ export function EdgePopover({
                 Use placement default
               </button>
             ) : (
-              <span className="text-[11px] text-[var(--text-muted)]">Auto placement</span>
+              <span
+                className="text-[11px] text-[var(--text-muted)]"
+                title="Typical default — edit me"
+              >
+                Auto placement (typical default)
+              </span>
             )}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
