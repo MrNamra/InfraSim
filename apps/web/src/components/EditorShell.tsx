@@ -6,6 +6,7 @@ import {
   Accessibility,
   Activity,
   AlertTriangle,
+  ArrowLeftRight,
   ChevronDown,
   ChevronUp,
   Command,
@@ -38,8 +39,9 @@ import type {
   Provider,
   ServiceDefinition,
 } from '@infrasim/shared-types';
-import { getService } from '@infrasim/catalog';
+import { getService, type CloudTargetProvider } from '@infrasim/catalog';
 import {
+  CURATED_REGION_MAP,
   estimateMonthlyCost,
   listRegionsForProvider,
   summarizeCostBreakdown,
@@ -115,6 +117,10 @@ const InsightsDockTab = dynamic(
 const CostDockTab = dynamic(() => import('./dock/CostDockTab').then((m) => m.CostDockTab), {
   ssr: false,
 });
+const ProviderSwitchModal = dynamic(
+  () => import('./ProviderSwitchModal').then((m) => m.ProviderSwitchModal),
+  { ssr: false },
+);
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -155,6 +161,10 @@ export function EditorShell() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
   const [costPopoverOpen, setCostPopoverOpen] = useState(false);
+  const [providerSwitchModal, setProviderSwitchModal] = useState<{
+    open: boolean;
+    targetProvider?: CloudTargetProvider;
+  }>({ open: false });
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
   const [customModal, setCustomModal] = useState<{
@@ -510,6 +520,34 @@ export function EditorShell() {
     [loadDesign, resetSimulation],
   );
 
+  const handleSelectComparisonRegion = useCallback(
+    (regionCode: string) => {
+      const nextDesign = structuredClone(design);
+      for (const g of nextDesign.groups) {
+        if (g.kind === 'region' || g.region) {
+          g.region = regionCode;
+          if (g.kind === 'region') {
+            g.label = regionCode;
+          }
+        }
+      }
+      for (const n of nextDesign.nodes) {
+        n.region = regionCode;
+      }
+      setPrimaryRegion(regionCode);
+      applyPatchedDesign(nextDesign);
+      setStatusNotice(`Switched region to ${regionCode} — undo with Ctrl+Z`);
+    },
+    [applyPatchedDesign, design],
+  );
+
+  const handleSyncAllComparisonPrices = useCallback(() => {
+    const allRegions = Array.from(
+      new Set([...CURATED_REGION_MAP.flatMap((r) => [r.aws, r.gcp, r.azure, r.oci]), 'global']),
+    );
+    void syncPriceSnapshot(['aws', 'gcp', 'azure', 'oci'], allRegions, { force: true });
+  }, [syncPriceSnapshot]);
+
   const selectedNodeInsightCount = useMemo(() => {
     if (!simResult || !selectedNodeId) return 0;
     return simResult.insights.filter((ins) => ins.nodeIds.includes(selectedNodeId)).length;
@@ -799,6 +837,12 @@ export function EditorShell() {
           }),
       },
       {
+        id: 'switch-cloud-provider',
+        group: 'Cost & Cloud',
+        label: 'Switch cloud provider...',
+        onSelect: () => setProviderSwitchModal({ open: true }),
+      },
+      {
         id: 'open-templates',
         group: 'Templates',
         label: 'Open starter templates gallery',
@@ -929,6 +973,17 @@ export function EditorShell() {
             <option value="azure">Azure</option>
             <option value="oci">OCI</option>
           </select>
+
+          <button
+            type="button"
+            data-testid="topbar-switch-cloud-btn"
+            title="Map topology and cost to another cloud provider"
+            onClick={() => setProviderSwitchModal({ open: true })}
+            className="hidden h-8 shrink-0 items-center gap-1 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] xl:inline-flex"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+            <span className="hidden 2xl:inline">Switch cloud</span>
+          </button>
 
           <select
             aria-label="Primary region"
@@ -1842,11 +1897,21 @@ export function EditorShell() {
               snapshotError={costError}
               lastFetchedAt={costLastFetchedAt}
               isOfflineFallback={costIsOfflineFallback}
+              defaultRegion={primaryRegion}
+              customServices={availableCustomServices}
               onRefreshPrices={() =>
                 void syncPriceSnapshot(snapshotProviders, snapshotRegions, { force: true })
               }
+              onSyncAllCloudsPrices={handleSyncAllComparisonPrices}
               onSelectNode={(nodeId) => handleInspectNode(nodeId, 'cost')}
+              onSelectRegion={handleSelectComparisonRegion}
               onOpenAssumptions={() => setCostPopoverOpen(true)}
+              onOpenProviderSwitch={(targetProv) =>
+                setProviderSwitchModal({
+                  open: true,
+                  ...(targetProv ? { targetProvider: targetProv } : {}),
+                })
+              }
             />
           ) : dockTab === 'insights' ? (
             <InsightsDockTab
@@ -1924,6 +1989,25 @@ export function EditorShell() {
           }))
         }
         onSave={handleSaveCustomService}
+      />
+
+      <ProviderSwitchModal
+        open={providerSwitchModal.open}
+        design={design}
+        simResult={simResult}
+        priceSnapshot={costSnapshot}
+        assumptions={costAssumptions}
+        currentRegion={primaryRegion}
+        customServices={availableCustomServices}
+        initialTargetProvider={providerSwitchModal.targetProvider}
+        onClose={() => setProviderSwitchModal({ open: false })}
+        onApplySwitch={(nextDesign, targetProvider, targetRegion) => {
+          applyPatchedDesign(nextDesign);
+          setPrimaryRegion(targetRegion);
+          setStatusNotice(
+            `Switched architecture to ${targetProvider.toUpperCase()} (${targetRegion}) — undo with Ctrl+Z`,
+          );
+        }}
       />
     </div>
   );

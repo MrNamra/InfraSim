@@ -9,6 +9,7 @@ import {
   RefreshCw,
   SlidersHorizontal,
 } from 'lucide-react';
+import type { CloudTargetProvider } from '@infrasim/catalog';
 import {
   estimateWhatIfCost,
   exportCostCsv,
@@ -17,8 +18,15 @@ import {
   type CostBreakdownMeta,
   type PriceSnapshot,
 } from '@infrasim/cost-engine';
-import type { CostAssumptions, CostReport, Design, SimulationResult } from '@infrasim/shared-types';
+import type {
+  CostAssumptions,
+  CostReport,
+  CustomServiceDefinition,
+  Design,
+  SimulationResult,
+} from '@infrasim/shared-types';
 import { formatMoney, formatSnapshotAge, formatUnitPrice } from '../../lib/costFormat';
+import { CostComparisonView } from './CostComparisonView';
 
 export interface CostDockTabProps {
   design: Design;
@@ -31,12 +39,14 @@ export interface CostDockTabProps {
   snapshotError: string | null;
   lastFetchedAt: string | null;
   isOfflineFallback: boolean;
+  defaultRegion?: string;
+  customServices?: CustomServiceDefinition[];
   onRefreshPrices: () => void;
+  onSyncAllCloudsPrices?: () => void;
   onSelectNode: (nodeId: string) => void;
+  onSelectRegion?: (regionCode: string) => void;
   onOpenAssumptions: () => void;
-  onOpenProviderSwitch?: () => void;
-  /** Optional T2.9 side-by-side provider/region comparison view rendered inside the comparison slot. */
-  comparisonSlot?: React.ReactNode;
+  onOpenProviderSwitch?: (targetProvider?: CloudTargetProvider) => void;
 }
 
 type SortKey = 'subtotal' | 'label' | 'provider';
@@ -65,11 +75,14 @@ export function CostDockTab({
   snapshotError,
   lastFetchedAt,
   isOfflineFallback,
+  defaultRegion = 'us-east-1',
+  customServices = [],
   onRefreshPrices,
+  onSyncAllCloudsPrices,
   onSelectNode,
+  onSelectRegion,
   onOpenAssumptions,
   onOpenProviderSwitch,
-  comparisonSlot,
 }: CostDockTabProps) {
   const [sortKey, setSortKey] = useState<SortKey>('subtotal');
   const [sortDesc, setSortDesc] = useState(true);
@@ -230,7 +243,7 @@ export function CostDockTab({
             <button
               type="button"
               data-testid="cost-switch-provider-btn"
-              onClick={onOpenProviderSwitch}
+              onClick={() => onOpenProviderSwitch()}
               className="inline-flex h-6 items-center gap-1 rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
             >
               <ArrowLeftRight className="h-3 w-3" strokeWidth={1.5} />
@@ -481,20 +494,18 @@ export function CostDockTab({
             >
               Data transfer ({report.transfer.length})
             </button>
-            {comparisonSlot ? (
-              <button
-                type="button"
-                data-testid="cost-subtab-compare"
-                onClick={() => setActiveSubView('compare')}
-                className={`h-6 rounded-[5px] px-2 text-[11px] font-medium transition-colors ${
-                  activeSubView === 'compare'
-                    ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                Compare clouds & regions
-              </button>
-            ) : null}
+            <button
+              type="button"
+              data-testid="cost-subtab-compare"
+              onClick={() => setActiveSubView('compare')}
+              className={`h-6 rounded-[5px] px-2 text-[11px] font-medium transition-colors ${
+                activeSubView === 'compare'
+                  ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              Compare clouds & regions
+            </button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
@@ -613,7 +624,18 @@ export function CostDockTab({
                 </table>
               )
             ) : (
-              comparisonSlot
+              <CostComparisonView
+                design={design}
+                result={result}
+                assumptions={assumptions}
+                snapshot={snapshot}
+                defaultRegion={defaultRegion}
+                customServices={customServices}
+                snapshotLoading={snapshotLoading}
+                onSyncAllCloudsPrices={onSyncAllCloudsPrices}
+                onSwitchProviderClick={(prov) => onOpenProviderSwitch?.(prov)}
+                onSelectRegion={(reg) => onSelectRegion?.(reg)}
+              />
             )}
           </div>
         </div>

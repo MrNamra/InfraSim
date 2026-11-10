@@ -40,3 +40,13 @@ export {
 } from './estimator.js';
 
 export { exportCostCsv, exportCostMarkdown } from './export.js';
+
+export {
+  compareProvidersCost,
+  compareRegionsCost,
+  findBestMatchingInstanceType,
+  type ProviderComparisonResult,
+  type ProviderCostComparisonItem,
+  type RegionComparisonResult,
+  type RegionCostComparisonItem,
+} from './compare.js';

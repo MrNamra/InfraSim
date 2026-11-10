@@ -39,6 +39,20 @@ export {
   type SchemaValidationResult,
 } from './schemaValidator.js';
 
+export {
+  analyzeProviderSwitch,
+  applyProviderSwitch,
+  type AppliedProviderSwitch,
+  type CloudTargetProvider,
+  type InstanceTypeResolverFn,
+  type ProviderSwitchGroupChange,
+  type ProviderSwitchNodeDiff,
+  type ProviderSwitchOptions,
+  type ProviderSwitchPlan,
+  type RegionEquivalenceResolution,
+  type RegionResolverFn,
+} from './providerSwitch.js';
+
 const serviceById = new Map<string, ServiceDefinition>(
   CATALOG_SERVICES.map((service) => [service.id, service]),
 );
