@@ -26,6 +26,9 @@
 
   --shadow-floating: 0 12px 32px rgba(0, 0, 0, 0.48);
   --grid-dot: rgba(237, 237, 237, 0.12);
+  --minimap-mask: rgba(15, 15, 16, 0.58);
+  --minimap-node: #2a2a2d;
+  --attribution-bg: rgba(25, 25, 27, 0.78);
 }
 
 [data-theme='light'] {
@@ -54,6 +57,9 @@
 
   --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.08);
   --grid-dot: rgba(23, 23, 23, 0.14);
+  --minimap-mask: rgba(228, 228, 231, 0.62);
+  --minimap-node: #d4d4d8;
+  --attribution-bg: rgba(255, 255, 255, 0.84);
 }
 
 @media (prefers-reduced-motion: reduce) {

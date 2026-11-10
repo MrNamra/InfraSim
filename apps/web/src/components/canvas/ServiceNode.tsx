@@ -11,6 +11,7 @@ import type {
 import { getService } from '@infrasim/catalog';
 import { formatLatencyShort } from '../../lib/palette';
 import { PROVIDER_META, ServiceIcon } from '../ServiceIcon';
+import { useCanvasSimState } from './CanvasSimContext';
 
 export interface ServiceNodeData extends Record<string, unknown> {
   nodeInstance: NodeInstance;
@@ -32,14 +33,14 @@ const HEALTH_META: Record<HealthState, { symbol: string; label: string; colorVar
 };
 
 function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
-  const {
-    nodeInstance,
-    customService,
-    frame,
-    topReason,
-    allowShake = true,
-    reducedMotion = false,
-  } = data;
+  const { nodeInstance, customService } = data;
+  const simState = useCanvasSimState();
+  const frame = simState ? simState.currentFrame?.nodes[nodeInstance.id] : data.frame;
+  const topReason = simState ? simState.nodeReasons[nodeInstance.id] : data.topReason;
+  const allowShake = simState
+    ? simState.shakingAllowedIds.has(nodeInstance.id)
+    : (data.allowShake ?? true);
+  const reducedMotion = simState ? simState.reducedMotion : (data.reducedMotion ?? false);
   const service = customService ?? getService(nodeInstance.serviceId);
   const provider = service?.provider ?? 'generic';
   const meta = PROVIDER_META[provider];

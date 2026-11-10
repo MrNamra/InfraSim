@@ -1,6 +1,6 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -9,6 +9,8 @@ import {
   type EdgeProps,
 } from '@xyflow/react';
 import type { EdgeFrame, EdgeInstance } from '@infrasim/shared-types';
+import { useCanvasSimState, useEdgePathRegistry } from './CanvasSimContext';
+import { computeEdgeLabelPlacement } from './edgeLabelLayout';
 
 export interface InfraEdgeData extends Record<string, unknown> {
   edgeInstance: EdgeInstance;
@@ -40,11 +42,29 @@ function InfraEdgeComponent({
     targetPosition,
   });
 
+  const simState = useCanvasSimState();
+  const pathRegistry = useEdgePathRegistry();
+
   const edge = data?.edgeInstance;
-  const frame = data?.frame;
+  const frame = simState ? simState.currentFrame?.edges[id] : data?.frame;
   const blocked = Boolean(data?.blockedReason);
-  const reducedMotion = Boolean(data?.reducedMotion);
   const isAsync = edge?.callType === 'async';
+
+  useEffect(() => {
+    if (!pathRegistry) {
+      return;
+    }
+    pathRegistry.registerEdgePath(id, edgePath, blocked);
+  }, [pathRegistry, id, edgePath, blocked]);
+
+  useEffect(() => {
+    if (!pathRegistry) {
+      return;
+    }
+    return () => {
+      pathRegistry.unregisterEdgePath(id);
+    };
+  }, [pathRegistry, id]);
 
   const strokeColor = blocked
     ? 'var(--status-overloaded)'
@@ -58,20 +78,17 @@ function InfraEdgeComponent({
   const protoText = `${edge?.protocol ?? 'https'}${portPart}`;
   const weightText = edge && edge.weight !== 1 ? ` w=${edge.weight}` : '';
   const rpsText = frame && frame.rps > 0 ? ` · ${Math.round(frame.rps)}/s` : '';
+  const labelText = `${blocked ? '✖ ' : ''}${protoText}${weightText}${rpsText}`;
 
-  // Particle dots along active edge (globally capped <= 300 in Canvas.tsx)
-  const particleCount =
-    data?.particleCount !== undefined
-      ? data.particleCount
-      : frame && frame.rps > 0
-        ? Math.min(4, Math.max(1, Math.ceil(Math.log10(frame.rps + 1))))
-        : 0;
-  const particleColor =
-    frame && frame.errorRate > 0.1
-      ? 'var(--status-overloaded)'
-      : frame && frame.avgLatencyMs > 250
-        ? 'var(--status-warm)'
-        : 'var(--status-ok)';
+  const placement = computeEdgeLabelPlacement({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    labelX,
+    labelY,
+    labelTextLength: labelText.length,
+  });
 
   return (
     <>
@@ -85,47 +102,29 @@ function InfraEdgeComponent({
         }}
       />
 
-      {particleCount > 0 && !blocked && !reducedMotion ? (
-        <g aria-hidden="true" className="pointer-events-none">
-          {Array.from({ length: particleCount }).map((_, idx) => (
-            <circle key={idx} r={2.5} fill={particleColor}>
-              <animateMotion
-                dur={`${Math.max(0.6, 1.8 - Math.min(1, (frame?.rps ?? 1) / 500))}s`}
-                begin={`${(idx / particleCount) * 0.9}s`}
-                repeatCount="indefinite"
-                path={edgePath}
-              />
-            </circle>
-          ))}
-        </g>
-      ) : particleCount > 0 && !blocked && reducedMotion ? (
-        <circle
-          cx={(sourceX + targetX) / 2}
-          cy={(sourceY + targetY) / 2}
-          r={2.5}
-          fill={particleColor}
-          aria-hidden="true"
-          className="pointer-events-none"
-        />
-      ) : null}
-
       <EdgeLabelRenderer>
         <div
+          data-testid={`edge-label-${id}`}
+          data-offset={placement.isOffset ? 'true' : 'false'}
           style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            transform: `translate(-50%, -50%) translate(${placement.x}px,${placement.y}px)`,
           }}
-          className={`nodrag nopan pointer-events-auto absolute rounded-[5px] border px-1.5 py-0.5 font-mono text-[10px] tabular-nums transition-colors ${
+          className={`nodrag nopan pointer-events-auto absolute whitespace-nowrap rounded-[5px] border px-1.5 py-0.5 font-mono text-[10px] tabular-nums transition-colors ${
             selected
               ? 'border-[var(--accent)] bg-[var(--bg-raised)] text-[var(--text-primary)]'
               : blocked
                 ? 'border-[var(--status-overloaded)] bg-[var(--bg-surface)] text-[var(--status-overloaded)]'
-                : 'border-[var(--border-hairline)] bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+                : 'border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-secondary)]'
           }`}
         >
-          {blocked ? '✖ ' : ''}
-          {protoText}
-          {weightText}
-          {rpsText}
+          {placement.isOffset && placement.stemHeight > 0 ? (
+            <span
+              aria-hidden="true"
+              style={{ height: `${placement.stemHeight}px` }}
+              className="pointer-events-none absolute left-1/2 top-full w-px -translate-x-1/2 bg-[var(--border-strong)] opacity-60"
+            />
+          ) : null}
+          {labelText}
         </div>
       </EdgeLabelRenderer>
     </>

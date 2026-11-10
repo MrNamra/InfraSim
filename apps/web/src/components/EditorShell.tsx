@@ -514,17 +514,17 @@ export function EditorShell() {
       {/* Top Bar */}
       <header
         data-testid="topbar"
-        className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] px-3"
+        className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] px-3"
       >
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex items-center gap-2 pr-1">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 pr-1">
             <LogoMark className="h-5 w-5 text-[var(--text-primary)]" />
             <span className="text-[16px] font-medium tracking-[-0.01em] text-[var(--text-primary)]">
               InfraSim
             </span>
           </div>
 
-          <div className="h-4 w-px bg-[var(--border-hairline)]" />
+          <div className="h-4 w-px shrink-0 bg-[var(--border-hairline)]" />
 
           {editingTitle ? (
             <input
@@ -539,14 +539,14 @@ export function EditorShell() {
                   setEditingTitle(false);
                 }
               }}
-              className="h-8 w-44 rounded-[8px] border border-[var(--accent)] bg-[var(--bg-raised)] px-2 text-[13px] font-medium text-[var(--text-primary)] focus:outline-none"
+              className="h-8 w-40 shrink rounded-[8px] border border-[var(--accent)] bg-[var(--bg-raised)] px-2 text-[13px] font-medium text-[var(--text-primary)] focus:outline-none"
             />
           ) : (
             <button
               type="button"
               onClick={() => setEditingTitle(true)}
               title="Click to rename architecture"
-              className="flex h-8 max-w-[200px] items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-raised)]"
+              className="flex h-8 min-w-0 max-w-[176px] shrink items-center gap-1.5 rounded-[8px] px-2 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-raised)]"
             >
               <FolderOpen className="h-4 w-4 shrink-0 text-[var(--text-muted)]" strokeWidth={1.5} />
               <span className="truncate">{design.name}</span>
@@ -574,7 +574,7 @@ export function EditorShell() {
             onChange={(e) =>
               updateDesignMeta({ settings: { primaryProvider: e.target.value as Provider } })
             }
-            className="h-8 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
+            className="h-8 shrink-0 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
           >
             <option value="aws">AWS</option>
             <option value="gcp">GCP</option>
@@ -586,7 +586,7 @@ export function EditorShell() {
             aria-label="Primary region"
             value={primaryRegion}
             onChange={(e) => setPrimaryRegion(e.target.value)}
-            className="h-8 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 font-mono text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
+            className="hidden h-8 shrink-0 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 font-mono text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none 2xl:block"
           >
             <option value="us-east-1">us-east-1</option>
             <option value="us-west-2">us-west-2</option>
@@ -595,14 +595,14 @@ export function EditorShell() {
           </select>
 
           {activeScenario ? (
-            <div className="relative">
+            <div className="relative shrink-0">
               <button
                 type="button"
                 data-testid="scenario-button"
                 onClick={() => setScenarioOpen((prev) => !prev)}
                 className="flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2.5 text-[12px] text-[var(--text-primary)] hover:border-[var(--border-strong)]"
               >
-                <span className="truncate max-w-[120px]">{activeScenario.name}</span>
+                <span className="max-w-[112px] truncate">{activeScenario.name}</span>
                 <span className="font-mono text-[11px] text-[var(--text-muted)]">
                   {activeScenario.profile.kind}
                 </span>
@@ -649,7 +649,7 @@ export function EditorShell() {
         </div>
 
         {/* Center run controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <div className="flex items-center gap-1 rounded-[10px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-1">
             {simStatus === 'running' ? (
               <Button
@@ -733,7 +733,7 @@ export function EditorShell() {
         </div>
 
         {/* Right actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -765,8 +765,8 @@ export function EditorShell() {
             className="hidden sm:inline-flex"
           >
             <Command className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
-            <span>Commands</span>
-            <Keycap>Ctrl+K</Keycap>
+            <span className="hidden lg:inline">Commands</span>
+            <Keycap className="hidden 2xl:inline-flex">Ctrl+K</Keycap>
           </Button>
 
           <button
@@ -833,6 +833,7 @@ export function EditorShell() {
 
         <main className="relative flex min-w-0 flex-1">
           <Canvas
+            theme={theme}
             currentFrame={currentFrame}
             nodeReasons={nodeReasons}
             reducedMotion={reducedMotion}

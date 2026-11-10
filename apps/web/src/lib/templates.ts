@@ -19,7 +19,7 @@ function buildThreeTierTemplateDesign(): Design {
       id: 'client',
       serviceId: 'generic.client',
       label: 'Client',
-      position: { x: 64, y: 176 },
+      position: { x: 48, y: 176 },
       config: {
         instances: 1,
         operations: {},
@@ -29,7 +29,7 @@ function buildThreeTierTemplateDesign(): Design {
       id: 'alb',
       serviceId: 'aws.alb',
       label: 'ALB',
-      position: { x: 320, y: 176 },
+      position: { x: 400, y: 176 },
       config: {
         instances: 1,
         latency: { distribution: 'lognormal', p50: 2, p95: 8 },
@@ -40,7 +40,7 @@ function buildThreeTierTemplateDesign(): Design {
       id: 'api',
       serviceId: 'aws.ec2',
       label: 'API Server',
-      position: { x: 592, y: 176 },
+      position: { x: 752, y: 176 },
       config: {
         instances: 1,
         vcpu: 1,
@@ -60,7 +60,7 @@ function buildThreeTierTemplateDesign(): Design {
       id: 'db',
       serviceId: 'aws.rds_postgres',
       label: 'PostgreSQL',
-      position: { x: 864, y: 176 },
+      position: { x: 1104, y: 176 },
       config: {
         instances: 1,
         connections: { max: 40 },
@@ -147,7 +147,7 @@ function buildAddCacheTemplateDesign(): Design {
       id: 'alb',
       serviceId: 'aws.alb',
       label: 'ALB',
-      position: { x: 288, y: 176 },
+      position: { x: 400, y: 176 },
       config: {
         instances: 1,
         latency: { distribution: 'lognormal', p50: 2, p95: 6 },
@@ -158,7 +158,7 @@ function buildAddCacheTemplateDesign(): Design {
       id: 'api',
       serviceId: 'aws.ec2',
       label: 'Read API',
-      position: { x: 528, y: 176 },
+      position: { x: 752, y: 176 },
       config: {
         instances: 4,
         vcpu: 4,
@@ -178,7 +178,7 @@ function buildAddCacheTemplateDesign(): Design {
       id: 'cache',
       serviceId: 'aws.elasticache_redis',
       label: 'Redis Cache',
-      position: { x: 768, y: 176 },
+      position: { x: 1104, y: 176 },
       config: {
         instances: 1,
         cacheHitRatio: 0.85,
@@ -191,7 +191,7 @@ function buildAddCacheTemplateDesign(): Design {
       id: 'db',
       serviceId: 'aws.rds_postgres',
       label: 'PostgreSQL',
-      position: { x: 1008, y: 176 },
+      position: { x: 1456, y: 176 },
       config: {
         instances: 1,
         connections: { max: 12 },

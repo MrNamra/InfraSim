@@ -29,36 +29,91 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* React Flow Graphite theme overrides */
+/* React Flow Graphite theme overrides (higher specificity beats bundled @xyflow/react CSS regardless of import order) */
+[data-theme='dark'] .react-flow,
+[data-theme='light'] .react-flow,
 .react-flow {
-  --xy-background-color-default: var(--bg-canvas);
-  --xy-edge-stroke-default: var(--border-strong);
-  --xy-edge-stroke-selected-default: var(--accent);
-  --xy-connectionline-stroke-default: var(--accent);
-  --xy-controls-button-background-color-default: var(--bg-surface);
-  --xy-controls-button-background-color-hover-default: var(--bg-raised);
-  --xy-controls-button-color-default: var(--text-secondary);
-  --xy-controls-button-color-hover-default: var(--text-primary);
-  --xy-controls-button-border-color-default: var(--border-hairline);
-  --xy-minimap-background-color-default: var(--bg-sunken);
-  --xy-minimap-mask-background-color-default: rgba(15, 15, 16, 0.45);
+  --xy-background-color: var(--bg-canvas);
+  --xy-edge-stroke: var(--border-strong);
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-connectionline-stroke: var(--accent);
+  --xy-controls-button-background-color: var(--bg-surface);
+  --xy-controls-button-background-color-hover: var(--bg-raised);
+  --xy-controls-button-color: var(--text-secondary);
+  --xy-controls-button-color-hover: var(--text-primary);
+  --xy-controls-button-border-color: var(--border-hairline);
+  --xy-controls-box-shadow: none;
+  --xy-minimap-background-color: var(--bg-sunken);
+  --xy-minimap-mask-background-color: var(--minimap-mask);
+  --xy-minimap-node-background-color: var(--minimap-node);
+  --xy-minimap-node-stroke-color: var(--border-strong);
+  --xy-attribution-background-color: var(--attribution-bg);
 }
 
-[data-theme='light'] .react-flow {
-  --xy-minimap-mask-background-color-default: rgba(244, 244, 245, 0.6);
-}
-
-.react-flow__controls {
-  border: 1px solid var(--border-hairline);
+.react-flow .react-flow__controls {
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   overflow: hidden;
+  background-color: var(--bg-surface);
   box-shadow: none;
 }
 
-.react-flow__minimap {
-  border: 1px solid var(--border-hairline);
+.react-flow .react-flow__controls .react-flow__controls-button {
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  background-color: var(--bg-surface);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-hairline);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.react-flow .react-flow__controls .react-flow__controls-button:hover {
+  background-color: var(--bg-raised);
+  color: var(--text-primary);
+}
+
+.react-flow .react-flow__controls .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.react-flow .react-flow__controls .react-flow__controls-button svg {
+  max-width: 12px;
+  max-height: 12px;
+  fill: currentColor;
+}
+
+.react-flow .react-flow__minimap {
+  background-color: var(--bg-sunken);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.react-flow .react-flow__attribution {
+  background-color: var(--attribution-bg);
+  border: 1px solid var(--border-hairline);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 4px;
+  color: var(--text-muted);
+}
+
+.react-flow .react-flow__attribution a {
+  color: var(--text-muted);
+}
+
+/* Edge labels layer sits above ServiceNode cards (zIndex: 10) so tight spacing never clips connector text */
+.react-flow .react-flow__edgelabel-renderer {
+  z-index: 20;
+}
+
+/* Single canvas particle overlay sits above wires and groups (0) and beneath nodes (10) & labels (20) */
+.react-flow .react-flow__viewport-portal {
+  z-index: 5;
+  pointer-events: none;
 }
 
 /* Overloaded node horizontal shake (~80ms period) and reduced-motion outline fallback */

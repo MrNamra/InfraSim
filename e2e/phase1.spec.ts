@@ -56,13 +56,56 @@ test('Phase 1 E2E: starter templates, spike red/shake, reduced motion, Why? fix,
   await assertImgLoaded(page.getByTestId('canvas-node-db').locator('img'));
   await expect(page.getByTestId('canvas-node-client').locator('svg').first()).toBeVisible();
 
-  // 2. Run spike scenario -> API turns red/overloaded + shakes
+  // Verify dark-mode React Flow Controls & MiniMap match Graphite surface instead of light defaults
+  const readBgRgb = async (selector: string) => {
+    return page
+      .locator(selector)
+      .first()
+      .evaluate((el) => {
+        const node = el as unknown as {
+          ownerDocument?: {
+            defaultView?: { getComputedStyle(n: unknown): { backgroundColor: string } };
+          };
+        };
+        const css =
+          node.ownerDocument?.defaultView?.getComputedStyle(el).backgroundColor ??
+          'rgb(255, 255, 255)';
+        const m = css.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [255, 255, 255];
+      });
+  };
+  const ctrlBg = await readBgRgb('.react-flow__controls-button');
+  const mapBg = await readBgRgb('.react-flow__minimap');
+  expect(ctrlBg[0]).toBeLessThan(60);
+  expect(mapBg[0]).toBeLessThan(60);
+
+  // Verify starter template edge label fits clearly without overlapping Client or ALB nodes
+  const edgeLabel = page.getByTestId('edge-label-e-client-alb');
+  await expect(edgeLabel).toBeVisible();
+  const [clientBox0, albBox0, labelBox0] = await Promise.all([
+    page.getByTestId('canvas-node-client').boundingBox(),
+    page.getByTestId('canvas-node-alb').boundingBox(),
+    edgeLabel.boundingBox(),
+  ]);
+  expect(clientBox0 && albBox0 && labelBox0).toBeTruthy();
+  expect(labelBox0!.x).toBeGreaterThanOrEqual(clientBox0!.x + clientBox0!.width - 1);
+  expect(labelBox0!.x + labelBox0!.width).toBeLessThanOrEqual(albBox0!.x + 1);
+
+  // 2. Run spike scenario -> API turns red/overloaded + shakes + single particle canvas layer runs
   await page.getByTestId('run-sim-button').click();
   await expect(page.getByTestId('result-summary-card')).toBeVisible({ timeout: 5000 });
   await expect(apiNode).toHaveAttribute('data-health', 'overloaded');
   await expect(apiNode).toHaveClass(/infrasim-shake/);
   // Never color-only: sr-only/text status & non-color cue present
   await expect(apiNode).toContainText(/Overloaded/i);
+  // Even with live RPS text ("https:443 · 160/s"), starter template label stays inline without clipping
+  await expect(edgeLabel).toHaveAttribute('data-offset', 'false');
+  const particlesCanvas = page.getByTestId('edge-particles-canvas');
+  await expect(particlesCanvas).toBeAttached();
+  await expect(async () => {
+    const count = Number(await particlesCanvas.getAttribute('data-active-particles'));
+    expect(count).toBeGreaterThan(0);
+  }).toPass({ timeout: 2000 });
 
   // 3. Reduced motion fallback via manual toggle AND OS media preference
   await page.getByTestId('reduce-motion-toggle').click();
@@ -144,6 +187,49 @@ test('Phase 1 E2E: starter templates, spike red/shake, reduced motion, Why? fix,
   await page.getByTestId('add-load-generator-btn').click();
   await expect(page.getByTestId('missing-client-prompt')).not.toBeVisible();
   await expect(page.getByTestId('result-summary-card')).toBeVisible({ timeout: 5000 });
+
+  // 9. Drag ALB close to Client -> tight-gap edge label lifts clear above cards instead of hiding underneath
+  const albNode = page.getByTestId('canvas-node-alb');
+  const albDragBox = await albNode.boundingBox();
+  expect(albDragBox).toBeTruthy();
+  await page.mouse.move(
+    albDragBox!.x + albDragBox!.width / 2,
+    albDragBox!.y + albDragBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(albDragBox!.x - 90, albDragBox!.y + albDragBox!.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  const tightLabel = page.getByTestId('edge-label-e-alb-api').first();
+  const albTightEdge = page.locator('[data-testid^="edge-label-"]').first();
+  await expect(albTightEdge).toBeVisible();
+  const clientEdgeBox = await albNode.boundingBox();
+  // Check any lifted edge or move Read API close to ALB to force tight gap cleanly
+  const apiNodeEnd = page.getByTestId('canvas-node-api');
+  const apiBoxEnd = await apiNodeEnd.boundingBox();
+  if (apiBoxEnd && clientEdgeBox) {
+    await page.mouse.move(apiBoxEnd.x + apiBoxEnd.width / 2, apiBoxEnd.y + apiBoxEnd.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      clientEdgeBox.x + clientEdgeBox.width - 10,
+      apiBoxEnd.y + apiBoxEnd.height / 2,
+      {
+        steps: 10,
+      },
+    );
+    await page.mouse.up();
+    await expect(tightLabel).toHaveAttribute('data-offset', 'true');
+    const [tightAlbBox, tightApiBox, tightLabelBox] = await Promise.all([
+      albNode.boundingBox(),
+      apiNodeEnd.boundingBox(),
+      tightLabel.boundingBox(),
+    ]);
+    expect(tightAlbBox && tightApiBox && tightLabelBox).toBeTruthy();
+    // Lifted label bottom sits cleanly above or clear of the card band (never buried inside cards)
+    expect(tightLabelBox!.y + tightLabelBox!.height).toBeLessThanOrEqual(
+      Math.max(tightAlbBox!.y, tightApiBox!.y) + 6,
+    );
+  }
 
   expect(failedIconRequests).toEqual([]);
   expect(pageErrors).toEqual([]);

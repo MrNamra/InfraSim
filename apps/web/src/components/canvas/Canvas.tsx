@@ -37,6 +37,13 @@ import {
 } from '../../lib/canvasGeometry';
 import { DRAG_SERVICE_MIME } from '../../lib/palette';
 import { useDesignStore } from '../../store/designStore';
+import {
+  CanvasSimStateContext,
+  EdgePathRegistryContext,
+  type EdgeGeometryEntry,
+  type EdgePathRegistryValue,
+} from './CanvasSimContext';
+import { EdgeParticlesOverlay } from './EdgeParticlesOverlay';
 import { EdgePopover } from './EdgePopover';
 import { GroupNode, type GroupFlowNode } from './GroupNode';
 import { InfraEdge, type InfraFlowEdge } from './InfraEdge';
@@ -54,6 +61,7 @@ const edgeTypes: EdgeTypes = {
 };
 
 export interface CanvasProps {
+  theme?: 'dark' | 'light';
   currentFrame?: SimFrame | null;
   nodeReasons?: Record<string, string>;
   reducedMotion?: boolean;
@@ -69,6 +77,7 @@ interface ContextMenuState {
 }
 
 function CanvasInner({
+  theme = 'dark',
   currentFrame = null,
   nodeReasons = {},
   reducedMotion = false,
@@ -146,7 +155,6 @@ function CanvasInner({
 
     const flowServices: ServiceFlowNode[] = design.nodes.map((node) => {
       const parentGroup = node.parentGroupId ? groupsById.get(node.parentGroupId) : undefined;
-      const frame = currentFrame?.nodes[node.id];
       return {
         id: node.id,
         type: 'serviceNode',
@@ -156,27 +164,13 @@ function CanvasInner({
         data: {
           nodeInstance: node,
           customService: customMap.get(node.serviceId),
-          frame,
-          topReason: nodeReasons[node.id],
-          allowShake: shakingAllowedIds.has(node.id),
-          reducedMotion,
         },
         zIndex: 10,
       };
     });
 
     return [...flowGroups, ...flowServices];
-  }, [
-    design.groups,
-    design.nodes,
-    design.customServices,
-    selectedGroupId,
-    selectedNodeId,
-    currentFrame,
-    nodeReasons,
-    shakingAllowedIds,
-    reducedMotion,
-  ]);
+  }, [design.groups, design.nodes, design.customServices, selectedGroupId, selectedNodeId]);
 
   const liveNodesRef = useRef<CanvasFlowNode[]>(liveNodes);
   useEffect(() => {
@@ -200,33 +194,62 @@ function CanvasInner({
     return () => window.cancelAnimationFrame(raf);
   }, [design.id, design.nodes.length, design.groups.length, reducedMotion]);
 
-  // Global max <= 300 animated edge particles (reduced by 75% under reduced-motion)
+  // Topology-only React Flow edges; live frame traffic and 60fps particles bypass full-graph rebuilds
   const flowEdges = useMemo<InfraFlowEdge[]>(() => {
-    const budgetTotal = reducedMotion ? 75 : 300;
-    let remaining = budgetTotal;
-    return design.edges.map((edge) => {
-      const frame = currentFrame?.edges[edge.id];
-      const rawDesired =
-        frame && frame.rps > 0 ? Math.min(4, Math.max(1, Math.ceil(Math.log10(frame.rps + 1)))) : 0;
-      const desired =
-        reducedMotion && rawDesired > 0 ? Math.max(1, Math.floor(rawDesired * 0.25)) : rawDesired;
-      const particleCount = Math.min(remaining, desired);
-      remaining -= particleCount;
-      return {
-        id: edge.id,
-        source: edge.from,
-        target: edge.to,
-        type: 'infraEdge',
-        selected: selectedEdgeId === edge.id,
-        data: {
-          edgeInstance: edge,
-          frame,
-          particleCount,
-          reducedMotion,
-        },
-      };
-    });
-  }, [design.edges, selectedEdgeId, currentFrame, reducedMotion]);
+    return design.edges.map((edge) => ({
+      id: edge.id,
+      source: edge.from,
+      target: edge.to,
+      type: 'infraEdge',
+      selected: selectedEdgeId === edge.id,
+      data: {
+        edgeInstance: edge,
+      },
+    }));
+  }, [design.edges, selectedEdgeId]);
+
+  const edgeGeomMapRef = useRef<Map<string, EdgeGeometryEntry>>(new Map());
+  const geomListenersRef = useRef<Set<() => void>>(new Set());
+
+  const edgePathRegistry = useMemo<EdgePathRegistryValue>(() => {
+    const notifyGeometry = () => {
+      for (const listener of geomListenersRef.current) {
+        listener();
+      }
+    };
+    return {
+      registerEdgePath: (edgeId, pathD, blocked) => {
+        const prev = edgeGeomMapRef.current.get(edgeId);
+        if (prev && prev.pathD === pathD && prev.blocked === blocked) {
+          return;
+        }
+        edgeGeomMapRef.current.set(edgeId, { edgeId, pathD, blocked });
+        notifyGeometry();
+      },
+      unregisterEdgePath: (edgeId) => {
+        if (edgeGeomMapRef.current.delete(edgeId)) {
+          notifyGeometry();
+        }
+      },
+      getEdgeGeometries: () => edgeGeomMapRef.current,
+      subscribeGeometry: (listener) => {
+        geomListenersRef.current.add(listener);
+        return () => {
+          geomListenersRef.current.delete(listener);
+        };
+      },
+    };
+  }, []);
+
+  const simContextValue = useMemo(
+    () => ({
+      currentFrame,
+      nodeReasons,
+      shakingAllowedIds,
+      reducedMotion,
+    }),
+    [currentFrame, nodeReasons, shakingAllowedIds, reducedMotion],
+  );
 
   // Register viewport-center getter for double-click insert in Palette
   useEffect(() => {
@@ -476,46 +499,59 @@ function CanvasInner({
       onDrop={onDrop}
       className="relative h-full w-full flex-1 bg-[var(--bg-canvas)]"
     >
-      <ReactFlow<CanvasFlowNode, InfraFlowEdge>
-        nodes={liveNodes}
-        edges={flowEdges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onInit={(instance) => {
-          rfInstanceRef.current = instance;
-          if (design.nodes.length + design.groups.length > 0) {
-            lastFittedDesignIdRef.current = design.id;
-            window.requestAnimationFrame(() => {
-              instance.fitView({ padding: 0.18, duration: 0 });
-            });
-          }
-        }}
-        onNodesChange={handleNodeResizeSync}
-        onNodeDragStop={onNodeDragStop}
-        onConnect={onConnect}
-        onNodeClick={onNodeClick}
-        onNodeDoubleClick={onNodeDoubleClick}
-        onNodeContextMenu={onNodeContextMenu}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        onMoveEnd={onMoveEnd}
-        snapToGrid={snapEnabled}
-        snapGrid={[16, 16]}
-        deleteKeyCode={null}
-        minZoom={0.25}
-        maxZoom={2}
-        fitViewOptions={{ padding: 0.25 }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--grid-dot)" />
-        <Controls position="bottom-left" showInteractive={false} />
-        <MiniMap
-          position="bottom-right"
-          pannable
-          zoomable
-          nodeColor="var(--bg-raised)"
-          nodeStrokeColor="var(--border-strong)"
-        />
-      </ReactFlow>
+      <EdgePathRegistryContext.Provider value={edgePathRegistry}>
+        <CanvasSimStateContext.Provider value={simContextValue}>
+          <ReactFlow<CanvasFlowNode, InfraFlowEdge>
+            colorMode={theme}
+            nodes={liveNodes}
+            edges={flowEdges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onInit={(instance) => {
+              rfInstanceRef.current = instance;
+              if (design.nodes.length + design.groups.length > 0) {
+                lastFittedDesignIdRef.current = design.id;
+                window.requestAnimationFrame(() => {
+                  instance.fitView({ padding: 0.18, duration: 0 });
+                });
+              }
+            }}
+            onNodesChange={handleNodeResizeSync}
+            onNodeDragStop={onNodeDragStop}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
+            onNodeContextMenu={onNodeContextMenu}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={onPaneClick}
+            onMoveEnd={onMoveEnd}
+            snapToGrid={snapEnabled}
+            snapGrid={[16, 16]}
+            deleteKeyCode={null}
+            minZoom={0.25}
+            maxZoom={2}
+            fitViewOptions={{ padding: 0.25 }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={16}
+              size={1}
+              color="var(--grid-dot)"
+            />
+            <EdgeParticlesOverlay theme={theme} />
+            <Controls position="bottom-left" showInteractive={false} />
+            <MiniMap
+              position="bottom-right"
+              pannable
+              zoomable
+              bgColor="var(--bg-sunken)"
+              maskColor="var(--minimap-mask)"
+              nodeColor="var(--minimap-node)"
+              nodeStrokeColor="var(--border-strong)"
+            />
+          </ReactFlow>
+        </CanvasSimStateContext.Provider>
+      </EdgePathRegistryContext.Provider>
 
       {/* Top-right compact canvas controls */}
       <div className="absolute right-4 top-3 z-20 flex items-center gap-1 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-1">
