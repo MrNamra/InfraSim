@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-infrasim}
+      POSTGRES_USER: ${DB_USERNAME:-infrasim}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-infrasim_dev_password}
+    ports:
+      - '${DB_PORT:-5432}:5432'
+    volumes:
+      - infrasim_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-infrasim} -d ${DB_DATABASE:-infrasim}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: infrasim-api:local
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_NAME: ${APP_NAME:-InfraSim}
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-infrasim}
+      DB_USERNAME: ${DB_USERNAME:-infrasim}
+      DB_PASSWORD: ${DB_PASSWORD:-infrasim_dev_password}
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: redis
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost:3000,127.0.0.1:3000}
+      PRICE_SYNC_ENABLED: ${PRICE_SYNC_ENABLED:-false}
+      EXPLAIN_ENABLED: ${EXPLAIN_ENABLED:-false}
+    ports:
+      - '8000:8000'
+    volumes:
+      - ./apps/api:/var/www/html
+      - /var/www/html/vendor
+
+volumes:
+  infrasim_pgdata:
