@@ -1,6 +1,7 @@
 node_modules
 dist
 .next
+.next-dev
 coverage
 playwright-report
 test-results

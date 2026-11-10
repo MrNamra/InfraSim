@@ -7,6 +7,7 @@ vendor/
 dist/
 build/
 .next/
+.next-dev/
 out/
 *.tsbuildinfo
 
