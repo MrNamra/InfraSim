@@ -1,11 +1,21 @@
 'use client';
 
-import { useMemo, useState, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react';
 import { getService } from '@infrasim/catalog';
 import { computeErlangC } from '@infrasim/sim-engine';
 import type { Design, SimulationResult } from '@infrasim/shared-types';
+import { chartClientXToTimeS, chartTimeSToPercent } from '../../lib/chartCursor';
 import { downsampleLttb } from '../../lib/lttb';
 import { computeTheoreticalMaxRps } from '../../lib/nodeDefaults';
+import { formatVirtualTime } from '../../lib/timeFormat';
 
 export interface MetricsDockTabProps {
   design: Design;
@@ -83,6 +93,13 @@ export function MetricsDockTab({
   const [filterNodeId, setFilterNodeId] = useState<string>('__auto__');
   const [showTheory, setShowTheory] = useState(true);
   const [comparePrev, setComparePrev] = useState(true);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [hoverTimeS, setHoverTimeS] = useState<number | null>(null);
+
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const clipId = useId();
+  const onSeekRef = useRef(onSeekToTimeS);
+  onSeekRef.current = onSeekToTimeS;
 
   const effectiveNodeFilter = useMemo(() => {
     if (filterNodeId !== '__auto__') {
@@ -317,7 +334,10 @@ export function MetricsDockTab({
 
     const decimated = lines.map((line) => ({
       ...line,
-      points: downsampleLttb(line.points, 500),
+      points: downsampleLttb(
+        line.points.filter((pt) => pt.x <= durMax),
+        500,
+      ),
     }));
 
     let computedMaxY = chartMode === 'utilization' ? 100 : 1;
@@ -336,6 +356,49 @@ export function MetricsDockTab({
       maxY: computedMaxY * 1.1,
     };
   }, [result, previousResult, effectiveNodeFilter, chartMode, comparePrev, showTheory, design]);
+
+  const svgWidth = 560;
+  const svgHeight = 128;
+  const padX = 4;
+  const padY = 10;
+
+  const maxXRef = useRef(maxX);
+  maxXRef.current = maxX;
+
+  useEffect(() => {
+    if (!isScrubbing) {
+      return;
+    }
+    const seekAtClientX = (clientX: number) => {
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const targetS = chartClientXToTimeS(
+        clientX,
+        rect.left,
+        rect.width,
+        maxXRef.current,
+        svgWidth,
+        padX,
+      );
+      setHoverTimeS(targetS);
+      onSeekRef.current(targetS);
+    };
+    const handleWindowMove = (ev: globalThis.PointerEvent) => {
+      seekAtClientX(ev.clientX);
+    };
+    const handleWindowUp = () => {
+      setIsScrubbing(false);
+    };
+    window.addEventListener('pointermove', handleWindowMove);
+    window.addEventListener('pointerup', handleWindowUp);
+    window.addEventListener('pointercancel', handleWindowUp);
+    return () => {
+      window.removeEventListener('pointermove', handleWindowMove);
+      window.removeEventListener('pointerup', handleWindowUp);
+      window.removeEventListener('pointercancel', handleWindowUp);
+    };
+  }, [isScrubbing]);
 
   if (!result) {
     return (
@@ -363,16 +426,60 @@ export function MetricsDockTab({
     ? result.perNode[result.bottleneckNodeId]
     : undefined;
 
-  const svgWidth = 560;
-  const svgHeight = 128;
-  const padX = 4;
-  const padY = 10;
-
-  const handleSvgClick = (e: MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
-    onSeekToTimeS(Math.round(frac * maxX));
+  const resolveTimeFromClientX = (clientX: number): number => {
+    const svg = svgRef.current;
+    if (!svg) return 0;
+    const rect = svg.getBoundingClientRect();
+    return chartClientXToTimeS(clientX, rect.left, rect.width, maxX, svgWidth, padX);
   };
+
+  const handleSvgPointerDown = (e: PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) {
+      return;
+    }
+    e.preventDefault();
+    const targetS = resolveTimeFromClientX(e.clientX);
+    setHoverTimeS(targetS);
+    setIsScrubbing(true);
+    onSeekToTimeS(targetS);
+  };
+
+  const handleSvgPointerMove = (e: PointerEvent<SVGSVGElement>) => {
+    if (isScrubbing) {
+      return;
+    }
+    setHoverTimeS(resolveTimeFromClientX(e.clientX));
+  };
+
+  const handleSvgKeyDown = (e: KeyboardEvent<SVGSVGElement>) => {
+    const step = e.shiftKey ? Math.max(1, maxX / 10) : Math.max(0.1, Math.min(1, maxX / 30));
+    const baseTime = currentTimeS ?? 0;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      onSeekToTimeS(Math.max(0, Number((baseTime - step).toFixed(2))));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      onSeekToTimeS(Math.min(maxX, Number((baseTime + step).toFixed(2))));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      onSeekToTimeS(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      onSeekToTimeS(maxX);
+    }
+  };
+
+  const cursorPct =
+    currentTimeS !== null ? chartTimeSToPercent(currentTimeS, maxX, svgWidth, padX) : null;
+  const hoverSvgX =
+    hoverTimeS !== null
+      ? padX + (Math.min(maxX, Math.max(0, hoverTimeS)) / Math.max(1, maxX)) * (svgWidth - padX * 2)
+      : null;
+  const cursorSvgX =
+    currentTimeS !== null
+      ? padX +
+        (Math.min(maxX, Math.max(0, currentTimeS)) / Math.max(1, maxX)) * (svgWidth - padX * 2)
+      : null;
 
   return (
     <div data-testid="metrics-dock-tab" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -525,65 +632,128 @@ export function MetricsDockTab({
                 <span>0</span>
               </div>
 
-              <svg
-                data-testid="metrics-hero-chart"
-                viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                preserveAspectRatio="none"
-                onClick={handleSvgClick}
-                role="img"
-                aria-label={`Time series chart showing ${MODE_LABELS.find((m) => m.id === chartMode)?.label ?? chartMode}`}
-                className="h-full w-full cursor-crosshair select-none rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)]"
-              >
-                {/* Horizontal muted reference lines */}
-                {[0, 0.5, 1].map((frac) => {
-                  const py = padY + (svgHeight - padY * 2) * (1 - frac);
-                  return (
+              <div className="relative h-full min-w-0 flex-1 select-none">
+                <svg
+                  ref={svgRef}
+                  data-testid="metrics-hero-chart"
+                  viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                  preserveAspectRatio="none"
+                  tabIndex={0}
+                  onPointerDown={handleSvgPointerDown}
+                  onPointerMove={handleSvgPointerMove}
+                  onPointerLeave={() => {
+                    if (!isScrubbing) {
+                      setHoverTimeS(null);
+                    }
+                  }}
+                  onKeyDown={handleSvgKeyDown}
+                  role="slider"
+                  aria-label={`Timeline cursor for ${MODE_LABELS.find((m) => m.id === chartMode)?.label ?? chartMode}`}
+                  aria-valuemin={0}
+                  aria-valuemax={maxX}
+                  aria-valuenow={Number((currentTimeS ?? 0).toFixed(2))}
+                  aria-valuetext={
+                    currentTimeS !== null ? formatVirtualTime(currentTimeS * 1000) : undefined
+                  }
+                  className="h-full w-full touch-none cursor-ew-resize select-none rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--accent)]"
+                >
+                  <defs>
+                    <clipPath id={clipId}>
+                      <rect x={padX} y={0} width={svgWidth - padX * 2} height={svgHeight} />
+                    </clipPath>
+                  </defs>
+
+                  {/* Horizontal muted reference lines */}
+                  {[0, 0.5, 1].map((frac) => {
+                    const py = padY + (svgHeight - padY * 2) * (1 - frac);
+                    return (
+                      <line
+                        key={frac}
+                        x1={padX}
+                        x2={svgWidth - padX}
+                        y1={py}
+                        y2={py}
+                        stroke="var(--border-hairline)"
+                        strokeWidth={1}
+                      />
+                    );
+                  })}
+
+                  {/* Series polylines */}
+                  <g clipPath={`url(#${clipId})`}>
+                    {seriesLines.map((line) => (
+                      <path
+                        key={line.id}
+                        d={buildPolylinePath(
+                          line.points,
+                          maxX,
+                          maxY,
+                          svgWidth,
+                          svgHeight,
+                          padX,
+                          padY,
+                        )}
+                        fill="none"
+                        stroke={line.color}
+                        strokeWidth={line.dashed ? 1.25 : 1.75}
+                        strokeDasharray={line.dashed ? '4 3' : undefined}
+                      />
+                    ))}
+                  </g>
+
+                  {/* Hover guide */}
+                  {hoverSvgX !== null && !isScrubbing ? (
                     <line
-                      key={frac}
-                      x1={padX}
-                      x2={svgWidth - padX}
-                      y1={py}
-                      y2={py}
-                      stroke="var(--border-hairline)"
+                      x1={hoverSvgX}
+                      x2={hoverSvgX}
+                      y1={padY}
+                      y2={svgHeight - padY}
+                      stroke="var(--text-muted)"
                       strokeWidth={1}
+                      strokeDasharray="2 3"
+                      opacity={0.55}
                     />
-                  );
-                })}
+                  ) : null}
 
-                {/* Series polylines */}
-                {seriesLines.map((line) => (
-                  <path
-                    key={line.id}
-                    d={buildPolylinePath(line.points, maxX, maxY, svgWidth, svgHeight, padX, padY)}
-                    fill="none"
-                    stroke={line.color}
-                    strokeWidth={line.dashed ? 1.25 : 1.75}
-                    strokeDasharray={line.dashed ? '4 3' : undefined}
-                  />
-                ))}
+                  {/* Active scrubber vertical playhead */}
+                  {cursorSvgX !== null ? (
+                    <line
+                      x1={cursorSvgX}
+                      x2={cursorSvgX}
+                      y1={4}
+                      y2={svgHeight - 4}
+                      stroke="var(--text-primary)"
+                      strokeWidth={1.5}
+                      opacity={0.85}
+                    />
+                  ) : null}
+                </svg>
 
-                {/* Active scrubber time marker */}
-                {currentTimeS !== null ? (
-                  <line
-                    x1={
-                      padX +
-                      (Math.min(maxX, Math.max(0, currentTimeS)) / Math.max(1, maxX)) *
-                        (svgWidth - padX * 2)
-                    }
-                    x2={
-                      padX +
-                      (Math.min(maxX, Math.max(0, currentTimeS)) / Math.max(1, maxX)) *
-                        (svgWidth - padX * 2)
-                    }
-                    y1={padY}
-                    y2={svgHeight - padY}
-                    stroke="var(--text-primary)"
-                    strokeWidth={1}
-                    strokeDasharray="2 2"
-                    opacity={0.5}
-                  />
+                {/* Non-stretched HTML cursor handle & tabular timestamp readout */}
+                {cursorPct !== null && currentTimeS !== null ? (
+                  <div
+                    data-testid="metrics-chart-cursor"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute bottom-1 top-1 z-10"
+                    style={{ left: `${cursorPct}%` }}
+                  >
+                    <div
+                      className={`h-2.5 w-2.5 -translate-x-1/2 -translate-y-0.5 rounded-full border border-[var(--bg-surface)] transition-colors ${
+                        isScrubbing ? 'bg-[var(--accent)]' : 'bg-[var(--text-primary)]'
+                      }`}
+                    />
+                    <span
+                      className="absolute top-0.5 whitespace-nowrap rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-1 py-px font-mono text-[10px] leading-tight tabular-nums text-[var(--text-primary)]"
+                      style={{
+                        left: cursorPct > 84 ? 'auto' : '6px',
+                        right: cursorPct > 84 ? '6px' : 'auto',
+                      }}
+                    >
+                      {formatVirtualTime(currentTimeS * 1000)}
+                    </span>
+                  </div>
                 ) : null}
-              </svg>
+              </div>
             </div>
 
             <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
@@ -602,7 +772,10 @@ export function MetricsDockTab({
                 ))}
               </div>
               <span className="font-mono tabular-nums">
-                Unit: {yUnit} · Click chart to scrub time
+                {hoverTimeS !== null && !isScrubbing
+                  ? `Hover ${formatVirtualTime(hoverTimeS * 1000)} · `
+                  : ''}
+                Unit: {yUnit} · Drag or click chart to scrub
               </span>
             </div>
           </div>

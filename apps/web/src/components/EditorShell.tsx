@@ -144,7 +144,7 @@ export function EditorShell() {
   const missingClientPromptOpen = useSimulationStore((s) => s.missingClientPromptOpen);
 
   const startSimulation = useSimulationStore((s) => s.runSimulation);
-  const cancelSimulation = useSimulationStore((s) => s.cancelRun);
+  const stopPlayback = useSimulationStore((s) => s.stopPlayback);
   const togglePausePlayback = useSimulationStore((s) => s.togglePausePlayback);
   const scrubTo = useSimulationStore((s) => s.scrubTo);
   const seekToTimeS = useSimulationStore((s) => s.seekToTimeS);
@@ -154,6 +154,7 @@ export function EditorShell() {
   const resetSimulation = useSimulationStore((s) => s.resetSimulation);
 
   const reducedMotion = systemReducedMotion || reduceMotionOverride;
+  const isSimActive = simStatus === 'running' || simPlaying;
 
   const currentFrame = useMemo(
     () =>
@@ -397,10 +398,10 @@ export function EditorShell() {
       {
         id: 'run-sim',
         group: 'Simulation',
-        label: simStatus === 'running' ? 'Stop simulation' : 'Run simulation',
+        label: isSimActive ? 'Stop simulation' : 'Run simulation',
         onSelect: () => {
-          if (simStatus === 'running') {
-            cancelSimulation();
+          if (isSimActive) {
+            stopPlayback();
           } else {
             void handleRunSimulation();
           }
@@ -494,8 +495,8 @@ export function EditorShell() {
       },
     ],
     [
-      simStatus,
-      cancelSimulation,
+      isSimActive,
+      stopPlayback,
       handleRunSimulation,
       resetSimulation,
       handleLoadTemplate,
@@ -651,12 +652,13 @@ export function EditorShell() {
         {/* Center run controls */}
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex items-center gap-1 rounded-[10px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-1">
-            {simStatus === 'running' ? (
+            {isSimActive ? (
               <Button
                 variant="secondary"
                 size="sm"
                 data-testid="stop-sim-button"
-                onClick={cancelSimulation}
+                onClick={stopPlayback}
+                title={simStatus === 'running' ? 'Stop simulation run' : 'Stop playback'}
                 className="h-7 px-3 text-[12px] text-[var(--status-overloaded)]"
               >
                 <Square className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -679,6 +681,7 @@ export function EditorShell() {
               type="button"
               data-testid="pause-sim-button"
               aria-label={simPlaying ? 'Pause playback' : 'Play buffered frames'}
+              title={simPlaying ? 'Pause playback' : 'Play buffered frames'}
               disabled={simStatus === 'running' || simFrames.length === 0}
               onClick={togglePausePlayback}
               className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] disabled:opacity-40"
@@ -694,6 +697,7 @@ export function EditorShell() {
               type="button"
               data-testid="reset-sim-button"
               aria-label="Reset simulation"
+              title="Reset simulation"
               disabled={simFrames.length === 0 && !simResult && simStatus === 'idle'}
               onClick={() => resetSimulation(false)}
               className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] disabled:opacity-40"

@@ -153,19 +153,58 @@ test('Phase 1 E2E: starter templates, spike red/shake, reduced motion, Why? fix,
   const summaryTextAfter = await page.getByTestId('result-summary-card').textContent();
   expect(summaryTextAfter).not.toEqual(summaryTextBefore);
 
-  // 6. Metrics dock charts + scrubber + theory overlay
+  // 6. Metrics dock charts + interactive drag cursor + Stop button during 1x/custom playback
   await page.getByTestId('dock-tab-metrics').click();
-  await expect(page.getByTestId('metrics-hero-chart')).toBeVisible();
-  const pathsCount = await page.getByTestId('metrics-hero-chart').locator('path').count();
+  const chart = page.getByTestId('metrics-hero-chart');
+  await expect(chart).toBeVisible();
+  const pathsCount = await chart.locator('path').count();
   expect(pathsCount).toBeGreaterThanOrEqual(2);
   await expect(page.getByTestId('sim-scrubber')).toBeVisible();
   await expect(page.getByTestId('sim-time-readout')).toContainText('t =');
+  await expect(page.getByTestId('metrics-chart-cursor')).toBeVisible();
+
+  // Switch Scenario -> custom shape -> edit/click custom arrival curve -> run at 1x speed
+  await page.getByTestId('scenario-button').click();
+  await expect(page.getByTestId('traffic-profile-editor')).toBeVisible();
+  await page.getByLabel('Traffic curve shape').selectOption('custom');
+  await page.getByRole('button', { name: 'Add custom timeline point' }).click();
+  await expect(page.getByLabel('Point 5 second')).toBeVisible();
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  await page.getByTestId('sim-speed-select').selectOption('1');
+  await page.getByTestId('run-sim-button').click();
+  await expect(page.getByTestId('result-summary-card')).toBeVisible({ timeout: 5000 });
+  // Play/Run button stays converted to Stop for active buffered playback too
+  await expect(page.getByTestId('stop-sim-button')).toBeVisible();
+  await expect(page.getByTestId('run-sim-button')).toHaveCount(0);
+  await expect(page.getByTestId('pause-sim-button')).toHaveAttribute(
+    'aria-label',
+    'Pause playback',
+  );
+
+  // Drag cursor across custom timeline chart (releasing outside SVG border still tracks smoothly)
+  const chartBox = await chart.boundingBox();
+  expect(chartBox).toBeTruthy();
+  await page.mouse.move(chartBox!.x + chartBox!.width * 0.2, chartBox!.y + chartBox!.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(chartBox!.x + chartBox!.width * 0.75, chartBox!.y + chartBox!.height + 12, {
+    steps: 8,
+  });
+  // Dragging cursor updates playhead to ~75% of 30s (00:22.x) AND pauses active playback cleanly
+  await expect(page.getByTestId('sim-time-readout')).toContainText(/t = 00:2[123]\./);
+  await page.mouse.up();
+  await expect(page.getByTestId('run-sim-button')).toBeVisible();
+
+  // Buffered Play button starts playback even from stopped state & converts primary button to Stop
+  await page.getByTestId('pause-sim-button').click();
+  await expect(page.getByTestId('stop-sim-button')).toBeVisible();
+  await page.getByTestId('stop-sim-button').click();
+  await expect(page.getByTestId('run-sim-button')).toBeVisible();
+  await page.getByTestId('sim-speed-select').selectOption('max');
 
   // Switch chart mode to Latency (shows p50/p95/p99 + Erlang C)
   await page.getByRole('button', { name: 'Latency (p50/p95/p99)' }).click();
-  expect(
-    await page.getByTestId('metrics-hero-chart').locator('path').count(),
-  ).toBeGreaterThanOrEqual(3);
+  expect(await chart.locator('path').count()).toBeGreaterThanOrEqual(3);
 
   // 7. Load Template 2 ("Add a cache") -> DB remains healthy under 400 RPS
   await page.getByTestId('open-templates-button').click();

@@ -73,6 +73,7 @@ export interface SimulationStoreState {
     opts?: { allowMissingClient?: boolean; seedOverride?: number },
   ) => Promise<{ started: boolean; reason?: 'no-client' | 'no-nodes' | 'aborted' | 'error' }>;
   cancelRun: () => void;
+  stopPlayback: () => void;
   togglePausePlayback: () => void;
   scrubTo: (idx: number) => void;
   seekToTimeS: (tS: number) => void;
@@ -243,8 +244,19 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
     });
   },
 
+  stopPlayback: () => {
+    const { status, playing } = get();
+    if (status === 'running') {
+      get().cancelRun();
+      return;
+    }
+    if (playing) {
+      set({ playing: false });
+    }
+  },
+
   togglePausePlayback: () => {
-    const { status, playing, frames, playbackIdx } = get();
+    const { status, playing, frames, playbackIdx, speed } = get();
     if (status === 'running') {
       get().cancelRun();
       return;
@@ -261,6 +273,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
     set({
       playbackIdx: restartIdx,
       virtualPlayheadMs: frames[restartIdx]?.tVirtualMs ?? 0,
+      speed: speed === 'max' ? '1' : speed,
       playing: true,
     });
   },
@@ -284,13 +297,22 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       return;
     }
     const targetMs = Math.max(0, tS * 1000);
-    let bestIdx = 0;
-    let bestDiff = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < frames.length; i++) {
-      const diff = Math.abs(frames[i]!.tVirtualMs - targetMs);
-      if (diff < bestDiff) {
-        bestDiff = diff;
-        bestIdx = i;
+    let lo = 0;
+    let hi = frames.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (frames[mid]!.tVirtualMs < targetMs) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    let bestIdx = lo;
+    if (lo > 0) {
+      const prevDiff = Math.abs(targetMs - frames[lo - 1]!.tVirtualMs);
+      const currDiff = Math.abs(frames[lo]!.tVirtualMs - targetMs);
+      if (prevDiff < currDiff) {
+        bestIdx = lo - 1;
       }
     }
     set({
