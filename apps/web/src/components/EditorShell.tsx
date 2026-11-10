@@ -13,6 +13,7 @@ import {
   FolderOpen,
   HelpCircle,
   Layers,
+  LayoutTemplate,
   Moon,
   Network,
   Pause,
@@ -37,6 +38,7 @@ import {
   saveDesignToIndexedDb,
 } from '../lib/autosave';
 import { formatVirtualTime } from '../lib/timeFormat';
+import { STARTER_TEMPLATES, type StarterTemplate } from '../lib/templates';
 import { useDesignStore } from '../store/designStore';
 import { type SimSpeed, useSimulationStore } from '../store/simulationStore';
 import { AccountModal } from './AccountModal';
@@ -48,6 +50,7 @@ import { ConfigTab } from './inspector/ConfigTab';
 import { LatencyMockTab } from './inspector/LatencyMockTab';
 import { WhyTab } from './inspector/WhyTab';
 import { Palette } from './Palette';
+import { TemplateModal } from './TemplateModal';
 import { TrafficProfileEditor } from './TrafficProfileEditor';
 
 type Theme = 'dark' | 'light';
@@ -80,6 +83,7 @@ export function EditorShell() {
   const [dockTab, setDockTab] = useState<DockTab>('metrics');
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -326,6 +330,17 @@ export function EditorShell() {
     void startSimulation(useDesignStore.getState().design, activeScenarioId);
   }, [activeScenarioId, startSimulation]);
 
+  const handleLoadTemplate = useCallback(
+    (template: StarterTemplate) => {
+      loadDesign(structuredClone(template.design), true);
+      resetSimulation(true);
+      setAppliedFixLabel(null);
+      setStatusNotice(null);
+      setScenarioOpen(false);
+    },
+    [loadDesign, resetSimulation],
+  );
+
   const selectedNodeInsightCount = useMemo(() => {
     if (!simResult || !selectedNodeId) return 0;
     return simResult.insights.filter((ins) => ins.nodeIds.includes(selectedNodeId)).length;
@@ -459,6 +474,18 @@ export function EditorShell() {
         onSelect: () => setInspectorTab('why'),
       },
       {
+        id: 'open-templates',
+        group: 'Templates',
+        label: 'Open starter templates gallery',
+        onSelect: () => setTemplatesOpen(true),
+      },
+      ...STARTER_TEMPLATES.map((tpl) => ({
+        id: `load-template-${tpl.id}`,
+        group: 'Templates',
+        label: `Load template: ${tpl.title}`,
+        onSelect: () => handleLoadTemplate(tpl),
+      })),
+      {
         id: 'open-account',
         group: 'Account',
         label: user ? 'View account' : 'Sign in or register',
@@ -470,6 +497,7 @@ export function EditorShell() {
       cancelSimulation,
       handleRunSimulation,
       resetSimulation,
+      handleLoadTemplate,
       reduceMotionOverride,
       setReduceMotionOverride,
       theme,
@@ -527,6 +555,17 @@ export function EditorShell() {
               />
             </button>
           )}
+
+          <button
+            type="button"
+            data-testid="open-templates-button"
+            onClick={() => setTemplatesOpen(true)}
+            title="Starter templates"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2.5 text-[12px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+          >
+            <LayoutTemplate className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+            <span>Templates</span>
+          </button>
 
           <select
             aria-label="Primary provider"
@@ -797,9 +836,7 @@ export function EditorShell() {
             nodeReasons={nodeReasons}
             reducedMotion={reducedMotion}
             onInspectNode={handleInspectNode}
-            onLoadTemplateClick={() =>
-              setStatusNotice('Starter 3-tier & Cache templates activate in T1.11')
-            }
+            onLoadTemplateClick={() => setTemplatesOpen(true)}
             registerViewportCenterGetter={(getter) => {
               viewportCenterGetterRef.current = getter;
             }}
@@ -1144,6 +1181,12 @@ export function EditorShell() {
         open={commandOpen}
         onClose={() => setCommandOpen(false)}
         commands={commands}
+      />
+
+      <TemplateModal
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        onSelectTemplate={handleLoadTemplate}
       />
 
       <AccountModal

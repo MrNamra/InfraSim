@@ -113,6 +113,7 @@ interface CallOutcome {
 
 interface AttemptToken {
   settled: boolean;
+  inTimeoutHeap: boolean;
   edgeState: RuntimeEdge;
   attempt: OutboundAttempt;
   targetCall?: CallCtx;
@@ -251,8 +252,16 @@ interface RuntimeNode {
   bucketDrops: number;
   bucketThrottled: number;
   bucketHist: LogHistogram;
-  // Sub-second rolling EMA rate for frame updates
+  // Sub-second integrated frame utilization snapshots
   lastFrameCheckMs: number;
+  totalBucketedSlotAreaMs: number;
+  totalBucketedCoreAreaMs: number;
+  totalBucketedConnAreaMs: number;
+  prevFrameCumSlotAreaMs: number;
+  prevFrameCumCoreAreaMs: number;
+  prevFrameCumConnAreaMs: number;
+  lastFrameUtil: number;
+  lastFrameCpuUtil: number;
   frameArrivals: number;
   frameCompletions: number;
   frameErrors: Partial<Record<ErrorKind, number>>;
@@ -409,6 +418,14 @@ export async function runSimulation(
       bucketThrottled: 0,
       bucketHist: new LogHistogram(),
       lastFrameCheckMs: 0,
+      totalBucketedSlotAreaMs: 0,
+      totalBucketedCoreAreaMs: 0,
+      totalBucketedConnAreaMs: 0,
+      prevFrameCumSlotAreaMs: 0,
+      prevFrameCumCoreAreaMs: 0,
+      prevFrameCumConnAreaMs: 0,
+      lastFrameUtil: 0,
+      lastFrameCpuUtil: 0,
       frameArrivals: 0,
       frameCompletions: 0,
       frameErrors: {},
@@ -484,6 +501,7 @@ export async function runSimulation(
     if (deadlineMs >= endMs) {
       return;
     }
+    token.inTimeoutHeap = true;
     activeTimeoutCount += 1;
     timeoutHeap.push({ deadlineMs, seq: ++seqCounter, token });
   };
@@ -834,6 +852,7 @@ export async function runSimulation(
 
     const token: AttemptToken = {
       settled: false,
+      inTimeoutHeap: false,
       edgeState,
       attempt: attemptState,
     };
@@ -880,7 +899,9 @@ export async function runSimulation(
           return;
         }
         token.settled = true;
-        activeTimeoutCount = Math.max(0, activeTimeoutCount - 1);
+        if (token.inTimeoutHeap) {
+          activeTimeoutCount = Math.max(0, activeTimeoutCount - 1);
+        }
         while (!timeoutHeap.isEmpty() && timeoutHeap.peek()!.token.settled) {
           timeoutHeap.pop();
         }
@@ -1381,6 +1402,10 @@ export async function runSimulation(
 
     const perNodeBucket: TimeSeriesBucket['perNode'] = {};
     for (const rn of orderedNodes) {
+      advanceStationIntegrals(rn.station, bucketEndMs);
+      rn.totalBucketedSlotAreaMs += rn.station.slotBusyAreaMs;
+      rn.totalBucketedCoreAreaMs += rn.station.coreBusyAreaMs;
+      rn.totalBucketedConnAreaMs += rn.station.connBusyAreaMs;
       const integrals = consumeStationWindowIntegrals(rn.station, bucketEndMs, windowMs);
       const rawUtil = Math.max(integrals.slotUtil, integrals.cpuUtil, integrals.connUtil);
       const activeWaiters = rn.dbWaitQueue.reduce((acc, w) => (w.expired ? acc : acc + 1), 0);
@@ -1473,16 +1498,54 @@ export async function runSimulation(
               ),
             )
           : 0;
-      const instSlotUtil = rn.station.inFlight / activeSlots;
-      const instCpuUtil = activeCores > 0 ? rn.station.busyCores / activeCores : 0;
-      const instConnUtil =
-        rn.station.connectionsMax && rn.station.connectionsMax > 0
-          ? rn.station.busyConnections / rn.station.connectionsMax
-          : 0;
+
+      const totalSlotNow = rn.totalBucketedSlotAreaMs + rn.station.slotBusyAreaMs;
+      const totalCoreNow = rn.totalBucketedCoreAreaMs + rn.station.coreBusyAreaMs;
+      const totalConnNow = rn.totalBucketedConnAreaMs + rn.station.connBusyAreaMs;
+
+      const frameDtMs = now - rn.lastFrameCheckMs;
+      let frameSlotUtil = rn.lastFrameUtil;
+      let frameCpuUtil = rn.lastFrameCpuUtil;
+      let frameConnUtil = 0;
+
+      if (frameDtMs >= 1) {
+        const dSlot = Math.max(0, totalSlotNow - rn.prevFrameCumSlotAreaMs);
+        const dCore = Math.max(0, totalCoreNow - rn.prevFrameCumCoreAreaMs);
+        const dConn = Math.max(0, totalConnNow - rn.prevFrameCumConnAreaMs);
+
+        frameSlotUtil = rn.station.instancesActive <= 0 ? 0 : dSlot / (frameDtMs * activeSlots);
+        frameCpuUtil =
+          activeCores > 0 && rn.station.instancesActive > 0 ? dCore / (frameDtMs * activeCores) : 0;
+        frameConnUtil =
+          rn.station.connectionsMax &&
+          rn.station.connectionsMax > 0 &&
+          rn.station.instancesActive > 0
+            ? dConn / (frameDtMs * rn.station.connectionsMax)
+            : 0;
+
+        rn.lastFrameCheckMs = now;
+        rn.prevFrameCumSlotAreaMs = totalSlotNow;
+        rn.prevFrameCumCoreAreaMs = totalCoreNow;
+        rn.prevFrameCumConnAreaMs = totalConnNow;
+      }
+
+      const frameRawUtil = Math.min(1, Math.max(frameSlotUtil, frameCpuUtil, frameConnUtil));
+      const frameCpuClamped = Math.min(1, frameCpuUtil);
+      rn.lastFrameUtil = frameRawUtil;
+      rn.lastFrameCpuUtil = frameCpuClamped;
+
       const liveUtil =
         rn.station.instancesActive <= 0
           ? 0
-          : Math.max(rn.lastSmoothedUtil, instSlotUtil, instCpuUtil, instConnUtil);
+          : rn.healthTracker.initialized
+            ? 0.5 * rn.lastSmoothedUtil + 0.5 * frameRawUtil
+            : frameRawUtil;
+      const liveCpuUtil =
+        rn.station.instancesActive <= 0
+          ? 0
+          : rn.healthTracker.initialized
+            ? 0.5 * rn.lastCpuUtil + 0.5 * frameCpuClamped
+            : frameCpuClamped;
 
       const errPerSec: Partial<Record<ErrorKind, number>> = {};
       for (const [k, cnt] of Object.entries(rn.frameErrors)) {
@@ -1494,7 +1557,7 @@ export async function runSimulation(
 
       nodeFrames[rn.node.id] = {
         utilization: Number(liveUtil.toFixed(4)),
-        cpuUtilization: Number(Math.max(rn.lastCpuUtil, instCpuUtil).toFixed(4)),
+        cpuUtilization: Number(liveCpuUtil.toFixed(4)),
         inFlight: rn.station.inFlight * scaleFactor,
         queueDepth: (rn.station.slotQueue.length + rn.asyncBacklog.length) * scaleFactor,
         rpsIn: Number(((rn.frameArrivals * scaleFactor) / dtSec).toFixed(1)),
@@ -1507,7 +1570,7 @@ export async function runSimulation(
         health:
           rn.station.instancesActive <= 0
             ? 'down'
-            : liveUtil >= 0.95 || rn.frameDrops > 0
+            : rn.lastHealth === 'overloaded' || rn.frameDrops > 0
               ? 'overloaded'
               : rn.lastHealth,
       };
@@ -1561,7 +1624,9 @@ export async function runSimulation(
       return;
     }
     token.settled = true;
-    activeTimeoutCount = Math.max(0, activeTimeoutCount - 1);
+    if (token.inTimeoutHeap) {
+      activeTimeoutCount = Math.max(0, activeTimeoutCount - 1);
+    }
     if (token.targetCall) {
       token.targetCall.callerTimedOut = true;
       token.targetCall.settledWithCaller = true;

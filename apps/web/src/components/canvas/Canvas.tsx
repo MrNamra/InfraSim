@@ -105,6 +105,7 @@ function CanvasInner({
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [liveNodes, setLiveNodes] = useState<CanvasFlowNode[]>([]);
+  const lastFittedDesignIdRef = useRef<string | null>(null);
 
   // Cap concurrent shaking overloaded nodes at 30 per spec 16 §4
   const shakingAllowedIds = useMemo(() => {
@@ -182,6 +183,22 @@ function CanvasInner({
     setLiveNodes(derivedNodes);
     liveNodesRef.current = derivedNodes;
   }, [derivedNodes]);
+
+  // Fit viewport when switching to a populated template or loaded design
+  useEffect(() => {
+    if (design.nodes.length + design.groups.length === 0) {
+      lastFittedDesignIdRef.current = design.id;
+      return;
+    }
+    if (lastFittedDesignIdRef.current === design.id || !rfInstanceRef.current) {
+      return;
+    }
+    lastFittedDesignIdRef.current = design.id;
+    const raf = window.requestAnimationFrame(() => {
+      rfInstanceRef.current?.fitView({ padding: 0.18, duration: reducedMotion ? 0 : 150 });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [design.id, design.nodes.length, design.groups.length, reducedMotion]);
 
   // Global max <= 300 animated edge particles (reduced by 75% under reduced-motion)
   const flowEdges = useMemo<InfraFlowEdge[]>(() => {
@@ -466,6 +483,12 @@ function CanvasInner({
         edgeTypes={edgeTypes}
         onInit={(instance) => {
           rfInstanceRef.current = instance;
+          if (design.nodes.length + design.groups.length > 0) {
+            lastFittedDesignIdRef.current = design.id;
+            window.requestAnimationFrame(() => {
+              instance.fitView({ padding: 0.18, duration: 0 });
+            });
+          }
         }}
         onNodesChange={handleNodeResizeSync}
         onNodeDragStop={onNodeDragStop}
@@ -557,6 +580,7 @@ function CanvasInner({
               <div className="mt-4 flex justify-center">
                 <button
                   type="button"
+                  data-testid="empty-browse-templates-button"
                   onClick={onLoadTemplateClick}
                   className="h-8 rounded-[8px] border border-[var(--border-strong)] bg-[var(--bg-raised)] px-3 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent)]"
                 >

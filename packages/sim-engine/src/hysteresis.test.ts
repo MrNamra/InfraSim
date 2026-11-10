@@ -180,4 +180,122 @@ describe('@infrasim/sim-engine T1.8 histograms, hysteresis and Erlang C', () => 
     const theory = computeErlangC(1, 70, 10);
     expect(res.perNode.app!.avgCpuUtilization ?? 0).toBeCloseTo(theory.utilizationRho, 1);
   });
+
+  it('does not emit spurious overloaded health frames on healthy 2-core compute at ~75% load', async () => {
+    const d = createEmptyDesign('no-spurious-overload', 'No Spurious Overload');
+    d.settings.seed = 42;
+    d.nodes = [
+      {
+        id: 'client',
+        serviceId: 'generic.client',
+        label: 'Client',
+        position: { x: 0, y: 0 },
+        config: { instances: 1, operations: {} },
+      },
+      {
+        id: 'app',
+        serviceId: 'aws.ec2',
+        label: 'API',
+        position: { x: 200, y: 0 },
+        config: {
+          instances: 2,
+          vcpu: 1,
+          cluster: false,
+          runtimePreset: 'node',
+          cpuMsPerRequest: 10,
+          maxInFlightPerInstance: 20,
+          queue: { maxLength: 50, policy: 'reject' },
+          latency: { distribution: 'lognormal', p50: 15, p95: 45 },
+          operations: {},
+        },
+      },
+    ];
+    d.edges = [
+      { id: 'e1', from: 'client', to: 'app', protocol: 'https', callType: 'sync', weight: 1 },
+    ];
+    d.scenarios = [
+      {
+        id: 's1',
+        name: '150 RPS on 200 RPS capacity',
+        durationS: 30,
+        entryNodeId: 'client',
+        profile: { kind: 'spike', baseRps: 40, peakRps: 150, atS: 4, widthS: 26 },
+        flows: [{ id: 'f1', name: 'Get', weight: 1, steps: [{ method: 'GET', path: '/' }] }],
+        chaos: [],
+      },
+    ];
+
+    const overloadedFrames: number[] = [];
+    const res = await runSimulation({ design: d, scenarioId: 's1' }, (f) => {
+      if (f.nodes.app?.health === 'overloaded') {
+        overloadedFrames.push(f.tVirtualMs);
+      }
+    });
+
+    expect(res.perNode.app!.drops).toBe(0);
+    expect(overloadedFrames).toEqual([]);
+  });
+
+  it('keeps timeout heap pruning fast when edge timeouts exceed run duration', async () => {
+    const d = createEmptyDesign('timeout-heap-perf', 'Timeout Heap Perf');
+    d.settings.seed = 7;
+    d.nodes = [
+      {
+        id: 'client',
+        serviceId: 'generic.client',
+        label: 'Client',
+        position: { x: 0, y: 0 },
+        config: { instances: 1, operations: {} },
+      },
+      {
+        id: 'api',
+        serviceId: 'aws.ec2',
+        label: 'API',
+        position: { x: 200, y: 0 },
+        config: {
+          instances: 4,
+          vcpu: 4,
+          cluster: true,
+          cpuMsPerRequest: 2,
+          latency: { distribution: 'lognormal', p50: 5, p95: 15 },
+          operations: {},
+        },
+      },
+      {
+        id: 'db',
+        serviceId: 'aws.rds_postgres',
+        label: 'Postgres',
+        position: { x: 400, y: 0 },
+        config: {
+          instances: 1,
+          connections: { max: 12 },
+          connectionWaitMs: 300,
+          latency: { distribution: 'lognormal', p50: 45, p95: 110 },
+          operations: {},
+        },
+      },
+    ];
+    d.edges = [
+      { id: 'e1', from: 'client', to: 'api', protocol: 'https', callType: 'sync', weight: 1 },
+      { id: 'e2', from: 'api', to: 'db', protocol: 'sql', callType: 'sync', weight: 1 },
+    ];
+    d.scenarios = [
+      {
+        id: 's1',
+        name: 'Mixed deadlines',
+        durationS: 30,
+        entryNodeId: 'client',
+        profile: { kind: 'constant', rps: 400 },
+        flows: [{ id: 'f1', name: 'Read', weight: 1, steps: [{ method: 'GET', path: '/' }] }],
+        chaos: [],
+      },
+    ];
+
+    const t0 = performance.now();
+    const res = await runSimulation({ design: d, scenarioId: 's1' }, () => {});
+    const elapsedMs = performance.now() - t0;
+
+    expect(res.summary.totalRequests).toBeGreaterThan(10_000);
+    expect(elapsedMs).toBeLessThan(2000);
+  });
 });
