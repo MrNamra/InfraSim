@@ -7,6 +7,7 @@ import type {
   LatencyModel,
   NodeConfig,
   NodeInstance,
+  Scenario,
   ServiceDefinition,
 } from '@infrasim/shared-types';
 import { Button } from '@infrasim/ui-kit';
@@ -18,10 +19,14 @@ import {
   validateRateLimitInput,
 } from '../../lib/inspectorValidation';
 import { getEffectiveServiceDefaults } from '../../lib/nodeDefaults';
+import { OperationsSection } from './OperationsSection';
+import { ScenarioOverridesSection } from './ScenarioOverridesSection';
 
 export interface LatencyMockTabProps {
   node: NodeInstance;
   service?: ServiceDefinition;
+  activeScenario?: Scenario | null;
+  seed?: number;
   presets: CustomPreset[];
   onUpdateConfig: (updater: (config: NodeConfig) => void) => void;
   onResetNode: () => void;
@@ -33,6 +38,8 @@ export interface LatencyMockTabProps {
 export function LatencyMockTab({
   node,
   service,
+  activeScenario,
+  seed = 42,
   presets,
   onUpdateConfig,
   onResetNode,
@@ -170,7 +177,8 @@ export function LatencyMockTab({
     errorEdited ||
     rateLimitEdited ||
     coldStartEdited ||
-    Object.keys(cfg.operations ?? {}).length > 0;
+    Object.keys(cfg.operations ?? {}).length > 0 ||
+    Boolean(cfg.scenarioOverrides?.length);
 
   const coldStartCfg = cfg.coldStart ?? defaults.coldStart;
   const showColdStartSection = Boolean(
@@ -667,35 +675,21 @@ export function LatencyMockTab({
         </section>
       ) : null}
 
-      {/* Catalog operations preview */}
-      {service && service.operations.length > 0 ? (
-        <section className="space-y-2 border-t border-[var(--border-hairline)] pt-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-              Operations ({service.operations.length})
-            </span>
-            <span className="text-[10px] text-[var(--text-muted)]">Template editor in Phase 2</span>
-          </div>
-          <div className="space-y-1.5">
-            {service.operations.slice(0, 4).map((op) => (
-              <div
-                key={op.name}
-                className="flex items-center justify-between rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 py-1.5"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-mono text-[11px] text-[var(--text-primary)]">
-                    {op.name}
-                  </div>
-                  <div className="truncate text-[10px] text-[var(--text-muted)]">{op.summary}</div>
-                </div>
-                <span className="ml-2 shrink-0 rounded-[4px] bg-[var(--bg-raised)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
-                  {op.defaultResponse.statusCode}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {/* Catalog operation mocks & JSON schema overrides */}
+      <OperationsSection
+        node={node}
+        service={service}
+        seed={seed}
+        onUpdateConfig={onUpdateConfig}
+      />
+
+      {/* Scenario time-boxed overrides */}
+      <ScenarioOverridesSection
+        node={node}
+        service={service}
+        activeScenario={activeScenario}
+        onUpdateConfig={onUpdateConfig}
+      />
 
       {/* Footer reset */}
       <div className="border-t border-[var(--border-hairline)] pt-3">

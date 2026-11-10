@@ -479,6 +479,7 @@ export const useDesignStore = create<DesignStoreState>()(
           delete node.config.rateLimit;
           delete node.config.coldStart;
           delete node.config.timeoutMs;
+          delete node.config.scenarioOverrides;
           node.config.operations = {};
         });
       },

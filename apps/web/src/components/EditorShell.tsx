@@ -1036,6 +1036,8 @@ export function EditorShell() {
                 <LatencyMockTab
                   node={selectedNode}
                   service={selectedNodeService}
+                  activeScenario={activeScenario}
+                  seed={design.settings.seed}
                   presets={presets}
                   onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
                   onResetNode={() => resetNodeToDefaults(selectedNode.id)}

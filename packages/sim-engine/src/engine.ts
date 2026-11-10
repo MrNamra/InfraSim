@@ -15,6 +15,8 @@ import {
   type NodeFrame,
   type NodeInstance,
   type NodeSummary,
+  type OperationDef,
+  type OperationOverride,
   type Particle,
   type PlanStep,
   type Scenario,
@@ -215,6 +217,7 @@ interface RuntimeNode {
   chaosExtraLatencyMs: number;
   chaosErrorRateOverride: number | null;
   chaosRateBucket: TokenBucket | null;
+  scenarioRateBucket: { key: string; bucket: TokenBucket } | null;
   cacheFlushStartMs: number | null;
   cacheFlushWarmupMs: number;
   // DB replica round-robin & connection waiters
@@ -282,6 +285,90 @@ function cooperativeYield(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
+}
+
+function mapOperationErrorKind(kind?: OperationOverride['errorKind']): ErrorKind {
+  if (kind === 'throttle') return 'throttled';
+  if (kind === 'timeout') return 'timeout';
+  return 'server';
+}
+
+const WRITE_OP_HINTS = [
+  'PutObject',
+  'PutItem',
+  'Insert',
+  'Exec',
+  'Set',
+  'SendMessage',
+  'Publish',
+  'PutRecord',
+  'PutEvents',
+  'UpdateItem',
+  'Update',
+];
+
+function resolveNodeOperation(
+  rn: RuntimeNode,
+  opName?: string,
+  isWrite = false,
+): { name?: string; defOp?: OperationDef; override?: OperationOverride } {
+  const ops = rn.node.config.operations ?? {};
+  const defOps = rn.service?.operations ?? [];
+
+  if (opName && ops[opName]) {
+    return {
+      name: opName,
+      defOp: defOps.find((o) => o.name === opName),
+      override: ops[opName],
+    };
+  }
+  if (opName) {
+    const exactDef = defOps.find((o) => o.name === opName);
+    if (exactDef) {
+      return { name: exactDef.name, defOp: exactDef, override: ops[exactDef.name] };
+    }
+  }
+
+  const writeHint = isWrite || (opName ? /^(POST|PUT|PATCH|DELETE)\b/i.test(opName.trim()) : false);
+
+  if (writeHint) {
+    for (const candidate of WRITE_OP_HINTS) {
+      if (ops[candidate]) {
+        return {
+          name: candidate,
+          defOp: defOps.find((o) => o.name === candidate),
+          override: ops[candidate],
+        };
+      }
+    }
+    for (const def of defOps) {
+      if (WRITE_OP_HINTS.includes(def.name)) {
+        return { name: def.name, defOp: def, override: ops[def.name] };
+      }
+    }
+  }
+
+  for (const def of defOps) {
+    if (ops[def.name]) {
+      return { name: def.name, defOp: def, override: ops[def.name] };
+    }
+  }
+
+  const configuredKeys = Object.keys(ops);
+  if (configuredKeys.length === 1) {
+    const key = configuredKeys[0]!;
+    return {
+      name: key,
+      defOp: defOps.find((o) => o.name === key),
+      override: ops[key],
+    };
+  }
+
+  if (defOps.length > 0) {
+    return { name: opName ?? defOps[0]!.name, defOp: defOps[0] };
+  }
+
+  return { name: opName };
 }
 
 function getEffectiveScenarioOverride(node: NodeInstance, scenarioId: string, tS: number) {
@@ -385,6 +472,7 @@ export async function runSimulation(
       chaosExtraLatencyMs: 0,
       chaosErrorRateOverride: null,
       chaosRateBucket: null,
+      scenarioRateBucket: null,
       cacheFlushStartMs: null,
       cacheFlushWarmupMs: 0,
       dbWaitQueue: [],
@@ -662,10 +750,16 @@ export async function runSimulation(
     return eligible[eligible.length - 1]!;
   };
 
-  const getEffectiveLatencyModel = (rn: RuntimeNode): LatencyModel => {
+  const getEffectiveLatencyModel = (
+    rn: RuntimeNode,
+    opName?: string,
+    isWrite = false,
+  ): LatencyModel => {
     const ov = getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000);
+    const opRes = resolveNodeOperation(rn, opName, isWrite);
     return (
       ov?.latency ??
+      opRes.override?.latency ??
       rn.node.config.latency ??
       rn.service?.latency ?? {
         distribution: 'lognormal',
@@ -675,16 +769,34 @@ export async function runSimulation(
     );
   };
 
-  const getEffectiveErrorRate = (rn: RuntimeNode): number => {
+  const getEffectiveErrorOutcome = (
+    rn: RuntimeNode,
+    opName?: string,
+    isWrite = false,
+  ): { errorRate: number; errorKind: ErrorKind; opErrorTag?: string } => {
     if (rn.chaosErrorRateOverride !== null) {
-      return rn.chaosErrorRateOverride;
+      return { errorRate: rn.chaosErrorRateOverride, errorKind: 'server' };
     }
     const ov = getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000);
-    return ov?.errorRate ?? rn.node.config.errorRate ?? rn.service?.failure.errorRate ?? 0;
+    if (ov?.errorRate !== undefined) {
+      return { errorRate: ov.errorRate, errorKind: 'server' };
+    }
+    const opRes = resolveNodeOperation(rn, opName, isWrite);
+    if (opRes.override?.errorRate !== undefined) {
+      return {
+        errorRate: opRes.override.errorRate,
+        errorKind: mapOperationErrorKind(opRes.override.errorKind),
+        ...(opRes.override.errorKind ? { opErrorTag: opRes.override.errorKind } : {}),
+      };
+    }
+    return {
+      errorRate: rn.node.config.errorRate ?? rn.service?.failure.errorRate ?? 0,
+      errorKind: 'server',
+    };
   };
 
-  const sampleNodeServiceLatency = (rn: RuntimeNode, isWrite = false): number => {
-    const model = getEffectiveLatencyModel(rn);
+  const sampleNodeServiceLatency = (rn: RuntimeNode, isWrite = false, opName?: string): number => {
+    const model = getEffectiveLatencyModel(rn, opName, isWrite);
     let ms = sampleLatency(model, rn.latencyRng);
     if (isWrite && (rn.kind === 'sql' || rn.kind === 'doc' || rn.kind === 'kv')) {
       const mult = rn.node.config.writeLatencyMultiplier ?? 1.5;
@@ -712,6 +824,7 @@ export async function runSimulation(
       rn.totalCompletions += 1;
       rn.bucketCompletions += 1;
       rn.frameCompletions += 1;
+      rn.totalBytesOut += call.bytesOut;
     } else {
       const err = errorKind ?? 'server';
       if (err === 'dropped_queue_full') {
@@ -760,6 +873,7 @@ export async function runSimulation(
         const serviceMs = sampleNodeServiceLatency(
           rn,
           !rn.latencyRng.chance(rn.node.config.readRatio ?? 0.8),
+          nextWaiter.call.opName,
         );
         if (rn.kind === 'sql' || rn.kind === 'kv' || rn.kind === 'doc') {
           if (serviceMs > (rn.node.config.latency?.p50 ?? 15)) {
@@ -1143,10 +1257,13 @@ export async function runSimulation(
 
   const finishNodeAfterLocalWork = (call: CallCtx) => {
     const rn = call.node;
-    // Probabilistic service error injection
-    const errRate = getEffectiveErrorRate(rn);
-    if (errRate > 0 && rn.errorRng.chance(errRate)) {
-      settleCallAndReleaseResources(call, false, 'server');
+    // Probabilistic service error injection (supports scenario & operation error overrides)
+    const errSpec = getEffectiveErrorOutcome(rn, call.opName);
+    if (errSpec.errorRate > 0 && rn.errorRng.chance(errSpec.errorRate)) {
+      if (call.span && errSpec.opErrorTag) {
+        call.span.attrs = { ...(call.span.attrs ?? {}), opErrorKind: errSpec.opErrorTag };
+      }
+      settleCallAndReleaseResources(call, false, errSpec.errorKind);
       return;
     }
 
@@ -1230,8 +1347,25 @@ export async function runSimulation(
     const rn = call.node;
     call.slotAcquired = true;
     call.serviceStartMs = now;
+    const isDbWrite =
+      (rn.kind === 'sql' || rn.kind === 'doc' || rn.kind === 'graph') &&
+      rn.capacities.connectionsMax !== null
+        ? rn.routingRng.chance(1 - (rn.node.config.readRatio ?? 0.8))
+        : false;
+    const resolvedOp = resolveNodeOperation(rn, call.opName, isDbWrite);
+    if (resolvedOp.name) {
+      call.opName = resolvedOp.name;
+    }
+    if (resolvedOp.override?.responseSizeBytes !== undefined) {
+      call.bytesOut = resolvedOp.override.responseSizeBytes;
+    } else if (resolvedOp.defOp?.defaultResponse.sizeBytes !== undefined) {
+      call.bytesOut = resolvedOp.defOp.defaultResponse.sizeBytes;
+    }
     if (call.span) {
       call.span.waitMs = Number(Math.max(0, now - call.arrivalMs).toFixed(2));
+      if (resolvedOp.name) {
+        call.span.operation = resolvedOp.name;
+      }
     }
     if (call.cancelOnTimeout && call.callerTimedOut) {
       settleCallAndReleaseResources(call, false, 'timeout');
@@ -1240,7 +1374,7 @@ export async function runSimulation(
 
     // Async queue / topic / stream / bus: enqueue message and immediately ack producer
     if (rn.kind === 'queue' || rn.kind === 'topic' || rn.kind === 'stream' || rn.kind === 'bus') {
-      const ackMs = sampleNodeServiceLatency(rn);
+      const ackMs = sampleNodeServiceLatency(rn, false, call.opName);
       if (
         rn.asyncBacklog.length >= rn.capacities.queueMaxLength &&
         rn.capacities.queueMaxLength > 0
@@ -1265,14 +1399,13 @@ export async function runSimulation(
       (rn.kind === 'sql' || rn.kind === 'doc' || rn.kind === 'graph') &&
       rn.capacities.connectionsMax !== null
     ) {
-      const writeRatio = 1 - (rn.node.config.readRatio ?? 0.8);
-      const isWrite = rn.routingRng.chance(writeRatio);
+      const isWrite = isDbWrite;
 
       if (rn.station.busyConnections < rn.capacities.connectionsMax) {
         advanceStationIntegrals(rn.station, now);
         rn.station.busyConnections += 1;
         call.dbConnectionHeld = true;
-        const queryMs = sampleNodeServiceLatency(rn, isWrite);
+        const queryMs = sampleNodeServiceLatency(rn, isWrite, call.opName);
         if (isWrite) rn.totalWriteUnits += 1;
         else rn.totalReadUnits += 1;
         schedule(now + queryMs, { kind: 'COMPLETE_CALL', call });
@@ -1308,7 +1441,7 @@ export async function runSimulation(
     // Compute two-constraint lifecycle (cores for CPU segments + slots held over downstream I/O)
     if (rn.kind === 'compute' || rn.kind === 'fn') {
       const cpuMs = rn.node.config.cpuMsPerRequest ?? 4;
-      const localServiceSampleMs = sampleNodeServiceLatency(rn);
+      const localServiceSampleMs = sampleNodeServiceLatency(rn, false, call.opName);
       const preCpuMs =
         cpuMs > 0 ? Math.max(0.01, cpuMs * (rn.outgoingSync.length > 0 ? 0.7 : 1)) : 0;
       const postCpuMs = cpuMs > 0 && rn.outgoingSync.length > 0 ? Math.max(0.01, cpuMs * 0.3) : 0;
@@ -1336,7 +1469,7 @@ export async function runSimulation(
     }
 
     // Cache / CDN / GW / LB / KV / DNS / Net local overhead
-    const serviceMs = sampleNodeServiceLatency(rn) + coldExtraMs;
+    const serviceMs = sampleNodeServiceLatency(rn, false, call.opName) + coldExtraMs;
     schedule(now + serviceMs, { kind: 'END_LOCAL_WAIT', call });
   }
 
@@ -1351,12 +1484,31 @@ export async function runSimulation(
     rn.frameArrivals += 1;
     rn.totalBytesIn += call.payloadBytes;
 
-    // Rate limiter / chaos throttle check
+    // Rate limiter / chaos throttle / time-boxed scenario throttle check
     if (rn.chaosRateBucket && !tryConsumeToken(rn.chaosRateBucket, now, 1)) {
       recordNodeOutcome(call, false, 'throttled');
       call.settledWithCaller = true;
       call.onFinish?.({ ok: false, errorKind: 'throttled', bytesOut: 0 });
       return;
+    }
+    const activeScenarioOv = getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000);
+    if (activeScenarioOv?.rateLimitRps !== undefined) {
+      const key = `${activeScenarioOv.scenarioId ?? '*'}:${activeScenarioOv.fromS}:${activeScenarioOv.toS}:${activeScenarioOv.rateLimitRps}`;
+      if (rn.scenarioRateBucket?.key !== key) {
+        const rpsScaled = Math.max(0.01, activeScenarioOv.rateLimitRps / scaleFactor);
+        rn.scenarioRateBucket = {
+          key,
+          bucket: createTokenBucket(rpsScaled, Math.max(1, rpsScaled), now),
+        };
+      }
+      if (!tryConsumeToken(rn.scenarioRateBucket.bucket, now, 1)) {
+        recordNodeOutcome(call, false, 'throttled');
+        call.settledWithCaller = true;
+        call.onFinish?.({ ok: false, errorKind: 'throttled', bytesOut: 0 });
+        return;
+      }
+    } else {
+      rn.scenarioRateBucket = null;
     }
     if (rn.station.rateBucket && !tryConsumeToken(rn.station.rateBucket, now, 1)) {
       recordNodeOutcome(call, false, 'throttled');
@@ -1925,9 +2077,12 @@ export async function runSimulation(
 
       case 'COMPLETE_CALL': {
         const { call } = ev;
-        const errRate = getEffectiveErrorRate(call.node);
-        const fail = errRate > 0 && call.node.errorRng.chance(errRate);
-        settleCallAndReleaseResources(call, !fail, fail ? 'server' : undefined);
+        const errSpec = getEffectiveErrorOutcome(call.node, call.opName);
+        const fail = errSpec.errorRate > 0 && call.node.errorRng.chance(errSpec.errorRate);
+        if (fail && call.span && errSpec.opErrorTag) {
+          call.span.attrs = { ...(call.span.attrs ?? {}), opErrorKind: errSpec.opErrorTag };
+        }
+        settleCallAndReleaseResources(call, !fail, fail ? errSpec.errorKind : undefined);
         break;
       }
 

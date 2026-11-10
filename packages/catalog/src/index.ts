@@ -20,6 +20,25 @@ export {
   type KindDefaultSpec,
 };
 
+export {
+  MAX_TEMPLATE_OUTPUT_BYTES,
+  evaluateResponseTemplate,
+  renderMockOperationPreview,
+  validateResponseTemplate,
+  type MockOperationPreview,
+  type TemplateContext,
+  type TemplateDiagnostic,
+  type TemplateEvalResult,
+  type TemplateValidationResult,
+} from './templateEngine.js';
+
+export {
+  validateJsonSchemaDefinition,
+  validateJsonSchemaValue,
+  type SchemaValidationError,
+  type SchemaValidationResult,
+} from './schemaValidator.js';
+
 const serviceById = new Map<string, ServiceDefinition>(
   CATALOG_SERVICES.map((service) => [service.id, service]),
 );
