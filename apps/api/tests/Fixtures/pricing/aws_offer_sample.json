@@ -1,0 +1,431 @@
+{
+  "offers": {
+    "AmazonEC2": {
+      "offerCode": "AmazonEC2",
+      "products": {
+        "EC2_T3_MICRO": {
+          "sku": "EC2_T3_MICRO",
+          "productFamily": "Compute Instance",
+          "attributes": {
+            "servicecode": "AmazonEC2",
+            "regionCode": "us-east-1",
+            "instanceType": "t3.micro",
+            "vcpu": "2",
+            "memory": "1 GiB",
+            "operatingSystem": "Linux",
+            "tenancy": "Shared",
+            "preInstalledSw": "NA",
+            "capacitystatus": "Used",
+            "usagetype": "BoxUsage:t3.micro"
+          }
+        },
+        "EC2_T3_MICRO_WIN": {
+          "sku": "EC2_T3_MICRO_WIN",
+          "productFamily": "Compute Instance",
+          "attributes": {
+            "servicecode": "AmazonEC2",
+            "regionCode": "us-east-1",
+            "instanceType": "t3.micro",
+            "vcpu": "2",
+            "memory": "1 GiB",
+            "operatingSystem": "Windows",
+            "tenancy": "Shared",
+            "preInstalledSw": "NA",
+            "capacitystatus": "Used",
+            "usagetype": "BoxUsage:t3.micro"
+          }
+        },
+        "EC2_M6I_LARGE": {
+          "sku": "EC2_M6I_LARGE",
+          "productFamily": "Compute Instance",
+          "attributes": {
+            "servicecode": "AmazonEC2",
+            "regionCode": "us-east-1",
+            "instanceType": "m6i.large",
+            "vcpu": "2",
+            "memory": "8 GiB",
+            "operatingSystem": "Linux",
+            "tenancy": "Shared",
+            "preInstalledSw": "NA",
+            "capacitystatus": "Used",
+            "usagetype": "BoxUsage:m6i.large"
+          }
+        },
+        "EBS_GP3": {
+          "sku": "EBS_GP3",
+          "productFamily": "Storage",
+          "attributes": {
+            "servicecode": "AmazonEC2",
+            "regionCode": "us-east-1",
+            "volumeType": "General Purpose",
+            "usagetype": "EBS:VolumeUsage.gp3"
+          }
+        }
+      },
+      "terms": {
+        "OnDemand": {
+          "EC2_T3_MICRO": {
+            "T1": {
+              "priceDimensions": {
+                "D1": {
+                  "unit": "Hrs",
+                  "beginRange": "0",
+                  "endRange": "Inf",
+                  "pricePerUnit": { "USD": "0.0104" },
+                  "description": "$0.0104 per On Demand Linux t3.micro Instance Hour"
+                }
+              }
+            }
+          },
+          "EC2_T3_MICRO_WIN": {
+            "T1": {
+              "priceDimensions": {
+                "D1": {
+                  "unit": "Hrs",
+                  "beginRange": "0",
+                  "endRange": "Inf",
+                  "pricePerUnit": { "USD": "0.0196" },
+                  "description": "Windows instance hour"
+                }
+              }
+            }
+          },
+          "EC2_M6I_LARGE": {
+            "T1": {
+              "priceDimensions": {
+                "D1": {
+                  "unit": "Hrs",
+                  "beginRange": "0",
+                  "endRange": "Inf",
+                  "pricePerUnit": { "USD": "0.0960" },
+                  "description": "$0.096 per On Demand Linux m6i.large Instance Hour"
+                }
+              }
+            }
+          },
+          "EBS_GP3": {
+            "T1": {
+              "priceDimensions": {
+                "D1": {
+                  "unit": "GB-Mo",
+                  "beginRange": "0",
+                  "endRange": "Inf",
+                  "pricePerUnit": { "USD": "0.0800" },
+                  "description": "$0.08 per GB-month of gp3 storage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "AWSLambda": {
+      "offerCode": "AWSLambda",
+      "products": {
+        "LAMBDA_REQ": {
+          "sku": "LAMBDA_REQ",
+          "productFamily": "Serverless",
+          "attributes": {
+            "servicecode": "AWSLambda",
+            "regionCode": "us-east-1",
+            "usagetype": "Request",
+            "groupDescription": "Invocation call for a Lambda function"
+          }
+        },
+        "LAMBDA_MANAGED_EXCL": {
+          "sku": "LAMBDA_MANAGED_EXCL",
+          "productFamily": "Serverless",
+          "attributes": {
+            "servicecode": "AWSLambda",
+            "regionCode": "us-east-1",
+            "usagetype": "Lambda-Managed-Instances-c9g.24xlarge-Management-Hours",
+            "groupDescription": "Managed instances"
+          }
+        },
+        "LAMBDA_GB_SEC": {
+          "sku": "LAMBDA_GB_SEC",
+          "productFamily": "Serverless",
+          "attributes": {
+            "servicecode": "AWSLambda",
+            "regionCode": "us-east-1",
+            "usagetype": "Lambda-GB-Second",
+            "groupDescription": "Lambda duration GB-Second"
+          }
+        }
+      },
+      "terms": {
+        "OnDemand": {
+          "LAMBDA_REQ": {
+            "T1": {
+              "priceDimensions": {
+                "D1": {
+                  "unit": "Requests",
+                  "beginRange": "0",
+                  "endRange": "Inf",
+                  "pricePerUnit": { "USD": "0.0000002000" },
+                  "description": "$0.20 per 1M Lambda requests"
+                }
+              }
+            }
+          },
+          "LAMBDA_MANAGED_EXCL": {
+            "T1": {
+              "priceDimensions": {
+                "D1": {
+                  "unit": "Hours",
+                  "beginRange": "0",
+                  "endRange": "Inf",
+                  "pricePerUnit": { "USD": "0.625968" },
+                  "description": "Excluded managed instance"
+                }
+              }
+            }
+          },
+          "LAMBDA_GB_SEC": {
+            "T1": {
+              "priceDimensions": {
+                "D1": {
+                  "unit": "Lambda-GB-Second",
+                  "beginRange": "0",
+                  "endRange": "Inf",
+                  "pricePerUnit": { "USD": "0.0000166667" },
+                  "description": "$0.0000166667 per GB-second"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "AWSELB": {
+      "offerCode": "AWSELB",
+      "products": {
+        "ALB_HR": {
+          "sku": "ALB_HR",
+          "productFamily": "Load Balancer-Application",
+          "attributes": {
+            "servicecode": "AWSELB",
+            "regionCode": "us-east-1",
+            "usagetype": "LoadBalancerUsage",
+            "groupDescription": "LoadBalancer hourly usage by ALB"
+          }
+        },
+        "ALB_OUTPOSTS_EXCL": {
+          "sku": "ALB_OUTPOSTS_EXCL",
+          "productFamily": "Load Balancer-Application",
+          "attributes": {
+            "servicecode": "AWSELB",
+            "regionCode": "us-east-1",
+            "usagetype": "Outposts-LoadBalancerUsage",
+            "groupDescription": "ALB on Outposts"
+          }
+        },
+        "ALB_LCU": {
+          "sku": "ALB_LCU",
+          "productFamily": "Load Balancer-Application",
+          "attributes": {
+            "servicecode": "AWSELB",
+            "regionCode": "us-east-1",
+            "usagetype": "LCUUsage",
+            "groupDescription": "ALB LCU usage"
+          }
+        },
+        "ALB_RESERVED_LCU": {
+          "sku": "ALB_RESERVED_LCU",
+          "productFamily": "Load Balancer-Application",
+          "attributes": {
+            "servicecode": "AWSELB",
+            "regionCode": "us-east-1",
+            "usagetype": "ReservedLCUUsage",
+            "groupDescription": "Reserved ALB LCU usage"
+          }
+        }
+      },
+      "terms": {
+        "OnDemand": {
+          "ALB_HR": {
+            "T1": {
+              "priceDimensions": {
+                "D1": { "unit": "Hrs", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.0225" } }
+              }
+            }
+          },
+          "ALB_OUTPOSTS_EXCL": {
+            "T1": {
+              "priceDimensions": {
+                "D1": { "unit": "Hrs", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.9999" } }
+              }
+            }
+          },
+          "ALB_LCU": {
+            "T1": {
+              "priceDimensions": {
+                "D1": { "unit": "LCU-Hrs", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.0080" } }
+              }
+            }
+          },
+          "ALB_RESERVED_LCU": {
+            "T1": {
+              "priceDimensions": {
+                "D1": { "unit": "ReservedLCU-Hr", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.5000" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "AmazonS3": {
+      "offerCode": "AmazonS3",
+      "products": {
+        "S3_STD": {
+          "sku": "S3_STD",
+          "productFamily": "Storage",
+          "attributes": {
+            "servicecode": "AmazonS3",
+            "regionCode": "us-east-1",
+            "volumeType": "Standard",
+            "usagetype": "TimedStorage-ByteHrs"
+          }
+        }
+      },
+      "terms": {
+        "OnDemand": {
+          "S3_STD": {
+            "T1": {
+              "priceDimensions": {
+                "TIER1": { "unit": "GB-Mo", "beginRange": "0", "endRange": "51200", "pricePerUnit": { "USD": "0.0230" } },
+                "TIER2": { "unit": "GB-Mo", "beginRange": "51200", "endRange": "512000", "pricePerUnit": { "USD": "0.0220" } },
+                "TIER3": { "unit": "GB-Mo", "beginRange": "512000", "endRange": "Inf", "pricePerUnit": { "USD": "0.0210" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "AmazonRDS": {
+      "offerCode": "AmazonRDS",
+      "products": {
+        "RDS_PG_MICRO": {
+          "sku": "RDS_PG_MICRO",
+          "productFamily": "Database Instance",
+          "attributes": {
+            "servicecode": "AmazonRDS",
+            "regionCode": "us-east-1",
+            "databaseEngine": "PostgreSQL",
+            "deploymentOption": "Single-AZ",
+            "instanceType": "db.t3.micro",
+            "vcpu": "2",
+            "memory": "1 GiB",
+            "usagetype": "InstanceUsage:db.t3.micro"
+          }
+        }
+      },
+      "terms": {
+        "OnDemand": {
+          "RDS_PG_MICRO": {
+            "T1": {
+              "priceDimensions": {
+                "D1": { "unit": "Hrs", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.0170" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "AmazonVPC": {
+      "offerCode": "AmazonVPC",
+      "products": {
+        "NAT_HR": {
+          "sku": "NAT_HR",
+          "productFamily": "NAT Gateway",
+          "attributes": {
+            "servicecode": "AmazonVPC",
+            "regionCode": "us-east-1",
+            "usagetype": "NatGateway-Hours"
+          }
+        },
+        "NAT_GB": {
+          "sku": "NAT_GB",
+          "productFamily": "NAT Gateway",
+          "attributes": {
+            "servicecode": "AmazonVPC",
+            "regionCode": "us-east-1",
+            "usagetype": "NatGateway-Bytes"
+          }
+        },
+        "PL_GB": {
+          "sku": "PL_GB",
+          "productFamily": "VpcEndpoint",
+          "attributes": {
+            "servicecode": "AmazonVPC",
+            "regionCode": "us-east-1",
+            "usagetype": "VpcEndpoint-Bytes"
+          }
+        }
+      },
+      "terms": {
+        "OnDemand": {
+          "NAT_HR": {
+            "T1": { "priceDimensions": { "D1": { "unit": "Hrs", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.0450" } } } }
+          },
+          "NAT_GB": {
+            "T1": { "priceDimensions": { "D1": { "unit": "GB", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.0450" } } } }
+          },
+          "PL_GB": {
+            "T1": { "priceDimensions": { "D1": { "unit": "GB", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.0100" } } } }
+          }
+        }
+      }
+    },
+    "AWSDataTransfer": {
+      "offerCode": "AWSDataTransfer",
+      "products": {
+        "XFER_INTERNET": {
+          "sku": "XFER_INTERNET",
+          "productFamily": "Data Transfer",
+          "attributes": {
+            "servicecode": "AWSDataTransfer",
+            "regionCode": "us-east-1",
+            "usagetype": "DataTransfer-Out-Bytes"
+          }
+        },
+        "XFER_AZ": {
+          "sku": "XFER_AZ",
+          "productFamily": "Data Transfer",
+          "attributes": {
+            "servicecode": "AWSDataTransfer",
+            "regionCode": "us-east-1",
+            "usagetype": "DataTransfer-Regional-Bytes"
+          }
+        },
+        "XFER_REGION": {
+          "sku": "XFER_REGION",
+          "productFamily": "Data Transfer",
+          "attributes": {
+            "servicecode": "AWSDataTransfer",
+            "regionCode": "us-east-1",
+            "usagetype": "AWS-Out-Bytes"
+          }
+        }
+      },
+      "terms": {
+        "OnDemand": {
+          "XFER_INTERNET": {
+            "T1": {
+              "priceDimensions": {
+                "TIER1": { "unit": "GB", "beginRange": "0", "endRange": "10240", "pricePerUnit": { "USD": "0.0900" } },
+                "TIER2": { "unit": "GB", "beginRange": "10240", "endRange": "51200", "pricePerUnit": { "USD": "0.0850" } }
+              }
+            }
+          },
+          "XFER_AZ": {
+            "T1": { "priceDimensions": { "D1": { "unit": "GB", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.0100" } } } }
+          },
+          "XFER_REGION": {
+            "T1": { "priceDimensions": { "D1": { "unit": "GB", "beginRange": "0", "endRange": "Inf", "pricePerUnit": { "USD": "0.0200" } } } }
+          }
+        }
+      }
+    }
+  }
+}
