@@ -42,8 +42,11 @@ import { type SimSpeed, useSimulationStore } from '../store/simulationStore';
 import { AccountModal } from './AccountModal';
 import { Canvas } from './canvas/Canvas';
 import { CommandPalette, type CommandItem } from './CommandPalette';
+import { InsightsDockTab } from './dock/InsightsDockTab';
+import { MetricsDockTab } from './dock/MetricsDockTab';
 import { ConfigTab } from './inspector/ConfigTab';
 import { LatencyMockTab } from './inspector/LatencyMockTab';
+import { WhyTab } from './inspector/WhyTab';
 import { Palette } from './Palette';
 import { TrafficProfileEditor } from './TrafficProfileEditor';
 
@@ -85,6 +88,7 @@ export function EditorShell() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
+  const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
 
   const viewportCenterGetterRef = useRef<() => { x: number; y: number }>(() => ({
     x: 240,
@@ -102,6 +106,7 @@ export function EditorShell() {
   const reduceMotionOverride = useDesignStore((s) => s.reduceMotionOverride);
 
   const loadDesign = useDesignStore((s) => s.loadDesign);
+  const applyPatchedDesign = useDesignStore((s) => s.applyPatchedDesign);
   const setPresets = useDesignStore((s) => s.setPresets);
   const addPreset = useDesignStore((s) => s.addPreset);
   const applyPresetToNode = useDesignStore((s) => s.applyPresetToNode);
@@ -127,7 +132,9 @@ export function EditorShell() {
   const simPlaying = useSimulationStore((s) => s.playing);
   const speed = useSimulationStore((s) => s.speed);
   const simDurationS = useSimulationStore((s) => s.durationS);
+  const simElapsedWallMs = useSimulationStore((s) => s.elapsedWallMs);
   const simResult = useSimulationStore((s) => s.result);
+  const simPreviousResult = useSimulationStore((s) => s.previousResult);
   const simError = useSimulationStore((s) => s.errorMessage);
   const missingClientPromptOpen = useSimulationStore((s) => s.missingClientPromptOpen);
 
@@ -135,6 +142,7 @@ export function EditorShell() {
   const cancelSimulation = useSimulationStore((s) => s.cancelRun);
   const togglePausePlayback = useSimulationStore((s) => s.togglePausePlayback);
   const scrubTo = useSimulationStore((s) => s.scrubTo);
+  const seekToTimeS = useSimulationStore((s) => s.seekToTimeS);
   const advancePlayback = useSimulationStore((s) => s.advancePlayback);
   const setSpeed = useSimulationStore((s) => s.setSpeed);
   const dismissMissingClientPrompt = useSimulationStore((s) => s.dismissMissingClientPrompt);
@@ -301,8 +309,27 @@ export function EditorShell() {
 
   const handleRunSimulation = useCallback(async () => {
     setScenarioOpen(false);
+    setAppliedFixLabel(null);
     await startSimulation(useDesignStore.getState().design, activeScenarioId);
   }, [activeScenarioId, startSimulation]);
+
+  const handleApplyPatchedDesign = useCallback(
+    (nextDesign: typeof design, fixLabel: string) => {
+      applyPatchedDesign(nextDesign);
+      setAppliedFixLabel(fixLabel);
+    },
+    [applyPatchedDesign],
+  );
+
+  const handleRerunVerify = useCallback(() => {
+    setAppliedFixLabel(null);
+    void startSimulation(useDesignStore.getState().design, activeScenarioId);
+  }, [activeScenarioId, startSimulation]);
+
+  const selectedNodeInsightCount = useMemo(() => {
+    if (!simResult || !selectedNodeId) return 0;
+    return simResult.insights.filter((ins) => ins.nodeIds.includes(selectedNodeId)).length;
+  }, [simResult, selectedNodeId]);
 
   const handleAddLoadGeneratorAndRun = useCallback(() => {
     const state = useDesignStore.getState();
@@ -861,18 +888,25 @@ export function EditorShell() {
           <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--border-hairline)] px-2 py-2">
             {INSPECTOR_TABS.map((tab) => {
               const active = inspectorTab === tab.id;
+              const badgeCount = tab.id === 'why' ? selectedNodeInsightCount : 0;
               return (
                 <button
                   key={tab.id}
                   type="button"
+                  data-testid={`inspector-tab-${tab.id}`}
                   onClick={() => setInspectorTab(tab.id)}
-                  className={`h-7 shrink-0 rounded-[6px] px-2.5 text-[12px] font-medium transition-colors ${
+                  className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-[6px] px-2.5 text-[12px] font-medium transition-colors ${
                     active
                       ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                   }`}
                 >
-                  {tab.label}
+                  <span>{tab.label}</span>
+                  {badgeCount > 0 ? (
+                    <span className="rounded-full bg-[rgba(229,72,77,0.16)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--status-overloaded)]">
+                      {badgeCount}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
@@ -954,6 +988,18 @@ export function EditorShell() {
                   onSavePreset={addPreset}
                   onApplyPreset={(preset) => applyPresetToNode(selectedNode.id, preset)}
                 />
+              ) : inspectorTab === 'why' ? (
+                <WhyTab
+                  design={design}
+                  node={selectedNode}
+                  service={selectedNodeService}
+                  result={simResult}
+                  previousResult={simPreviousResult}
+                  appliedFixLabel={appliedFixLabel}
+                  isRunning={simStatus === 'running'}
+                  onApplyPatchedDesign={handleApplyPatchedDesign}
+                  onRerunVerify={handleRerunVerify}
+                />
               ) : (
                 <div className="p-4 text-[12px] text-[var(--text-secondary)]">
                   The {inspectorTab} inspector activates in its upcoming phase.
@@ -978,7 +1024,7 @@ export function EditorShell() {
       <section
         data-testid="bottom-dock"
         className={`flex shrink-0 flex-col border-t border-[var(--border-hairline)] bg-[var(--bg-surface)] ${
-          dockCollapsed ? 'h-10' : 'h-52'
+          dockCollapsed ? 'h-10' : 'h-64'
         }`}
       >
         <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-hairline)] px-3">
@@ -986,10 +1032,13 @@ export function EditorShell() {
             {DOCK_TABS.map((tab) => {
               const Icon = tab.icon;
               const active = dockTab === tab.id;
+              const insightsBadge =
+                tab.id === 'insights' && simResult ? simResult.insights.length : 0;
               return (
                 <button
                   key={tab.id}
                   type="button"
+                  data-testid={`dock-tab-${tab.id}`}
                   onClick={() => {
                     setDockTab(tab.id);
                     setDockCollapsed(false);
@@ -1002,6 +1051,11 @@ export function EditorShell() {
                 >
                   <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
                   <span>{tab.label}</span>
+                  {insightsBadge > 0 ? (
+                    <span className="rounded-full bg-[rgba(229,72,77,0.16)] px-1.5 font-mono text-[10px] tabular-nums text-[var(--status-overloaded)]">
+                      {insightsBadge}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
@@ -1055,11 +1109,34 @@ export function EditorShell() {
         </div>
 
         {!dockCollapsed ? (
-          <div className="flex flex-1 items-center justify-center p-4 text-center">
-            <p className="text-[12px] text-[var(--text-muted)]">
-              Run a simulation to populate {dockTab} telemetry.
-            </p>
-          </div>
+          dockTab === 'metrics' ? (
+            <MetricsDockTab
+              design={design}
+              result={simResult}
+              previousResult={simPreviousResult}
+              selectedNodeId={selectedNodeId}
+              currentTimeS={currentFrame ? currentFrame.tVirtualMs / 1000 : null}
+              elapsedWallMs={simElapsedWallMs}
+              onSeekToTimeS={seekToTimeS}
+              onSelectBottleneck={(nodeId) => handleInspectNode(nodeId, 'why')}
+            />
+          ) : dockTab === 'insights' ? (
+            <InsightsDockTab
+              design={design}
+              result={simResult}
+              appliedFixLabel={appliedFixLabel}
+              isRunning={simStatus === 'running'}
+              onSelectNodeWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
+              onApplyPatchedDesign={handleApplyPatchedDesign}
+              onRerunVerify={handleRerunVerify}
+            />
+          ) : (
+            <div className="flex flex-1 items-center justify-center p-4 text-center">
+              <p className="text-[12px] text-[var(--text-muted)]">
+                Run a simulation to populate {dockTab} telemetry.
+              </p>
+            </div>
+          )
         ) : null}
       </section>
 

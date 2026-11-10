@@ -75,6 +75,7 @@ export interface DesignStoreState {
 
   // Actions
   loadDesign: (design: Design, resetHistory?: boolean) => void;
+  applyPatchedDesign: (nextDesign: Design) => void;
   newDesign: (name?: string) => void;
   updateDesignMeta: (updates: {
     name?: string;
@@ -174,6 +175,18 @@ export const useDesignStore = create<DesignStoreState>()(
           state.activeScenarioId = state.design.scenarios[0]?.id ?? 'scenario-default';
           if (design.presets) {
             state.presets = structuredClone(design.presets);
+          }
+        });
+      },
+
+      applyPatchedDesign: (nextDesign) => {
+        const snapshot = structuredClone(get().design);
+        set((state) => {
+          state.past = pushSnapshot(state.past, snapshot);
+          state.future = [];
+          state.design = structuredClone(nextDesign);
+          if (state.design.scenarios.length === 0) {
+            state.design.scenarios = createStarterEmptyDesign().scenarios;
           }
         });
       },

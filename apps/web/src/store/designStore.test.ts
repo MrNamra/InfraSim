@@ -70,4 +70,20 @@ describe('useDesignStore', () => {
     expect(useDesignStore.getState().design.nodes).toHaveLength(1);
     expect(useDesignStore.getState().design.edges).toHaveLength(0);
   });
+
+  it('applyPatchedDesign pushes undoable history while keeping selectedNodeId intact', () => {
+    const store = useDesignStore.getState();
+    const apiId = store.addServiceNode('aws.ec2', { x: 160, y: 128 })!;
+    store.selectNode(apiId);
+
+    const patched = structuredClone(useDesignStore.getState().design);
+    patched.nodes[0]!.config.instances = 4;
+
+    useDesignStore.getState().applyPatchedDesign(patched);
+    expect(useDesignStore.getState().design.nodes[0]?.config.instances).toBe(4);
+    expect(useDesignStore.getState().selectedNodeId).toBe(apiId);
+
+    useDesignStore.getState().undo();
+    expect(useDesignStore.getState().design.nodes[0]?.config.instances).toBe(1);
+  });
 });
