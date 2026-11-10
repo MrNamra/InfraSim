@@ -25,6 +25,7 @@ import {
   User,
 } from 'lucide-react';
 import type { GroupInstance, Provider } from '@infrasim/shared-types';
+import { getService } from '@infrasim/catalog';
 import { Button, Keycap, LogoMark } from '@infrasim/ui-kit';
 import { fetchCurrentUser, getStoredToken, setStoredToken, type AuthUser } from '../lib/api';
 import {
@@ -36,6 +37,8 @@ import { useDesignStore } from '../store/designStore';
 import { AccountModal } from './AccountModal';
 import { Canvas } from './canvas/Canvas';
 import { CommandPalette, type CommandItem } from './CommandPalette';
+import { ConfigTab } from './inspector/ConfigTab';
+import { LatencyMockTab } from './inspector/LatencyMockTab';
 import { Palette } from './Palette';
 
 type Theme = 'dark' | 'light';
@@ -83,6 +86,7 @@ export function EditorShell() {
   const autosaveHydratedRef = useRef(false);
 
   const design = useDesignStore((s) => s.design);
+  const presets = useDesignStore((s) => s.presets);
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const selectedNodeId = useDesignStore((s) => s.selectedNodeId);
@@ -91,10 +95,16 @@ export function EditorShell() {
 
   const loadDesign = useDesignStore((s) => s.loadDesign);
   const setPresets = useDesignStore((s) => s.setPresets);
+  const addPreset = useDesignStore((s) => s.addPreset);
+  const applyPresetToNode = useDesignStore((s) => s.applyPresetToNode);
   const updateDesignMeta = useDesignStore((s) => s.updateDesignMeta);
   const addServiceNode = useDesignStore((s) => s.addServiceNode);
   const addGroup = useDesignStore((s) => s.addGroup);
   const updateGroup = useDesignStore((s) => s.updateGroup);
+  const updateNodeLabel = useDesignStore((s) => s.updateNodeLabel);
+  const updateNodePlacement = useDesignStore((s) => s.updateNodePlacement);
+  const updateNodeConfig = useDesignStore((s) => s.updateNodeConfig);
+  const resetNodeToDefaults = useDesignStore((s) => s.resetNodeToDefaults);
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
 
@@ -189,6 +199,11 @@ export function EditorShell() {
   const selectedNode = useMemo(
     () => (selectedNodeId ? (design.nodes.find((n) => n.id === selectedNodeId) ?? null) : null),
     [design.nodes, selectedNodeId],
+  );
+  const selectedNodeService = useMemo(
+    () =>
+      selectedNode ? getService(selectedNode.serviceId, design.customServices ?? []) : undefined,
+    [selectedNode, design.customServices],
   );
   const selectedGroup = useMemo(
     () => (selectedGroupId ? (design.groups.find((g) => g.id === selectedGroupId) ?? null) : null),
@@ -546,14 +561,44 @@ export function EditorShell() {
               </div>
             </div>
           ) : selectedNode ? (
-            <div className="flex-1 p-4 text-[12px]">
-              <div className="font-medium text-[var(--text-primary)]">{selectedNode.label}</div>
-              <div className="mt-0.5 font-mono text-[11px] text-[var(--text-muted)]">
-                {selectedNode.serviceId}
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <div className="border-b border-[var(--border-hairline)] px-4 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+                    {selectedNode.label}
+                  </div>
+                  <span className="shrink-0 rounded-[4px] bg-[var(--bg-raised)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
+                    {selectedNodeService?.kind ?? 'node'}
+                  </span>
+                </div>
+                <div className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-muted)]">
+                  {selectedNode.serviceId}
+                </div>
               </div>
-              <p className="mt-3 text-[var(--text-secondary)]">
-                Full Config & Latency & Mock inspector activates in T1.4.
-              </p>
+
+              {inspectorTab === 'config' ? (
+                <ConfigTab
+                  node={selectedNode}
+                  service={selectedNodeService}
+                  onRename={(label) => updateNodeLabel(selectedNode.id, label)}
+                  onUpdatePlacement={(placement) => updateNodePlacement(selectedNode.id, placement)}
+                  onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
+                />
+              ) : inspectorTab === 'latency' ? (
+                <LatencyMockTab
+                  node={selectedNode}
+                  service={selectedNodeService}
+                  presets={presets}
+                  onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
+                  onResetNode={() => resetNodeToDefaults(selectedNode.id)}
+                  onSavePreset={addPreset}
+                  onApplyPreset={(preset) => applyPresetToNode(selectedNode.id, preset)}
+                />
+              ) : (
+                <div className="p-4 text-[12px] text-[var(--text-secondary)]">
+                  The {inspectorTab} inspector activates in its upcoming phase.
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">

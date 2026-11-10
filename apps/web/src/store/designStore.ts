@@ -101,6 +101,8 @@ export interface DesignStoreState {
   updateNodePlacement: (nodeId: string, placement: { region?: string; az?: string }) => void;
   updateNodeConfig: (nodeId: string, updater: (config: NodeConfig) => void) => void;
   resetNodeLatencyDefaults: (nodeId: string) => void;
+  resetNodeToDefaults: (nodeId: string) => void;
+  applyPresetToNode: (nodeId: string, preset: CustomPreset) => void;
   updateGroup: (groupId: string, partial: Partial<Omit<GroupInstance, 'id'>>) => void;
   connectEdge: (from: string, to: string) => string | null;
   updateEdge: (edgeId: string, updater: (edge: EdgeInstance) => void) => void;
@@ -465,6 +467,41 @@ export const useDesignStore = create<DesignStoreState>()(
           delete node.config.coldStart;
           delete node.config.timeoutMs;
           node.config.operations = {};
+        });
+      },
+
+      resetNodeToDefaults: (nodeId) => {
+        commit((draft) => {
+          const node = draft.nodes.find((n) => n.id === nodeId);
+          if (!node) {
+            return;
+          }
+          const service = getService(node.serviceId, draft.customServices ?? []);
+          node.config = createInitialNodeConfig(service);
+        });
+      },
+
+      applyPresetToNode: (nodeId, preset) => {
+        commit((draft) => {
+          const node = draft.nodes.find((n) => n.id === nodeId);
+          if (!node) {
+            return;
+          }
+          if (preset.latency) {
+            node.config.latency = structuredClone(preset.latency);
+          }
+          if (preset.errorRate !== undefined) {
+            node.config.errorRate = preset.errorRate;
+          }
+          if (preset.maxInFlightPerInstance !== undefined) {
+            node.config.maxInFlightPerInstance = preset.maxInFlightPerInstance;
+          }
+          if (preset.rateLimit) {
+            node.config.rateLimit = { ...(node.config.rateLimit ?? {}), ...preset.rateLimit };
+          }
+          if (preset.timeoutMs !== undefined) {
+            node.config.timeoutMs = preset.timeoutMs;
+          }
         });
       },
 
