@@ -6,6 +6,7 @@ import type {
   NodeConfig,
   NodeInstance,
   RuntimePreset,
+  Scenario,
   ServiceDefinition,
 } from '@infrasim/shared-types';
 import {
@@ -13,10 +14,15 @@ import {
   computeTheoreticalMaxRps,
   getEffectiveServiceDefaults,
 } from '../../lib/nodeDefaults';
+import { TrafficProfileEditor } from '../TrafficProfileEditor';
 
 export interface ConfigTabProps {
   node: NodeInstance;
   service?: ServiceDefinition;
+  activeScenario?: Scenario | null;
+  seed?: number;
+  onUpdateScenario?: (scenarioId: string, updater: (scenario: Scenario) => void) => void;
+  onUpdateSeed?: (seed: number) => void;
   onRename: (label: string) => void;
   onUpdatePlacement: (placement: { region?: string; az?: string }) => void;
   onUpdateConfig: (updater: (config: NodeConfig) => void) => void;
@@ -26,11 +32,17 @@ export interface ConfigTabProps {
 export function ConfigTab({
   node,
   service,
+  activeScenario,
+  seed = 42,
+  onUpdateScenario,
+  onUpdateSeed,
   onRename,
   onUpdatePlacement,
   onUpdateConfig,
 }: ConfigTabProps) {
   const [showRpsDetail, setShowRpsDetail] = useState(false);
+
+  const isClientNode = node.serviceId === 'generic.client' || node.serviceId === 'generic.users';
 
   const defaults = getEffectiveServiceDefaults(service);
   const cfg = node.config;
@@ -56,6 +68,23 @@ export function ConfigTab({
 
   return (
     <div className="space-y-4 p-4 text-[12px]" data-testid="inspector-config-tab">
+      {/* Load generator scenario profile card when selecting Client / Users */}
+      {isClientNode && activeScenario && onUpdateScenario && onUpdateSeed ? (
+        <section className="space-y-2 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-[var(--text-primary)]">
+              Traffic scenario: {activeScenario.name}
+            </span>
+          </div>
+          <TrafficProfileEditor
+            scenario={activeScenario}
+            seed={seed}
+            onUpdateScenario={(updater) => onUpdateScenario(activeScenario.id, updater)}
+            onUpdateSeed={onUpdateSeed}
+          />
+        </section>
+      ) : null}
+
       {/* Editable defaults notice */}
       <div className="flex items-start gap-2 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 py-2 text-[11px] text-[var(--text-secondary)]">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--accent)]" strokeWidth={1.5} />

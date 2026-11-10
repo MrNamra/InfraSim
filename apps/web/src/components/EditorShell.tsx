@@ -40,6 +40,7 @@ import { CommandPalette, type CommandItem } from './CommandPalette';
 import { ConfigTab } from './inspector/ConfigTab';
 import { LatencyMockTab } from './inspector/LatencyMockTab';
 import { Palette } from './Palette';
+import { TrafficProfileEditor } from './TrafficProfileEditor';
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -78,6 +79,7 @@ export function EditorShell() {
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [primaryRegion, setPrimaryRegion] = useState('us-east-1');
   const [editingTitle, setEditingTitle] = useState(false);
+  const [scenarioOpen, setScenarioOpen] = useState(false);
 
   const viewportCenterGetterRef = useRef<() => { x: number; y: number }>(() => ({
     x: 240,
@@ -87,6 +89,7 @@ export function EditorShell() {
 
   const design = useDesignStore((s) => s.design);
   const presets = useDesignStore((s) => s.presets);
+  const activeScenarioId = useDesignStore((s) => s.activeScenarioId);
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const selectedNodeId = useDesignStore((s) => s.selectedNodeId);
@@ -98,6 +101,8 @@ export function EditorShell() {
   const addPreset = useDesignStore((s) => s.addPreset);
   const applyPresetToNode = useDesignStore((s) => s.applyPresetToNode);
   const updateDesignMeta = useDesignStore((s) => s.updateDesignMeta);
+  const updateScenario = useDesignStore((s) => s.updateScenario);
+  const setActiveScenario = useDesignStore((s) => s.setActiveScenario);
   const addServiceNode = useDesignStore((s) => s.addServiceNode);
   const addGroup = useDesignStore((s) => s.addGroup);
   const updateGroup = useDesignStore((s) => s.updateGroup);
@@ -208,6 +213,10 @@ export function EditorShell() {
   const selectedGroup = useMemo(
     () => (selectedGroupId ? (design.groups.find((g) => g.id === selectedGroupId) ?? null) : null),
     [design.groups, selectedGroupId],
+  );
+  const activeScenario = useMemo(
+    () => design.scenarios.find((s) => s.id === activeScenarioId) ?? design.scenarios[0] ?? null,
+    [design.scenarios, activeScenarioId],
   );
 
   const commands = useMemo<CommandItem[]>(
@@ -336,6 +345,59 @@ export function EditorShell() {
             <option value="eu-central-1">eu-central-1</option>
             <option value="ap-south-1">ap-south-1</option>
           </select>
+
+          {activeScenario ? (
+            <div className="relative">
+              <button
+                type="button"
+                data-testid="scenario-button"
+                onClick={() => setScenarioOpen((prev) => !prev)}
+                className="flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2.5 text-[12px] text-[var(--text-primary)] hover:border-[var(--border-strong)]"
+              >
+                <span className="truncate max-w-[120px]">{activeScenario.name}</span>
+                <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                  {activeScenario.profile.kind}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+              </button>
+
+              {scenarioOpen ? (
+                <div
+                  data-testid="scenario-popover"
+                  className="absolute left-0 top-10 z-40 w-80 rounded-[12px] border border-[var(--border-strong)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-floating)]"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2 border-b border-[var(--border-hairline)] pb-2">
+                    <select
+                      aria-label="Active scenario"
+                      value={activeScenario.id}
+                      onChange={(e) => setActiveScenario(e.target.value)}
+                      className="h-7 flex-1 rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)]"
+                    >
+                      {design.scenarios.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setScenarioOpen(false)}
+                      className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    >
+                      Done
+                    </button>
+                  </div>
+
+                  <TrafficProfileEditor
+                    scenario={activeScenario}
+                    seed={design.settings.seed}
+                    onUpdateScenario={(updater) => updateScenario(activeScenario.id, updater)}
+                    onUpdateSeed={(seed) => updateDesignMeta({ settings: { seed } })}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {/* Center run controls */}
@@ -580,6 +642,10 @@ export function EditorShell() {
                 <ConfigTab
                   node={selectedNode}
                   service={selectedNodeService}
+                  activeScenario={activeScenario}
+                  seed={design.settings.seed}
+                  onUpdateScenario={updateScenario}
+                  onUpdateSeed={(seed) => updateDesignMeta({ settings: { seed } })}
                   onRename={(label) => updateNodeLabel(selectedNode.id, label)}
                   onUpdatePlacement={(placement) => updateNodePlacement(selectedNode.id, placement)}
                   onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
