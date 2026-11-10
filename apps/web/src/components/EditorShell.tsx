@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accessibility,
@@ -20,6 +21,7 @@ import {
   Pause,
   Play,
   Redo2,
+  RefreshCw,
   RotateCcw,
   Share2,
   Sliders,
@@ -30,12 +32,18 @@ import {
   User,
 } from 'lucide-react';
 import type {
+  CostAssumptions,
   CustomServiceDefinition,
   GroupInstance,
   Provider,
   ServiceDefinition,
 } from '@infrasim/shared-types';
 import { getService } from '@infrasim/catalog';
+import {
+  estimateMonthlyCost,
+  listRegionsForProvider,
+  summarizeCostBreakdown,
+} from '@infrasim/cost-engine';
 import { Button, Keycap, LogoMark } from '@infrasim/ui-kit';
 import {
   createCustomServiceApi,
@@ -55,24 +63,58 @@ import {
   saveCustomServiceToIndexedDb,
   saveDesignToIndexedDb,
 } from '../lib/autosave';
+import { formatCompactMonthlyCost, formatMoney, formatSnapshotAge } from '../lib/costFormat';
 import { mergeCustomServices } from '../lib/customServices';
 import { formatVirtualTime } from '../lib/timeFormat';
-import { STARTER_TEMPLATES, type StarterTemplate } from '../lib/templates';
+import type { StarterTemplate } from '../lib/templates';
+import { useCostStore } from '../store/costStore';
 import { useDesignStore } from '../store/designStore';
 import { type SimSpeed, useSimulationStore } from '../store/simulationStore';
-import { AccountModal } from './AccountModal';
 import { Canvas } from './canvas/Canvas';
-import { CommandPalette, type CommandItem } from './CommandPalette';
-import { CustomServiceModal } from './CustomServiceModal';
-import { InsightsDockTab } from './dock/InsightsDockTab';
+import type { NodeCostChipInfo } from './canvas/CanvasSimContext';
+import type { CommandItem } from './CommandPalette';
 import { MetricsDockTab } from './dock/MetricsDockTab';
-import { ConfigTab } from './inspector/ConfigTab';
-import { LatencyMockTab } from './inspector/LatencyMockTab';
-import { WhyTab } from './inspector/WhyTab';
 import { Palette } from './Palette';
 import { ServiceIcon } from './ServiceIcon';
-import { TemplateModal } from './TemplateModal';
-import { TrafficProfileEditor } from './TrafficProfileEditor';
+
+const ConfigTab = dynamic(() => import('./inspector/ConfigTab').then((m) => m.ConfigTab), {
+  ssr: false,
+});
+const TrafficProfileEditor = dynamic(
+  () => import('./TrafficProfileEditor').then((m) => m.TrafficProfileEditor),
+  { ssr: false },
+);
+
+const AccountModal = dynamic(() => import('./AccountModal').then((m) => m.AccountModal), {
+  ssr: false,
+});
+const CommandPalette = dynamic(() => import('./CommandPalette').then((m) => m.CommandPalette), {
+  ssr: false,
+});
+const TemplateModal = dynamic(() => import('./TemplateModal').then((m) => m.TemplateModal), {
+  ssr: false,
+});
+const CustomServiceModal = dynamic(
+  () => import('./CustomServiceModal').then((m) => m.CustomServiceModal),
+  { ssr: false },
+);
+const LatencyMockTab = dynamic(
+  () => import('./inspector/LatencyMockTab').then((m) => m.LatencyMockTab),
+  { ssr: false },
+);
+const CostTab = dynamic(() => import('./inspector/CostTab').then((m) => m.CostTab), {
+  ssr: false,
+});
+const WhyTab = dynamic(() => import('./inspector/WhyTab').then((m) => m.WhyTab), {
+  ssr: false,
+});
+const InsightsDockTab = dynamic(
+  () => import('./dock/InsightsDockTab').then((m) => m.InsightsDockTab),
+  { ssr: false },
+);
+const CostDockTab = dynamic(() => import('./dock/CostDockTab').then((m) => m.CostDockTab), {
+  ssr: false,
+});
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -112,6 +154,7 @@ export function EditorShell() {
   const [primaryRegion, setPrimaryRegion] = useState('us-east-1');
   const [editingTitle, setEditingTitle] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
+  const [costPopoverOpen, setCostPopoverOpen] = useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
   const [customModal, setCustomModal] = useState<{
@@ -191,6 +234,20 @@ export function EditorShell() {
   const dismissMissingClientPrompt = useSimulationStore((s) => s.dismissMissingClientPrompt);
   const resetSimulation = useSimulationStore((s) => s.resetSimulation);
 
+  const costSnapshot = useCostStore((s) => s.snapshot);
+  const costLoading = useCostStore((s) => s.loading);
+  const costError = useCostStore((s) => s.error);
+  const costLastFetchedAt = useCostStore((s) => s.lastFetchedAt);
+  const costIsOfflineFallback = useCostStore((s) => s.isOfflineFallback);
+  const hoursPerMonth = useCostStore((s) => s.hoursPerMonth);
+  const costTrafficAssumption = useCostStore((s) => s.traffic);
+  const instanceCountMode = useCostStore((s) => s.instanceCountMode);
+  const hydrateCostStorage = useCostStore((s) => s.hydrateFromStorage);
+  const syncPriceSnapshot = useCostStore((s) => s.syncSnapshot);
+  const setHoursPerMonth = useCostStore((s) => s.setHoursPerMonth);
+  const setTrafficAssumption = useCostStore((s) => s.setTrafficAssumption);
+  const setInstanceCountMode = useCostStore((s) => s.setInstanceCountMode);
+
   const reducedMotion = systemReducedMotion || reduceMotionOverride;
   const isSimActive = simStatus === 'running' || simPlaying;
 
@@ -233,6 +290,7 @@ export function EditorShell() {
 
   // Hydrate theme, auth session, and autosaved design + custom presets on boot
   useEffect(() => {
+    hydrateCostStorage();
     const saved = window.localStorage.getItem('infrasim.theme');
     if (saved === 'light' || saved === 'dark') {
       setTheme(saved);
@@ -288,7 +346,7 @@ export function EditorShell() {
       .finally(() => {
         autosaveHydratedRef.current = true;
       });
-  }, [loadDesign, setPresets, setUserCustomServices]);
+  }, [loadDesign, setPresets, setUserCustomServices, hydrateCostStorage]);
 
   // Debounced autosave to IndexedDB whenever Design changes
   useEffect(() => {
@@ -337,7 +395,7 @@ export function EditorShell() {
   );
 
   const handleInspectNode = useCallback(
-    (nodeId: string, tab: 'config' | 'latency' | 'why') => {
+    (nodeId: string, tab: 'config' | 'latency' | 'cost' | 'why') => {
       selectNode(nodeId);
       setInspectorTab(tab);
     },
@@ -506,6 +564,130 @@ export function EditorShell() {
     [design.scenarios, activeScenarioId],
   );
 
+  const primaryProviderRegions = useMemo(
+    () => listRegionsForProvider(design.settings.primaryProvider ?? 'aws'),
+    [design.settings.primaryProvider],
+  );
+
+  const { snapshotProviders, snapshotRegions } = useMemo(() => {
+    const provSet = new Set<string>();
+    const regSet = new Set<string>([primaryRegion]);
+    const pProv = design.settings.primaryProvider ?? 'aws';
+    if (pProv === 'aws' || pProv === 'gcp' || pProv === 'azure' || pProv === 'oci') {
+      provSet.add(pProv);
+    }
+    for (const n of design.nodes) {
+      const p = n.serviceId.split('.')[0];
+      if (p === 'aws' || p === 'gcp' || p === 'azure' || p === 'oci') {
+        provSet.add(p);
+      }
+      if (n.region?.trim()) {
+        regSet.add(n.region.trim());
+      }
+    }
+    for (const g of design.groups) {
+      if (
+        g.provider &&
+        (g.provider === 'aws' ||
+          g.provider === 'gcp' ||
+          g.provider === 'azure' ||
+          g.provider === 'oci')
+      ) {
+        provSet.add(g.provider);
+      }
+      if (g.region?.trim()) {
+        regSet.add(g.region.trim());
+      }
+    }
+    if (provSet.size === 0) {
+      provSet.add('aws');
+    }
+    return {
+      snapshotProviders: [...provSet].sort(),
+      snapshotRegions: [...regSet].sort(),
+    };
+  }, [design.settings.primaryProvider, design.nodes, design.groups, primaryRegion]);
+
+  // Debounced public price snapshot fetch whenever cloud providers or regions in design change
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void syncPriceSnapshot(snapshotProviders, snapshotRegions);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [snapshotProviders, snapshotRegions, syncPriceSnapshot]);
+
+  const costAssumptions = useMemo<CostAssumptions>(
+    () => ({
+      hoursPerMonth,
+      traffic: costTrafficAssumption,
+      instanceCountMode,
+      includeFreeTier: design.settings.includeFreeTier,
+      currency: design.settings.currency,
+      ...(design.settings.fxRateToUSD ? { fxRateToUSD: design.settings.fxRateToUSD } : {}),
+    }),
+    [
+      hoursPerMonth,
+      costTrafficAssumption,
+      instanceCountMode,
+      design.settings.includeFreeTier,
+      design.settings.currency,
+      design.settings.fxRateToUSD,
+    ],
+  );
+
+  const costReport = useMemo(
+    () =>
+      estimateMonthlyCost(design, simResult, costSnapshot, costAssumptions, {
+        defaultRegion: primaryRegion,
+        customServices: availableCustomServices,
+      }),
+    [design, simResult, costSnapshot, costAssumptions, primaryRegion, availableCustomServices],
+  );
+
+  const costBreakdownMeta = useMemo(
+    () =>
+      summarizeCostBreakdown(design, costReport, simResult, {
+        customServices: availableCustomServices,
+      }),
+    [costReport, design, simResult, availableCustomServices],
+  );
+
+  const nodeCosts = useMemo<Record<string, NodeCostChipInfo>>(() => {
+    const out: Record<string, NodeCostChipInfo> = {};
+    for (const node of design.nodes) {
+      const svc = getService(node.serviceId, availableCustomServices);
+      const entry = costReport.perNode[node.id];
+      const lines = entry?.lines ?? [];
+      const subtotal = entry?.subtotal ?? 0;
+      const unavailable = lines.some((l) => l.source === 'unavailable');
+      const isFree = svc?.pricing.model === 'free' && lines.length === 0;
+      const lineSummary =
+        lines.length > 0
+          ? lines
+              .map((l) =>
+                l.amount !== null
+                  ? `${l.dimension}: ${formatMoney(l.amount, costReport.currency)}/mo`
+                  : `${l.dimension}: price unavailable`,
+              )
+              .join('\n')
+          : isFree
+            ? 'Free / no charge'
+            : 'Price unavailable';
+      out[node.id] = {
+        monthly: subtotal,
+        currency: costReport.currency,
+        unavailable,
+        free: isFree,
+        summaryTooltip: `${node.label} — ${
+          unavailable && subtotal === 0
+            ? 'price unavailable'
+            : `${formatMoney(subtotal, costReport.currency)}/mo`
+        }\n${lineSummary}`,
+      };
+    }
+    return out;
+  }, [design.nodes, availableCustomServices, costReport]);
+
   const commands = useMemo<CommandItem[]>(
     () => [
       {
@@ -577,10 +759,25 @@ export function EditorShell() {
         },
       },
       {
+        id: 'tab-cost',
+        group: 'Dock',
+        label: 'Open Cost breakdown panel',
+        onSelect: () => {
+          setDockCollapsed(false);
+          setDockTab('cost');
+        },
+      },
+      {
         id: 'tab-latency',
         group: 'Inspector',
         label: 'Open Latency & Mock tab',
         onSelect: () => setInspectorTab('latency'),
+      },
+      {
+        id: 'tab-inspector-cost',
+        group: 'Inspector',
+        label: 'Open Cost inspector tab',
+        onSelect: () => setInspectorTab('cost'),
       },
       {
         id: 'tab-why',
@@ -607,12 +804,28 @@ export function EditorShell() {
         label: 'Open starter templates gallery',
         onSelect: () => setTemplatesOpen(true),
       },
-      ...STARTER_TEMPLATES.map((tpl) => ({
-        id: `load-template-${tpl.id}`,
+      {
+        id: 'load-template-tpl-3tier',
         group: 'Templates',
-        label: `Load template: ${tpl.title}`,
-        onSelect: () => handleLoadTemplate(tpl),
-      })),
+        label: 'Load template: Simple 3-tier web app',
+        onSelect: () => {
+          void import('../lib/templates').then((m) => {
+            const tpl = m.getStarterTemplate('tpl-3tier');
+            if (tpl) handleLoadTemplate(tpl);
+          });
+        },
+      },
+      {
+        id: 'load-template-tpl-cache',
+        group: 'Templates',
+        label: 'Load template: Add a cache',
+        onSelect: () => {
+          void import('../lib/templates').then((m) => {
+            const tpl = m.getStarterTemplate('tpl-cache');
+            if (tpl) handleLoadTemplate(tpl);
+          });
+        },
+      },
       {
         id: 'open-account',
         group: 'Account',
@@ -698,9 +911,17 @@ export function EditorShell() {
           <select
             aria-label="Primary provider"
             value={design.settings.primaryProvider ?? 'aws'}
-            onChange={(e) =>
-              updateDesignMeta({ settings: { primaryProvider: e.target.value as Provider } })
-            }
+            onChange={(e) => {
+              const nextProv = e.target.value as Provider;
+              updateDesignMeta({ settings: { primaryProvider: nextProv } });
+              const regionsForNext = listRegionsForProvider(nextProv);
+              if (
+                regionsForNext.length > 0 &&
+                !regionsForNext.some((r) => r.code === primaryRegion)
+              ) {
+                setPrimaryRegion(regionsForNext[0]!.code);
+              }
+            }}
             className="h-8 shrink-0 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
           >
             <option value="aws">AWS</option>
@@ -715,10 +936,20 @@ export function EditorShell() {
             onChange={(e) => setPrimaryRegion(e.target.value)}
             className="hidden h-8 shrink-0 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 font-mono text-[12px] text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none 2xl:block"
           >
-            <option value="us-east-1">us-east-1</option>
-            <option value="us-west-2">us-west-2</option>
-            <option value="eu-central-1">eu-central-1</option>
-            <option value="ap-south-1">ap-south-1</option>
+            {primaryProviderRegions.length > 0 ? (
+              primaryProviderRegions.map((reg) => (
+                <option key={reg.key} value={reg.code}>
+                  {reg.code}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="us-east-1">us-east-1</option>
+                <option value="us-west-2">us-west-2</option>
+                <option value="eu-central-1">eu-central-1</option>
+                <option value="ap-south-1">ap-south-1</option>
+              </>
+            )}
           </select>
 
           {activeScenario ? (
@@ -854,11 +1085,230 @@ export function EditorShell() {
             </span>
           ) : null}
 
-          <div
-            title="Monthly estimate activates after price snapshot sync in Phase 2"
-            className="flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2.5 font-mono text-[12px] tabular-nums text-[var(--text-secondary)]"
-          >
-            <span>$—/mo</span>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              data-testid="topbar-cost-pill"
+              onClick={() => {
+                setScenarioOpen(false);
+                setCostPopoverOpen((prev) => !prev);
+              }}
+              title={
+                costReport.currency !== 'USD' && design.settings.fxRateToUSD
+                  ? `Original USD estimate: ${formatMoney(costBreakdownMeta.usdMonthlyTotal, 'USD')}/mo (${costAssumptions.hoursPerMonth}h/mo, ${costAssumptions.instanceCountMode} instances)`
+                  : `Estimated monthly on-demand cost (${costAssumptions.hoursPerMonth}h/mo, ${costAssumptions.instanceCountMode} instances)`
+              }
+              className="flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2.5 font-mono text-[12px] tabular-nums text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)]"
+            >
+              <span>
+                {costReport.monthlyTotal === 0 && costBreakdownMeta.unavailableCount > 0
+                  ? '$?'
+                  : formatCompactMonthlyCost(costReport.monthlyTotal, costReport.currency)}
+              </span>
+              {costBreakdownMeta.unavailableCount > 0 ? (
+                <span className="rounded-[4px] bg-[var(--bg-sunken)] px-1 text-[10px] text-[var(--status-warm)]">
+                  {costBreakdownMeta.unavailableCount}?
+                </span>
+              ) : null}
+            </button>
+
+            {costPopoverOpen ? (
+              <div
+                data-testid="cost-assumptions-popover"
+                className="absolute right-0 top-10 z-40 w-80 space-y-3 rounded-[12px] border border-[var(--border-strong)] bg-[var(--bg-surface)] p-4 text-[12px] shadow-[var(--shadow-floating)]"
+              >
+                <div className="flex items-center justify-between border-b border-[var(--border-hairline)] pb-2">
+                  <div>
+                    <div className="font-medium text-[var(--text-primary)]">
+                      Monthly cost assumptions
+                    </div>
+                    <div className="text-[10px] text-[var(--text-muted)]">
+                      On-demand list prices only
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCostPopoverOpen(false)}
+                    className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  >
+                    Done
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-[11px] text-[var(--text-secondary)]">Hours / month</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={744}
+                      value={hoursPerMonth}
+                      onChange={(e) => setHoursPerMonth(Number(e.target.value))}
+                      className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[11px] text-[var(--text-secondary)]">
+                      Autoscaled nodes
+                    </span>
+                    <select
+                      aria-label="Instance count mode"
+                      value={instanceCountMode}
+                      onChange={(e) =>
+                        setInstanceCountMode(e.target.value as CostAssumptions['instanceCountMode'])
+                      }
+                      className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)]"
+                    >
+                      <option value="average">Time-weighted avg</option>
+                      <option value="peak">Peak active</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-[11px] text-[var(--text-secondary)]">Traffic basis</span>
+                    <select
+                      aria-label="Traffic scaling mode"
+                      value={costTrafficAssumption.mode}
+                      onChange={(e) => {
+                        const mode = e.target.value as CostAssumptions['traffic']['mode'];
+                        setTrafficAssumption({
+                          mode,
+                          ...(mode === 'custom-avg-rps'
+                            ? { value: costTrafficAssumption.value ?? 100 }
+                            : mode === 'custom-monthly-requests'
+                              ? { value: costTrafficAssumption.value ?? 1_000_000 }
+                              : {}),
+                        });
+                      }}
+                      className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)]"
+                    >
+                      <option value="run-average">Run average</option>
+                      <option value="custom-avg-rps">Custom avg RPS</option>
+                      <option value="custom-monthly-requests">Monthly requests</option>
+                    </select>
+                  </label>
+
+                  {costTrafficAssumption.mode !== 'run-average' ? (
+                    <label className="block">
+                      <span className="text-[11px] text-[var(--text-secondary)]">
+                        {costTrafficAssumption.mode === 'custom-avg-rps' ? 'Avg RPS' : 'Requests'}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={costTrafficAssumption.value ?? 0}
+                        onChange={(e) =>
+                          setTrafficAssumption({
+                            mode: costTrafficAssumption.mode,
+                            value: Math.max(0, Number(e.target.value) || 0),
+                          })
+                        }
+                        className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                      />
+                    </label>
+                  ) : (
+                    <div className="flex items-end pb-1.5 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+                      ~{Math.round(costBreakdownMeta.monthlyRequests).toLocaleString()} req/mo
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-[11px] text-[var(--text-secondary)]">Currency</span>
+                    <select
+                      aria-label="Display currency"
+                      value={design.settings.currency}
+                      onChange={(e) =>
+                        updateDesignMeta({
+                          settings: {
+                            currency: e.target.value as 'USD' | 'INR' | 'EUR' | 'GBP',
+                          },
+                        })
+                      }
+                      className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] text-[var(--text-primary)]"
+                    >
+                      <option value="USD">USD ($)</option>
+                      <option value="INR">INR (₹)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="GBP">GBP (£)</option>
+                    </select>
+                  </label>
+
+                  {design.settings.currency !== 'USD' ? (
+                    <label className="block">
+                      <span className="text-[11px] text-[var(--text-secondary)]">
+                        FX (1 USD = ?)
+                      </span>
+                      <input
+                        type="number"
+                        min={0.0001}
+                        step="0.01"
+                        placeholder="e.g. 84"
+                        value={design.settings.fxRateToUSD ?? ''}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          updateDesignMeta({
+                            settings: {
+                              fxRateToUSD: Number.isFinite(v) && v > 0 ? v : undefined,
+                            },
+                          });
+                        }}
+                        className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+
+                <label className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={design.settings.includeFreeTier}
+                    onChange={(e) =>
+                      updateDesignMeta({ settings: { includeFreeTier: e.target.checked } })
+                    }
+                  />
+                  <span>Include free-tier allowance (from snapshot bands)</span>
+                </label>
+
+                <div className="flex items-center justify-between border-t border-[var(--border-hairline)] pt-2.5 text-[11px]">
+                  <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                    {(costSnapshot?.generatedAt ?? costLastFetchedAt)
+                      ? `Snapshot ${formatSnapshotAge(costSnapshot?.generatedAt ?? costLastFetchedAt)}`
+                      : costError
+                        ? 'Snapshot offline'
+                        : 'No snapshot loaded'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void syncPriceSnapshot(snapshotProviders, snapshotRegions, { force: true })
+                      }
+                      disabled={costLoading}
+                      className="inline-flex h-7 items-center gap-1 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+                    >
+                      <RefreshCw className="h-3 w-3" strokeWidth={1.5} />
+                      <span>Sync</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCostPopoverOpen(false);
+                        setDockTab('cost');
+                        setDockCollapsed(false);
+                      }}
+                      className="inline-flex h-7 items-center rounded-[6px] bg-[var(--accent-solid)] px-2.5 text-[11px] font-medium text-[var(--accent-solid-text)]"
+                    >
+                      Breakdown
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -982,6 +1432,7 @@ export function EditorShell() {
             theme={theme}
             currentFrame={currentFrame}
             nodeReasons={nodeReasons}
+            nodeCosts={nodeCosts}
             reducedMotion={reducedMotion}
             onInspectNode={handleInspectNode}
             onLoadTemplateClick={() => setTemplatesOpen(true)}
@@ -1235,6 +1686,18 @@ export function EditorShell() {
                   onSavePreset={addPreset}
                   onApplyPreset={(preset) => applyPresetToNode(selectedNode.id, preset)}
                 />
+              ) : inspectorTab === 'cost' ? (
+                <CostTab
+                  node={selectedNode}
+                  service={selectedNodeService}
+                  costReport={costReport}
+                  assumptions={costAssumptions}
+                  onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
+                  onOpenCostDock={() => {
+                    setDockTab('cost');
+                    setDockCollapsed(false);
+                  }}
+                />
               ) : inspectorTab === 'why' ? (
                 <WhyTab
                   design={design}
@@ -1366,6 +1829,24 @@ export function EditorShell() {
               elapsedWallMs={simElapsedWallMs}
               onSeekToTimeS={seekToTimeS}
               onSelectBottleneck={(nodeId) => handleInspectNode(nodeId, 'why')}
+            />
+          ) : dockTab === 'cost' ? (
+            <CostDockTab
+              design={design}
+              result={simResult}
+              report={costReport}
+              breakdownMeta={costBreakdownMeta}
+              assumptions={costAssumptions}
+              snapshot={costSnapshot}
+              snapshotLoading={costLoading}
+              snapshotError={costError}
+              lastFetchedAt={costLastFetchedAt}
+              isOfflineFallback={costIsOfflineFallback}
+              onRefreshPrices={() =>
+                void syncPriceSnapshot(snapshotProviders, snapshotRegions, { force: true })
+              }
+              onSelectNode={(nodeId) => handleInspectNode(nodeId, 'cost')}
+              onOpenAssumptions={() => setCostPopoverOpen(true)}
             />
           ) : dockTab === 'insights' ? (
             <InsightsDockTab

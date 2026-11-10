@@ -9,6 +9,7 @@ import type {
   ServiceDefinition,
 } from '@infrasim/shared-types';
 import { getService } from '@infrasim/catalog';
+import { currencySymbol, formatCompactMonthlyCost, formatMoney } from '../../lib/costFormat';
 import { formatLatencyShort } from '../../lib/palette';
 import { PROVIDER_META, ServiceIcon } from '../ServiceIcon';
 import { useCanvasSimState } from './CanvasSimContext';
@@ -37,6 +38,7 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
   const simState = useCanvasSimState();
   const frame = simState ? simState.currentFrame?.nodes[nodeInstance.id] : data.frame;
   const topReason = simState ? simState.nodeReasons[nodeInstance.id] : data.topReason;
+  const costChip = simState?.nodeCosts?.[nodeInstance.id];
   const allowShake = simState
     ? simState.shakingAllowedIds.has(nodeInstance.id)
     : (data.allowShake ?? true);
@@ -145,6 +147,29 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
           >
             {nodeInstance.label}
           </span>
+
+          {costChip && !costChip.free ? (
+            <span
+              data-testid="node-cost-chip"
+              title={costChip.summaryTooltip}
+              aria-label={
+                costChip.unavailable
+                  ? `Estimated monthly cost unavailable`
+                  : `Estimated monthly cost ${formatMoney(costChip.monthly, costChip.currency)}`
+              }
+              className={`shrink-0 rounded-[4px] border px-1 py-0.5 font-mono text-[10px] leading-none tabular-nums ${
+                costChip.unavailable && (costChip.monthly ?? 0) === 0
+                  ? 'border-[var(--border-hairline)] bg-[var(--bg-sunken)] text-[var(--text-muted)]'
+                  : 'border-[var(--border-hairline)] bg-[var(--bg-raised)] text-[var(--text-secondary)]'
+              }`}
+            >
+              {costChip.unavailable
+                ? costChip.monthly !== null && costChip.monthly > 0
+                  ? `${formatCompactMonthlyCost(costChip.monthly, costChip.currency)}+?`
+                  : `${currencySymbol(costChip.currency)}?`
+                : formatCompactMonthlyCost(costChip.monthly, costChip.currency)}
+            </span>
+          ) : null}
 
           {isEdited ? (
             <span

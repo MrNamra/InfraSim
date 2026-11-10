@@ -16,9 +16,18 @@ export interface EdgePathRegistryValue {
   subscribeGeometry: (listener: () => void) => () => void;
 }
 
+export interface NodeCostChipInfo {
+  monthly: number | null;
+  currency: string;
+  unavailable: boolean;
+  free: boolean;
+  summaryTooltip: string;
+}
+
 export interface CanvasSimStateValue {
   currentFrame: SimFrame | null;
   nodeReasons: Record<string, string>;
+  nodeCosts?: Record<string, NodeCostChipInfo>;
   shakingAllowedIds: ReadonlySet<string>;
   reducedMotion: boolean;
 }

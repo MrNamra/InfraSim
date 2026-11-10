@@ -45,6 +45,7 @@ import {
   EdgePathRegistryContext,
   type EdgeGeometryEntry,
   type EdgePathRegistryValue,
+  type NodeCostChipInfo,
 } from './CanvasSimContext';
 import { EdgeParticlesOverlay } from './EdgeParticlesOverlay';
 import { EdgePopover } from './EdgePopover';
@@ -67,8 +68,9 @@ export interface CanvasProps {
   theme?: 'dark' | 'light';
   currentFrame?: SimFrame | null;
   nodeReasons?: Record<string, string>;
+  nodeCosts?: Record<string, NodeCostChipInfo>;
   reducedMotion?: boolean;
-  onInspectNode?: (nodeId: string, tab: 'config' | 'latency' | 'why') => void;
+  onInspectNode?: (nodeId: string, tab: 'config' | 'latency' | 'cost' | 'why') => void;
   onLoadTemplateClick?: () => void;
   registerViewportCenterGetter?: (getter: () => { x: number; y: number }) => void;
 }
@@ -83,6 +85,7 @@ function CanvasInner({
   theme = 'dark',
   currentFrame = null,
   nodeReasons = {},
+  nodeCosts = {},
   reducedMotion = false,
   onInspectNode,
   onLoadTemplateClick,
@@ -258,10 +261,11 @@ function CanvasInner({
     () => ({
       currentFrame,
       nodeReasons,
+      nodeCosts,
       shakingAllowedIds,
       reducedMotion,
     }),
-    [currentFrame, nodeReasons, shakingAllowedIds, reducedMotion],
+    [currentFrame, nodeReasons, nodeCosts, shakingAllowedIds, reducedMotion],
   );
 
   // Register viewport-center getter for double-click insert in Palette

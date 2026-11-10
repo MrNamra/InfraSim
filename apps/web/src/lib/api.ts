@@ -1,5 +1,6 @@
 /** Lightweight API client for Laravel Sanctum authentication, custom services, and backend sync. */
 
+import type { PriceSnapshot } from '@infrasim/cost-engine';
 import type { CustomServiceDefinition } from '@infrasim/shared-types';
 
 export interface AuthUser {
@@ -163,4 +164,53 @@ export async function deleteCustomServiceApi(token: string, identifier: string):
     method: 'DELETE',
     token,
   });
+}
+
+export type FetchPriceSnapshotResult =
+  | { notModified: true; etag: string | null }
+  | { notModified: false; snapshot: PriceSnapshot; etag: string | null };
+
+/** Fetch compact normalized pricing snapshot from Laravel for the selected providers and regions. */
+export async function fetchPriceSnapshotApi(
+  providers: readonly string[],
+  regions: readonly string[],
+  etag?: string | null,
+): Promise<FetchPriceSnapshotResult> {
+  const params = new URLSearchParams();
+  if (providers.length > 0) {
+    params.set('providers', providers.join(','));
+  }
+  if (regions.length > 0) {
+    params.set('regions', regions.join(','));
+  }
+  const qs = params.toString();
+  const url = `${getApiBaseUrl()}/api/prices/snapshot${qs ? `?${qs}` : ''}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      ...(etag ? { 'If-None-Match': etag } : {}),
+    },
+  });
+
+  const nextEtag = response.headers.get('ETag');
+  if (response.status === 304) {
+    return { notModified: true, etag: nextEtag ?? etag ?? null };
+  }
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message =
+      typeof data.message === 'string'
+        ? data.message
+        : `Price snapshot request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  return {
+    notModified: false,
+    snapshot: data as unknown as PriceSnapshot,
+    etag: nextEtag,
+  };
 }
