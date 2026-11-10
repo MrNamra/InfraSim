@@ -5,6 +5,7 @@ coverage
 playwright-report
 test-results
 apps/api
+apps/web/next-env.d.ts
 docs/specs
 pnpm-lock.yaml
 packages/*/schemas/*.json

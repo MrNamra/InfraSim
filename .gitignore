@@ -27,6 +27,7 @@ apps/web/.env.local
 apps/api/storage/*.key
 apps/api/storage/logs/*.log
 apps/api/bootstrap/cache/*.php
+apps/web/next-env.d.ts
 
 # Generated / downloaded seed snapshots
 packages/cost-engine/seed/prices.seed.json

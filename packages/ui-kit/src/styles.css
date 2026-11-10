@@ -1,0 +1,67 @@
+/* InfraSim design tokens (Graphite dark & light) */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg-sunken: #0f0f10;
+  --bg-canvas: #141415;
+  --bg-surface: #19191b;
+  --bg-raised: #232325;
+  --bg-hover: #2a2a2d;
+  --border-hairline: rgba(237, 237, 237, 0.08);
+  --border-strong: rgba(237, 237, 237, 0.16);
+  --text-primary: #ededed;
+  --text-secondary: #a1a1a6;
+  --text-muted: #85858b;
+
+  --accent: #38bdf8;
+  --accent-solid: #0284c7;
+  --accent-solid-text: #ffffff;
+  --accent-soft: rgba(56, 189, 248, 0.14);
+
+  --status-ok: #4cc38a;
+  --status-warm: #e5a00d;
+  --status-hot: #f07030;
+  --status-overloaded: #e5484d;
+  --status-down: #6b7280;
+
+  --shadow-floating: 0 12px 32px rgba(0, 0, 0, 0.48);
+  --grid-dot: rgba(237, 237, 237, 0.12);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --bg-sunken: #f4f4f5;
+  --bg-canvas: #fafafa;
+  --bg-surface: #ffffff;
+  --bg-raised: #f4f4f5;
+  --bg-hover: #e4e4e7;
+  --border-hairline: rgba(23, 23, 23, 0.08);
+  --border-strong: rgba(23, 23, 23, 0.16);
+  --text-primary: #171717;
+  --text-secondary: #525252;
+  --text-muted: #737373;
+
+  --accent: #0369a1;
+  --accent-solid: #0284c7;
+  --accent-solid-text: #ffffff;
+  --accent-soft: rgba(2, 132, 199, 0.1);
+
+  --status-ok: #16a34a;
+  --status-warm: #ca8a04;
+  --status-hot: #ea580c;
+  --status-overloaded: #dc2626;
+  --status-down: #737373;
+
+  --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --grid-dot: rgba(23, 23, 23, 0.14);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *:not(.infrasim-motion-safe),
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

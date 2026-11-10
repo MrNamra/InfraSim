@@ -10,6 +10,7 @@ export default tseslint.config(
       '**/.next/**',
       '**/coverage/**',
       'apps/api/**',
+      'apps/web/next-env.d.ts',
       'playwright-report/**',
       'test-results/**',
     ],

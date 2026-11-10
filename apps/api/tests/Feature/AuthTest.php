@@ -93,4 +93,17 @@ class AuthTest extends TestCase
     {
         $this->getJson('/api/auth/me')->assertUnauthorized();
     }
+
+    public function test_spa_origin_can_register_without_csrf_cookie(): void
+    {
+        $this->withHeaders([
+            'Origin' => 'http://127.0.0.1:3000',
+            'Referer' => 'http://127.0.0.1:3000/',
+        ])->postJson('/api/auth/register', [
+            'name' => 'CORS Ada',
+            'email' => 'cors-ada@example.com',
+            'password' => 'correct-horse-battery',
+        ])->assertCreated()
+            ->assertJsonStructure(['user' => ['id', 'name', 'email'], 'token']);
+    }
 }
