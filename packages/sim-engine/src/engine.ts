@@ -470,8 +470,40 @@ export async function runSimulation(
   let lastYieldWall = nowWallMs();
   let processedEvents = 0;
 
+  // Separate timeout priority queue avoids polluting main event heap with tens of thousands of completed calls
+  const timeoutHeap = new MinHeap<{ deadlineMs: number; seq: number; token: AttemptToken }>(
+    (a, b) => a.deadlineMs - b.deadlineMs || a.seq - b.seq,
+  );
+  let activeTimeoutCount = 0;
+
   const schedule = (timeMs: number, partial: DistributiveOmit<DesEvent, 't' | 'seq'>) => {
     heap.push({ ...(partial as DesEvent), t: Math.max(now, timeMs), seq: ++seqCounter });
+  };
+
+  const enqueueTimeout = (deadlineMs: number, token: AttemptToken) => {
+    if (deadlineMs >= endMs) {
+      return;
+    }
+    activeTimeoutCount += 1;
+    timeoutHeap.push({ deadlineMs, seq: ++seqCounter, token });
+  };
+
+  const pruneSettledTimeouts = () => {
+    while (!timeoutHeap.isEmpty() && timeoutHeap.peek()!.token.settled) {
+      timeoutHeap.pop();
+    }
+    if (timeoutHeap.size > Math.max(512, activeTimeoutCount * 8)) {
+      const live: { deadlineMs: number; seq: number; token: AttemptToken }[] = [];
+      while (!timeoutHeap.isEmpty()) {
+        const entry = timeoutHeap.pop()!;
+        if (!entry.token.settled) {
+          live.push(entry);
+        }
+      }
+      for (const entry of live) {
+        timeoutHeap.push(entry);
+      }
+    }
   };
 
   // Global request metrics & reservoir-sampled traces (<= 200 total, <= 50 error bias)
@@ -723,6 +755,7 @@ export async function runSimulation(
         break;
       }
       if (!promoted) {
+        advanceStationIntegrals(rn.station, now);
         rn.station.busyConnections = Math.max(0, rn.station.busyConnections - 1);
       }
     }
@@ -814,9 +847,9 @@ export async function runSimulation(
     );
     edgeState.totalBytes += attemptState.payloadBytes;
 
-    // Schedule timeout watchdog for caller waiting on this call attempt
-    const remBudget = Math.max(5, attemptState.deadlineMs - now);
-    schedule(now + remBudget, { kind: 'CALL_TIMEOUT', token });
+    // Schedule timeout watchdog in compact active timeout heap (avoids pushing dead timeout events into main heap)
+    const timeoutAtMs = Math.max(now + 5, attemptState.deadlineMs);
+    enqueueTimeout(timeoutAtMs, token);
 
     const targetCall: CallCtx = {
       id: ++callCounter,
@@ -847,6 +880,10 @@ export async function runSimulation(
           return;
         }
         token.settled = true;
+        activeTimeoutCount = Math.max(0, activeTimeoutCount - 1);
+        while (!timeoutHeap.isEmpty() && timeoutHeap.peek()!.token.settled) {
+          timeoutHeap.pop();
+        }
 
         const latencyMeasured = Math.max(0.01, now - attemptState.startMs);
         edgeState.winCount += 1;
@@ -1211,6 +1248,7 @@ export async function runSimulation(
       const isWrite = rn.routingRng.chance(writeRatio);
 
       if (rn.station.busyConnections < rn.capacities.connectionsMax) {
+        advanceStationIntegrals(rn.station, now);
         rn.station.busyConnections += 1;
         call.dbConnectionHeld = true;
         const queryMs = sampleNodeServiceLatency(rn, isWrite);
@@ -1344,14 +1382,19 @@ export async function runSimulation(
     const perNodeBucket: TimeSeriesBucket['perNode'] = {};
     for (const rn of orderedNodes) {
       const integrals = consumeStationWindowIntegrals(rn.station, bucketEndMs, windowMs);
-      const rawUtil = Math.max(integrals.slotUtil, integrals.cpuUtil);
+      const rawUtil = Math.max(integrals.slotUtil, integrals.cpuUtil, integrals.connUtil);
+      const activeWaiters = rn.dbWaitQueue.reduce((acc, w) => (w.expired ? acc : acc + 1), 0);
       const { health, smoothedUtil } = evaluateNodeHealthStep(rn.healthTracker, {
         rawUtil,
         instancesActive: rn.station.instancesActive,
         dropsCount: rn.bucketDrops,
         throttledCount: rn.bucketThrottled,
         arrivalsCount: rn.bucketArrivals,
-        endQueueDepth: rn.station.slotQueue.length + rn.asyncBacklog.length,
+        endQueueDepth:
+          rn.station.slotQueue.length +
+          rn.station.coreQueue.length +
+          rn.asyncBacklog.length +
+          activeWaiters,
       });
 
       rn.lastHealth = health;
@@ -1432,10 +1475,14 @@ export async function runSimulation(
           : 0;
       const instSlotUtil = rn.station.inFlight / activeSlots;
       const instCpuUtil = activeCores > 0 ? rn.station.busyCores / activeCores : 0;
+      const instConnUtil =
+        rn.station.connectionsMax && rn.station.connectionsMax > 0
+          ? rn.station.busyConnections / rn.station.connectionsMax
+          : 0;
       const liveUtil =
         rn.station.instancesActive <= 0
           ? 0
-          : Math.max(rn.lastSmoothedUtil, instSlotUtil, instCpuUtil);
+          : Math.max(rn.lastSmoothedUtil, instSlotUtil, instCpuUtil, instConnUtil);
 
       const errPerSec: Partial<Record<ErrorKind, number>> = {};
       for (const [k, cnt] of Object.entries(rn.frameErrors)) {
@@ -1509,9 +1556,71 @@ export async function runSimulation(
 
   // --- Main DES Loop ---
 
-  while (!heap.isEmpty()) {
+  const handleCallTimeout = (token: AttemptToken) => {
+    if (token.settled) {
+      return;
+    }
+    token.settled = true;
+    activeTimeoutCount = Math.max(0, activeTimeoutCount - 1);
+    if (token.targetCall) {
+      token.targetCall.callerTimedOut = true;
+      token.targetCall.settledWithCaller = true;
+    }
+    token.attempt.edgeState.winCount += 1;
+    token.attempt.edgeState.winErrors += 1;
+    token.attempt.edgeState.winLatencySum += now - token.attempt.startMs;
+
+    if (token.attempt.edgeState.circuitBreaker) {
+      recordCircuitBreakerOutcome(token.attempt.edgeState.circuitBreaker, false, now);
+    }
+
+    const retryCfg = token.attempt;
+    const canRetry = retryCfg.attemptIndex < retryCfg.maxRetries && now < retryCfg.deadlineMs - 5;
+    if (canRetry) {
+      const expDelay = retryCfg.backoffMs * Math.pow(2, retryCfg.attemptIndex);
+      const delayMs = retryCfg.jitter
+        ? expDelay * Math.max(0.1, retryCfg.edgeState.rng.next())
+        : expDelay;
+      if (now + delayMs < retryCfg.deadlineMs) {
+        schedule(now + delayMs, {
+          kind: 'RETRY_ATTEMPT',
+          attemptState: {
+            ...retryCfg,
+            attemptIndex: retryCfg.attemptIndex + 1,
+            startMs: now + delayMs,
+          },
+        });
+        return;
+      }
+    }
+    retryCfg.onSettled({ ok: false, errorKind: 'timeout', bytesOut: 0 });
+  };
+
+  while (!heap.isEmpty() || !timeoutHeap.isEmpty()) {
+    pruneSettledTimeouts();
+    const topTimeout = timeoutHeap.peek();
+    const topHeap = heap.peek();
+    if (!topHeap && !topTimeout) {
+      break;
+    }
+    if (processedEvents >= maxEvents) {
+      break;
+    }
+
+    if (topTimeout && (!topHeap || topTimeout.deadlineMs < topHeap.t)) {
+      if (topTimeout.deadlineMs >= endMs) {
+        timeoutHeap.pop();
+        continue;
+      }
+      now = topTimeout.deadlineMs;
+      processedEvents += 1;
+      timeoutHeap.pop();
+      handleCallTimeout(topTimeout.token);
+      continue;
+    }
+
     const ev = heap.pop()!;
-    if (ev.t >= endMs || processedEvents >= maxEvents) {
+    if (ev.t >= endMs) {
       break;
     }
     now = ev.t;
@@ -1732,9 +1841,10 @@ export async function runSimulation(
         if (call.dbConnectionHeld || call.settledWithCaller) {
           break;
         }
-        for (const w of call.node.dbWaitQueue) {
-          if (w.call === call) {
-            w.expired = true;
+        for (let i = 0; i < call.node.dbWaitQueue.length; i++) {
+          if (call.node.dbWaitQueue[i]!.call === call) {
+            call.node.dbWaitQueue[i]!.expired = true;
+            call.node.dbWaitQueue.splice(i, 1);
             break;
           }
         }
@@ -1751,44 +1861,7 @@ export async function runSimulation(
       }
 
       case 'CALL_TIMEOUT': {
-        const { token } = ev;
-        if (token.settled) {
-          break;
-        }
-        token.settled = true;
-        if (token.targetCall) {
-          token.targetCall.callerTimedOut = true;
-          token.targetCall.settledWithCaller = true;
-        }
-        token.attempt.edgeState.winCount += 1;
-        token.attempt.edgeState.winErrors += 1;
-        token.attempt.edgeState.winLatencySum += now - token.attempt.startMs;
-
-        if (token.attempt.edgeState.circuitBreaker) {
-          recordCircuitBreakerOutcome(token.attempt.edgeState.circuitBreaker, false, now);
-        }
-
-        const retryCfg = token.attempt;
-        const canRetry =
-          retryCfg.attemptIndex < retryCfg.maxRetries && now < retryCfg.deadlineMs - 5;
-        if (canRetry) {
-          const expDelay = retryCfg.backoffMs * Math.pow(2, retryCfg.attemptIndex);
-          const delayMs = retryCfg.jitter
-            ? expDelay * Math.max(0.1, retryCfg.edgeState.rng.next())
-            : expDelay;
-          if (now + delayMs < retryCfg.deadlineMs) {
-            schedule(now + delayMs, {
-              kind: 'RETRY_ATTEMPT',
-              attemptState: {
-                ...retryCfg,
-                attemptIndex: retryCfg.attemptIndex + 1,
-                startMs: now + delayMs,
-              },
-            });
-            break;
-          }
-        }
-        retryCfg.onSettled({ ok: false, errorKind: 'timeout', bytesOut: 0 });
+        handleCallTimeout(ev.token);
         break;
       }
 
@@ -2007,14 +2080,23 @@ export async function runSimulation(
       rn.node.config.cpuMsPerRequest ?? 1,
       rn.node.config.latency?.p50 ?? rn.service?.latency.p50 ?? 15,
     );
-    const theoreticalMax =
-      rn.capacities.totalCores > 0
-        ? Math.min(
-            (rn.capacities.totalCores * scaleFactor * 1000) /
-              Math.max(0.1, rn.node.config.cpuMsPerRequest ?? 4),
-            (rn.capacities.totalSlots * scaleFactor * 1000) / Math.max(1, effLatP50),
-          )
-        : (rn.capacities.totalSlots * scaleFactor * 1000) / Math.max(1, effLatP50);
+    let theoreticalMax = (rn.capacities.totalSlots * scaleFactor * 1000) / Math.max(1, effLatP50);
+    if (rn.capacities.totalCores > 0) {
+      theoreticalMax = Math.min(
+        theoreticalMax,
+        (rn.capacities.totalCores * scaleFactor * 1000) /
+          Math.max(0.1, rn.node.config.cpuMsPerRequest ?? 4),
+      );
+    }
+    if (rn.capacities.connectionsMax !== null && rn.capacities.connectionsMax > 0) {
+      theoreticalMax = Math.min(
+        theoreticalMax,
+        (rn.capacities.connectionsMax * scaleFactor * 1000) / Math.max(1, effLatP50),
+      );
+    }
+    if (rn.capacities.rateLimitRps !== null && rn.capacities.rateLimitRps > 0) {
+      theoreticalMax = Math.min(theoreticalMax, rn.capacities.rateLimitRps * scaleFactor);
+    }
 
     perNodeSummary[rn.node.id] = {
       requests: rn.totalArrivals * scaleFactor,

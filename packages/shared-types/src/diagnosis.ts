@@ -26,5 +26,7 @@ export interface Insight {
   title: string;
   explanation: InsightExplanation;
   fixes: FixSuggestion[];
+  evidence?: Record<string, string | number>;
+  impactScore?: number;
   lessonSlug?: string;
 }

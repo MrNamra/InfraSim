@@ -72,6 +72,7 @@ export interface StationState<TReq = unknown, TCore = unknown, TConn = unknown> 
   lastIntegralMs: number;
   slotBusyAreaMs: number;
   coreBusyAreaMs: number;
+  connBusyAreaMs: number;
   queueIntegralMs: number;
 }
 
@@ -105,6 +106,7 @@ export function createStationState<TReq = unknown, TCore = unknown, TConn = unkn
     lastIntegralMs: startMs,
     slotBusyAreaMs: 0,
     coreBusyAreaMs: 0,
+    connBusyAreaMs: 0,
     queueIntegralMs: 0,
   };
 }
@@ -118,7 +120,8 @@ export function advanceStationIntegrals<TReq, TCore, TConn>(
   if (dt > 0) {
     station.slotBusyAreaMs += dt * station.inFlight;
     station.coreBusyAreaMs += dt * station.busyCores;
-    station.queueIntegralMs += dt * station.slotQueue.length;
+    station.connBusyAreaMs += dt * station.busyConnections;
+    station.queueIntegralMs += dt * (station.slotQueue.length + station.coreQueue.length);
     station.lastIntegralMs = nowMs;
   }
 }
@@ -131,7 +134,13 @@ export function consumeStationWindowIntegrals<TReq, TCore, TConn>(
   station: StationState<TReq, TCore, TConn>,
   windowEndMs: number,
   windowDurationMs: number,
-): { slotUtil: number; cpuUtil: number; avgQueueDepth: number; avgInFlight: number } {
+): {
+  slotUtil: number;
+  cpuUtil: number;
+  connUtil: number;
+  avgQueueDepth: number;
+  avgInFlight: number;
+} {
   advanceStationIntegrals(station, windowEndMs);
   const safeDur = Math.max(1, windowDurationMs);
   const slotDenom = safeDur * Math.max(1, station.slotsCapacity);
@@ -140,14 +149,19 @@ export function consumeStationWindowIntegrals<TReq, TCore, TConn>(
     station.coresCapacity > 0 && station.instancesActive > 0
       ? station.coreBusyAreaMs / (safeDur * station.coresCapacity)
       : 0;
+  const connUtil =
+    station.connectionsMax !== null && station.connectionsMax > 0 && station.instancesActive > 0
+      ? station.connBusyAreaMs / (safeDur * station.connectionsMax)
+      : 0;
   const avgQueueDepth = station.queueIntegralMs / safeDur;
   const avgInFlight = station.slotBusyAreaMs / safeDur;
 
   station.slotBusyAreaMs = 0;
   station.coreBusyAreaMs = 0;
+  station.connBusyAreaMs = 0;
   station.queueIntegralMs = 0;
 
-  return { slotUtil, cpuUtil, avgQueueDepth, avgInFlight };
+  return { slotUtil, cpuUtil, connUtil, avgQueueDepth, avgInFlight };
 }
 
 export type SlotAcquireResult<TReq> =
