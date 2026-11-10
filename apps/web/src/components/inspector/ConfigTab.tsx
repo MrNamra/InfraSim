@@ -11,6 +11,7 @@ import type {
   ServiceDefinition,
 } from '@infrasim/shared-types';
 import { resolveNodePlacement } from '@infrasim/sim-engine';
+import { getInstanceSpec, listInstanceSpecs, listRegionsForProvider } from '@infrasim/cost-engine';
 import {
   RUNTIME_PRESET_SPECS,
   computeTheoreticalMaxRps,
@@ -74,6 +75,21 @@ export function ConfigTab({
   const timeoutMs = cfg.timeoutMs ?? defaults.timeoutMs;
   const vcpu = cfg.vcpu ?? defaults.vcpu;
   const memoryGb = cfg.memoryGb ?? defaults.memoryGb;
+
+  const showInstancePicker = isComputeOnly || isDatabaseLike;
+  const specCategory = isDatabaseLike ? 'database' : 'compute';
+  const curatedSpecs = useMemo(
+    () => (service ? listInstanceSpecs(service.provider, specCategory) : []),
+    [service, specCategory],
+  );
+  const providerRegions = useMemo(
+    () => (service ? listRegionsForProvider(service.provider) : []),
+    [service],
+  );
+  const matchedSpec =
+    service && cfg.instanceType ? getInstanceSpec(service.provider, cfg.instanceType) : undefined;
+  const unknownInstanceType =
+    showInstancePicker && Boolean(cfg.instanceType?.trim()) && !matchedSpec;
 
   const autoscale = cfg.autoscaling;
   const coldStartCfg = {
@@ -175,11 +191,21 @@ export function ConfigTab({
             <span className="text-[11px] text-[var(--text-muted)]">Region</span>
             <input
               type="text"
+              list={`infrasim-regions-${node.id}`}
               placeholder={inheritedPlacement.region ?? 'us-east-1'}
               value={node.region ?? ''}
               onChange={(e) => onUpdatePlacement({ region: e.target.value })}
               className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
             />
+            {providerRegions.length > 0 ? (
+              <datalist id={`infrasim-regions-${node.id}`}>
+                {providerRegions.map((reg) => (
+                  <option key={reg.key} value={reg.code}>
+                    {reg.label}
+                  </option>
+                ))}
+              </datalist>
+            ) : null}
             {!node.region && inheritedPlacement.region ? (
               <span className="mt-0.5 block font-mono text-[10px] text-[var(--text-muted)]">
                 Inherited: {inheritedPlacement.region}
@@ -209,6 +235,71 @@ export function ConfigTab({
         <div className="text-[11px] font-medium text-[var(--text-secondary)]">
           Capacity & concurrency
         </div>
+
+        {showInstancePicker ? (
+          <div className="space-y-2">
+            {curatedSpecs.length > 0 ? (
+              <label className="block">
+                <span className="text-[11px] text-[var(--text-muted)]">Instance preset</span>
+                <select
+                  aria-label="Instance preset"
+                  value={matchedSpec ? matchedSpec.instanceType : '__custom__'}
+                  onChange={(e) => {
+                    const selected = curatedSpecs.find((s) => s.instanceType === e.target.value);
+                    if (selected) {
+                      onUpdateConfig((d) => {
+                        d.instanceType = selected.instanceType;
+                        d.vcpu = selected.vcpu;
+                        d.memoryGb = selected.memoryGb;
+                      });
+                    }
+                  }}
+                  className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+                >
+                  <option value="__custom__">
+                    {cfg.instanceType ? `Custom (${cfg.instanceType})` : 'Custom / Enter manually'}
+                  </option>
+                  {curatedSpecs.map((spec) => (
+                    <option key={spec.instanceType} value={spec.instanceType}>
+                      {spec.instanceType} ({spec.vcpu} vCPU, {spec.memoryGb} GB)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <label className="block">
+              <span className="text-[11px] text-[var(--text-muted)]">Instance type</span>
+              <input
+                type="text"
+                aria-label="Instance type"
+                placeholder="Custom instance type"
+                value={cfg.instanceType ?? ''}
+                onChange={(e) => {
+                  const nextType = e.target.value;
+                  const spec = service ? getInstanceSpec(service.provider, nextType) : undefined;
+                  onUpdateConfig((d) => {
+                    d.instanceType = nextType.trim() ? nextType : undefined;
+                    if (spec) {
+                      d.vcpu = spec.vcpu;
+                      d.memoryGb = spec.memoryGb;
+                    }
+                  });
+                }}
+                className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+              />
+            </label>
+
+            {unknownInstanceType ? (
+              <p
+                data-testid="unknown-instance-type-hint"
+                className="rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 py-1.5 text-[11px] text-[var(--status-warm)]"
+              >
+                Unknown instance type — enter vCPU and RAM (GB) manually below
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-3 gap-2">
           <label className="block">

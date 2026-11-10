@@ -13,6 +13,7 @@
     "@fontsource/ibm-plex-sans": "^5.1.1",
     "@fontsource/jetbrains-mono": "^5.1.1",
     "@infrasim/catalog": "workspace:*",
+    "@infrasim/cost-engine": "workspace:*",
     "@infrasim/diagnosis": "workspace:*",
     "@infrasim/shared-types": "workspace:*",
     "@infrasim/sim-engine": "workspace:*",

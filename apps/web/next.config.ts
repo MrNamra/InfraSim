@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     '@infrasim/ui-kit',
     '@infrasim/shared-types',
     '@infrasim/catalog',
+    '@infrasim/cost-engine',
     '@infrasim/sim-engine',
     '@infrasim/diagnosis',
   ],

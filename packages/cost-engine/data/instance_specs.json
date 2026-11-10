@@ -1,0 +1,445 @@
+{
+  "version": 1,
+  "verifiedAt": "2026-11-10",
+  "notes": "Curated compute and database instance specifications with verified official vCPU and memory values. Unknown instance types prompt manual vCPU/memory input.",
+  "sources": {
+    "aws": "https://aws.amazon.com/ec2/instance-types/",
+    "gcp": "https://cloud.google.com/compute/docs/machine-resource",
+    "azure": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/overview",
+    "oci": "https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm"
+  },
+  "specs": [
+    {
+      "provider": "aws",
+      "instanceType": "t3.micro",
+      "family": "Burstable",
+      "vcpu": 2,
+      "memoryGb": 1,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/t3/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "t3.small",
+      "family": "Burstable",
+      "vcpu": 2,
+      "memoryGb": 2,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/t3/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "t3.medium",
+      "family": "Burstable",
+      "vcpu": 2,
+      "memoryGb": 4,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/t3/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "t3.large",
+      "family": "Burstable",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/t3/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "m6i.large",
+      "family": "General Purpose",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/m6i/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "m6i.xlarge",
+      "family": "General Purpose",
+      "vcpu": 4,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/m6i/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "m7g.large",
+      "family": "General Purpose Graviton3",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "arm64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/m7g/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "c6i.large",
+      "family": "Compute Optimized",
+      "vcpu": 2,
+      "memoryGb": 4,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/c6i/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "c6i.xlarge",
+      "family": "Compute Optimized",
+      "vcpu": 4,
+      "memoryGb": 8,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/c6i/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "r6i.large",
+      "family": "Memory Optimized",
+      "vcpu": 2,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://aws.amazon.com/ec2/instance-types/r6i/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "db.t3.micro",
+      "family": "RDS Burstable",
+      "vcpu": 2,
+      "memoryGb": 1,
+      "arch": "x86_64",
+      "category": "database",
+      "sourceUrl": "https://aws.amazon.com/rds/instance-types/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "db.t4g.medium",
+      "family": "RDS Graviton2",
+      "vcpu": 2,
+      "memoryGb": 4,
+      "arch": "arm64",
+      "category": "database",
+      "sourceUrl": "https://aws.amazon.com/rds/instance-types/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "db.m6g.large",
+      "family": "RDS General Purpose",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "arm64",
+      "category": "database",
+      "sourceUrl": "https://aws.amazon.com/rds/instance-types/",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "aws",
+      "instanceType": "db.r6g.large",
+      "family": "RDS Memory Optimized",
+      "vcpu": 2,
+      "memoryGb": 16,
+      "arch": "arm64",
+      "category": "database",
+      "sourceUrl": "https://aws.amazon.com/rds/instance-types/",
+      "verifiedAt": "2026-11-10"
+    },
+
+    {
+      "provider": "gcp",
+      "instanceType": "e2-micro",
+      "family": "Shared-core E2",
+      "vcpu": 2,
+      "memoryGb": 1,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://cloud.google.com/compute/docs/general-purpose-machines#e2_machines",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "e2-small",
+      "family": "Shared-core E2",
+      "vcpu": 2,
+      "memoryGb": 2,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://cloud.google.com/compute/docs/general-purpose-machines#e2_machines",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "e2-medium",
+      "family": "Shared-core E2",
+      "vcpu": 2,
+      "memoryGb": 4,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://cloud.google.com/compute/docs/general-purpose-machines#e2_machines",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "e2-standard-2",
+      "family": "General Purpose E2",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://cloud.google.com/compute/docs/general-purpose-machines#e2_machines",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "n2-standard-2",
+      "family": "General Purpose N2",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://cloud.google.com/compute/docs/general-purpose-machines#n2_machines",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "n2-standard-4",
+      "family": "General Purpose N2",
+      "vcpu": 4,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://cloud.google.com/compute/docs/general-purpose-machines#n2_machines",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "c2-standard-4",
+      "family": "Compute Optimized C2",
+      "vcpu": 4,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://cloud.google.com/compute/docs/compute-optimized-machines",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "t2a-standard-2",
+      "family": "Arm Tau T2A",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "arm64",
+      "category": "compute",
+      "sourceUrl": "https://cloud.google.com/compute/docs/general-purpose-machines#t2a_machines",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "db-custom-2-7680",
+      "family": "Cloud SQL Custom",
+      "vcpu": 2,
+      "memoryGb": 7.5,
+      "arch": "x86_64",
+      "category": "database",
+      "sourceUrl": "https://cloud.google.com/sql/docs/postgres/instance-settings",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "gcp",
+      "instanceType": "db-custom-4-15360",
+      "family": "Cloud SQL Custom",
+      "vcpu": 4,
+      "memoryGb": 15,
+      "arch": "x86_64",
+      "category": "database",
+      "sourceUrl": "https://cloud.google.com/sql/docs/postgres/instance-settings",
+      "verifiedAt": "2026-11-10"
+    },
+
+    {
+      "provider": "azure",
+      "instanceType": "Standard_B1s",
+      "family": "Burstable Bs",
+      "vcpu": 1,
+      "memoryGb": 1,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/bsv2-series",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "azure",
+      "instanceType": "Standard_B2s",
+      "family": "Burstable Bs",
+      "vcpu": 2,
+      "memoryGb": 4,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/b-family",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "azure",
+      "instanceType": "Standard_D2s_v5",
+      "family": "General Purpose Dsv5",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/dv5-dsv5-series",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "azure",
+      "instanceType": "Standard_D4s_v5",
+      "family": "General Purpose Dsv5",
+      "vcpu": 4,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/dv5-dsv5-series",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "azure",
+      "instanceType": "Standard_F4s_v2",
+      "family": "Compute Optimized Fsv2",
+      "vcpu": 4,
+      "memoryGb": 8,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/fsv2-series",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "azure",
+      "instanceType": "Standard_E2s_v5",
+      "family": "Memory Optimized Esv5",
+      "vcpu": 2,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/ev5-esv5-series",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "azure",
+      "instanceType": "Standard_B1ms",
+      "family": "PostgreSQL/MySQL Flexible Burstable",
+      "vcpu": 1,
+      "memoryGb": 2,
+      "arch": "x86_64",
+      "category": "database",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-compute-storage",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "azure",
+      "instanceType": "Standard_D2ds_v4",
+      "family": "PostgreSQL/MySQL Flexible GP",
+      "vcpu": 2,
+      "memoryGb": 8,
+      "arch": "x86_64",
+      "category": "database",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-compute-storage",
+      "verifiedAt": "2026-11-10"
+    },
+
+    {
+      "provider": "oci",
+      "instanceType": "VM.Standard.E4.Flex",
+      "family": "AMD EPYC Flex (1 OCPU = 2 vCPU)",
+      "vcpu": 2,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm#vm-flexible",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "oci",
+      "instanceType": "VM.Standard.E5.Flex",
+      "family": "AMD EPYC Genoa Flex (1 OCPU = 2 vCPU)",
+      "vcpu": 4,
+      "memoryGb": 32,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm#vm-flexible",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "oci",
+      "instanceType": "VM.Standard.E6.Flex",
+      "family": "AMD EPYC Turin Flex (1 OCPU = 2 vCPU)",
+      "vcpu": 2,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm#vm-flexible",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "oci",
+      "instanceType": "VM.Standard.A1.Flex",
+      "family": "Ampere Altra Arm (1 OCPU = 1 vCPU)",
+      "vcpu": 2,
+      "memoryGb": 12,
+      "arch": "arm64",
+      "category": "compute",
+      "sourceUrl": "https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm#vm-arm",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "oci",
+      "instanceType": "VM.Standard.A2.Flex",
+      "family": "AmpereOne Arm (1 OCPU = 2 vCPU)",
+      "vcpu": 4,
+      "memoryGb": 16,
+      "arch": "arm64",
+      "category": "compute",
+      "sourceUrl": "https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm#vm-arm",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "oci",
+      "instanceType": "VM.Standard3.Flex",
+      "family": "Intel Xeon Flex (1 OCPU = 2 vCPU)",
+      "vcpu": 2,
+      "memoryGb": 16,
+      "arch": "x86_64",
+      "category": "compute",
+      "sourceUrl": "https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm#vm-flexible",
+      "verifiedAt": "2026-11-10"
+    },
+    {
+      "provider": "oci",
+      "instanceType": "VM.Standard.E4.Flex-DB",
+      "family": "OCI PostgreSQL/BaseDB Flex",
+      "vcpu": 4,
+      "memoryGb": 32,
+      "arch": "x86_64",
+      "category": "database",
+      "sourceUrl": "https://docs.oracle.com/en-us/iaas/Content/postgresql/overview.htm",
+      "verifiedAt": "2026-11-10"
+    }
+  ]
+}

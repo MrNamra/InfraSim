@@ -1,0 +1,106 @@
+{
+  "items": [
+    {
+      "partNumber": "B111129",
+      "displayName": "OCI - Compute - Standard - E6 - OCPU",
+      "metricName": "OCPU Per Hour",
+      "serviceCategory": "Compute - Virtual Machine",
+      "currencyCodeLocalizations": [
+        {
+          "currencyCode": "USD",
+          "prices": [
+            { "model": "PAY_AS_YOU_GO", "value": 0.03 }
+          ]
+        }
+      ]
+    },
+    {
+      "partNumber": "B111130",
+      "displayName": "OCI - Compute - Standard - E6 - Memory",
+      "metricName": "Gigabytes Per Hour",
+      "serviceCategory": "Compute - Virtual Machine",
+      "currencyCodeLocalizations": [
+        {
+          "currencyCode": "USD",
+          "prices": [
+            { "model": "PAY_AS_YOU_GO", "value": 0.002 }
+          ]
+        }
+      ]
+    },
+    {
+      "partNumber": "B90617",
+      "displayName": "Oracle Functions - Execution Time",
+      "metricName": "10,000 GB Memory-Seconds",
+      "serviceCategory": "Application Development - Serverless",
+      "currencyCodeLocalizations": [
+        {
+          "currencyCode": "USD",
+          "prices": [
+            { "model": "PAY_AS_YOU_GO", "value": 0.0, "rangeMin": 0, "rangeMax": 40 },
+            { "model": "PAY_AS_YOU_GO", "value": 0.1417, "rangeMin": 40, "rangeMax": 999999999 }
+          ]
+        }
+      ]
+    },
+    {
+      "partNumber": "B90618",
+      "displayName": "Oracle Functions - Invocations",
+      "metricName": "1MIL Function Invocations",
+      "serviceCategory": "Application Development - Serverless",
+      "currencyCodeLocalizations": [
+        {
+          "currencyCode": "USD",
+          "prices": [
+            { "model": "PAY_AS_YOU_GO", "value": 0.0, "rangeMin": 0, "rangeMax": 2 },
+            { "model": "PAY_AS_YOU_GO", "value": 0.2, "rangeMin": 2, "rangeMax": 999999999 }
+          ]
+        }
+      ]
+    },
+    {
+      "partNumber": "B91628",
+      "displayName": "Object Storage - Storage",
+      "metricName": "Gigabyte Storage Capacity Per Month",
+      "serviceCategory": "Storage - Object Storage",
+      "currencyCodeLocalizations": [
+        {
+          "currencyCode": "USD",
+          "prices": [
+            { "model": "PAY_AS_YOU_GO", "value": 0.0, "rangeMin": 0, "rangeMax": 10 },
+            { "model": "PAY_AS_YOU_GO", "value": 0.0255, "rangeMin": 10, "rangeMax": 999999999 }
+          ]
+        }
+      ]
+    },
+    {
+      "partNumber": "B99060",
+      "displayName": "Database with PostgreSQL - X86",
+      "metricName": "OCPU Per Hour",
+      "serviceCategory": "Database with PostgreSQL",
+      "currencyCodeLocalizations": [
+        {
+          "currencyCode": "USD",
+          "prices": [
+            { "model": "PAY_AS_YOU_GO", "value": 0.098 }
+          ]
+        }
+      ]
+    },
+    {
+      "partNumber": "B88327",
+      "displayName": "Outbound Data Transfer - Originating in North America, Europe, and UK",
+      "metricName": "Gigabyte Outbound Data Transfer Per Month",
+      "serviceCategory": "Networking - Virtual Cloud Networks",
+      "currencyCodeLocalizations": [
+        {
+          "currencyCode": "USD",
+          "prices": [
+            { "model": "PAY_AS_YOU_GO", "value": 0.0, "rangeMin": 0, "rangeMax": 10240 },
+            { "model": "PAY_AS_YOU_GO", "value": 0.0085, "rangeMin": 10240, "rangeMax": 999999999999999 }
+          ]
+        }
+      ]
+    }
+  ]
+}

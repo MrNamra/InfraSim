@@ -12,8 +12,8 @@ use Illuminate\Console\Command;
 class SyncPricesCommand extends Command
 {
     protected $signature = 'prices:sync
-        {--provider=all : Provider to sync (aws, azure, or all)}
-        {--regions=us-east-1,eastus : Comma-separated regions to filter}
+        {--provider=all : Provider to sync (aws, azure, gcp, oci, or all)}
+        {--regions=us-east-1,eastus,us-east4 : Comma-separated regions to filter}
         {--file= : Optional local JSON fixture path (requires a single --provider)}
         {--force : Re-publish snapshot even when raw_hash matches}';
 
@@ -106,6 +106,16 @@ class SyncPricesCommand extends Command
             $azure = array_values(array_filter($regions, static fn (string $r): bool => ! str_contains($r, '-')));
 
             return $azure !== [] ? $azure : ['eastus'];
+        }
+
+        if ($provider === 'gcp') {
+            $gcp = array_values(array_filter($regions, static fn (string $r): bool => substr_count($r, '-') === 1 && ! str_starts_with($r, 'us-ashburn')));
+
+            return $gcp !== [] ? $gcp : ['us-east4'];
+        }
+
+        if ($provider === 'oci') {
+            return ['global'];
         }
 
         return $regions;

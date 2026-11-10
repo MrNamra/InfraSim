@@ -8,7 +8,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('prices:sync --provider=all --regions=us-east-1,eastus')
+Schedule::command('prices:sync --provider=all --regions=us-east-1,eastus,us-east4')
     ->dailyAt('03:15')
     ->withoutOverlapping()
     ->onOneServer();

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "updatedAt": "2026-11-10T00:00:00Z",
-  "notes": "Canonical service-to-SKU filter mapping shared by backend price sync and @infrasim/cost-engine. AWS and Azure populated in T2.6; GCP and OCI completed in T2.7.",
+  "notes": "Canonical service-to-SKU filter mapping shared by backend price sync and @infrasim/cost-engine across AWS, Azure, GCP, and OCI.",
   "mappings": [
     {
       "serviceId": "aws.ec2",
@@ -2051,6 +2051,1317 @@
         "exclude": [],
         "keyBy": "meterName"
       }
+    },
+    {
+      "serviceId": "gcp.compute_engine",
+      "provider": "gcp",
+      "unitRole": "vcpu_hour",
+      "unit": "vCPU-Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceFamily": "Compute",
+        "resourceGroup": "N1Standard",
+        "descriptionContains": "Instance Core running",
+        "exclude": ["Preemptible", "Sole Tenancy", "Commitment", "Spot"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.compute_engine",
+      "provider": "gcp",
+      "unitRole": "memory_gb_hour",
+      "unit": "GB-Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceFamily": "Compute",
+        "resourceGroup": "N1Standard",
+        "descriptionContains": "Instance Ram running",
+        "exclude": ["Preemptible", "Sole Tenancy", "Commitment", "Spot"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_run",
+      "provider": "gcp",
+      "unitRole": "vcpu_hour",
+      "unit": "vCPU-Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud Run",
+        "resourceGroup": "CPU",
+        "descriptionContains": "CPU Allocation Time",
+        "exclude": ["Free"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_run",
+      "provider": "gcp",
+      "unitRole": "memory_gb_hour",
+      "unit": "GB-Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud Run",
+        "resourceGroup": "RAM",
+        "descriptionContains": "Memory Allocation Time",
+        "exclude": ["Free"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_functions",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceDisplayName": "Cloud Functions",
+        "descriptionContains": "Invocations",
+        "exclude": ["Networking"],
+        "keyBy": "description",
+        "priceScale": 1000000
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_functions",
+      "provider": "gcp",
+      "unitRole": "gb_second",
+      "unit": "GB-Seconds",
+      "filter": {
+        "serviceDisplayName": "Cloud Functions",
+        "descriptionContains": "GB-Seconds",
+        "exclude": ["Networking"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.gke",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Kubernetes Engine",
+        "descriptionContains": "Cluster management fee",
+        "exclude": ["Autopilot"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.app_engine",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "App Engine",
+        "resourceGroup": "Instances",
+        "descriptionContains": "Instances",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_dns",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceDisplayName": "Cloud DNS",
+        "descriptionContains": "DNSQueries",
+        "keyBy": "description",
+        "priceScale": 1000000
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_cdn",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "CDN",
+        "descriptionContains": "Cache Egress",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_cdn",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "CDN",
+        "descriptionContains": "Cache Lookup Requests",
+        "keyBy": "description",
+        "priceScale": 1000000
+      }
+    },
+    {
+      "serviceId": "gcp.lb_https",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "LoadBalancing",
+        "descriptionContains": "Forwarding Rule Minimum Service Charge",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.lb_https",
+      "provider": "gcp",
+      "unitRole": "lcu_hour",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "LoadBalancing",
+        "descriptionContains": "Load Balancing: Data Processing",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.lb_network",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "LoadBalancing",
+        "descriptionContains": "Forwarding Rule Minimum",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.lb_internal",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "LoadBalancing",
+        "descriptionContains": "Forwarding Rule Minimum",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.api_gateway",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceDisplayName": "API Gateway",
+        "descriptionContains": "API Calls",
+        "keyBy": "description",
+        "priceScale": 1000000
+      }
+    },
+    {
+      "serviceId": "gcp.apigee",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "1M Calls",
+      "filter": {
+        "serviceDisplayName": "Apigee",
+        "descriptionContains": "API",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_armor",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceDisplayName": "Cloud Armor",
+        "descriptionContains": "Requests",
+        "keyBy": "description",
+        "priceScale": 1000000
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_nat",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "descriptionContains": "NAT Gateway: Uptime",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_nat",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "descriptionContains": "NAT Gateway: Data processing",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.vpc_peering",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "InterregionEgress",
+        "descriptionContains": "VM to VM Egress",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.psc",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "descriptionContains": "Private Service Connect",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.vpn",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "VPN",
+        "descriptionContains": "VPN Tunnel",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.interconnect",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "descriptionContains": "Interconnect",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_storage",
+      "provider": "gcp",
+      "unitRole": "storage_gb_month",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceDisplayName": "Cloud Storage",
+        "resourceGroup": "RegionalStorage",
+        "descriptionContains": "Standard Storage",
+        "exclude": ["Nearline", "Coldline", "Archive"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_storage",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "10K Requests",
+      "filter": {
+        "serviceDisplayName": "Cloud Storage",
+        "descriptionContains": "Class B Ops",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_storage_archive",
+      "provider": "gcp",
+      "unitRole": "storage_gb_month",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceDisplayName": "Cloud Storage",
+        "descriptionContains": "Archive Storage",
+        "exclude": ["Retrieval", "Early Delete"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.persistent_disk",
+      "provider": "gcp",
+      "unitRole": "storage_gb_month",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "SSD",
+        "descriptionContains": "SSD backed PD Capacity",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.filestore",
+      "provider": "gcp",
+      "unitRole": "storage_gb_month",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceDisplayName": "Cloud Filestore",
+        "descriptionContains": "Capacity",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_sql_postgres",
+      "provider": "gcp",
+      "unitRole": "vcpu_hour",
+      "unit": "vCPU-Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud SQL",
+        "descriptionContains": "PostgreSQL: Zonal - vCPU",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_sql_postgres",
+      "provider": "gcp",
+      "unitRole": "memory_gb_hour",
+      "unit": "GB-Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud SQL",
+        "descriptionContains": "PostgreSQL: Zonal - RAM",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_sql_mysql",
+      "provider": "gcp",
+      "unitRole": "vcpu_hour",
+      "unit": "vCPU-Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud SQL",
+        "descriptionContains": "MySQL: Zonal - vCPU",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_sql_mysql",
+      "provider": "gcp",
+      "unitRole": "memory_gb_hour",
+      "unit": "GB-Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud SQL",
+        "descriptionContains": "MySQL: Zonal - RAM",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.alloydb",
+      "provider": "gcp",
+      "unitRole": "vcpu_hour",
+      "unit": "vCPU-Hours",
+      "filter": {
+        "serviceDisplayName": "AlloyDB",
+        "descriptionContains": "vCPU",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.spanner",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud Spanner",
+        "descriptionContains": "Compute Capacity",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.firestore",
+      "provider": "gcp",
+      "unitRole": "rcu_hour",
+      "unit": "100K Reads",
+      "filter": {
+        "serviceDisplayName": "Cloud Firestore",
+        "descriptionContains": "Document Reads",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.firestore",
+      "provider": "gcp",
+      "unitRole": "wcu_hour",
+      "unit": "100K Writes",
+      "filter": {
+        "serviceDisplayName": "Cloud Firestore",
+        "descriptionContains": "Document Writes",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.bigtable",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud Bigtable",
+        "descriptionContains": "Nodes",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.memorystore_redis",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "GB-Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud Memorystore for Redis",
+        "descriptionContains": "Capacity",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.memorystore_memcached",
+      "provider": "gcp",
+      "unitRole": "instance_hour",
+      "unit": "vCPU-Hours",
+      "filter": {
+        "serviceDisplayName": "Cloud Memorystore for Memcached",
+        "descriptionContains": "vCPU",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.bigquery",
+      "provider": "gcp",
+      "unitRole": "tb_scanned",
+      "unit": "TB Scanned",
+      "filter": {
+        "serviceDisplayName": "BigQuery",
+        "descriptionContains": "Analysis",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.pubsub",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Cloud Pub/Sub",
+        "descriptionContains": "Message Delivery",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_tasks",
+      "provider": "gcp",
+      "unitRole": "messages",
+      "unit": "1M Operations",
+      "filter": {
+        "serviceDisplayName": "Cloud Tasks",
+        "descriptionContains": "Operations",
+        "keyBy": "description",
+        "priceScale": 1000000
+      }
+    },
+    {
+      "serviceId": "gcp.eventarc",
+      "provider": "gcp",
+      "unitRole": "messages",
+      "unit": "1M Events",
+      "filter": {
+        "serviceDisplayName": "Eventarc",
+        "descriptionContains": "Events",
+        "keyBy": "description",
+        "priceScale": 1000000
+      }
+    },
+    {
+      "serviceId": "gcp.workflows",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "1K Steps",
+      "filter": {
+        "serviceDisplayName": "Workflows",
+        "descriptionContains": "Steps",
+        "keyBy": "description",
+        "priceScale": 1000
+      }
+    },
+    {
+      "serviceId": "gcp.managed_kafka",
+      "provider": "gcp",
+      "unitRole": "vcpu_hour",
+      "unit": "vCPU-Hours",
+      "filter": {
+        "serviceDisplayName": "Managed Service for Apache Kafka",
+        "descriptionContains": "vCPU",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.secret_manager",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "10K Requests",
+      "filter": {
+        "serviceDisplayName": "Secret Manager",
+        "descriptionContains": "Access operations",
+        "keyBy": "description",
+        "priceScale": 10000
+      }
+    },
+    {
+      "serviceId": "gcp.kms",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "10K Requests",
+      "filter": {
+        "serviceDisplayName": "Cloud Key Management Service",
+        "descriptionContains": "Key operations",
+        "keyBy": "description",
+        "priceScale": 10000
+      }
+    },
+    {
+      "serviceId": "gcp.identity_platform",
+      "provider": "gcp",
+      "unitRole": "mau",
+      "unit": "MAU",
+      "filter": {
+        "serviceDisplayName": "Identity Platform",
+        "descriptionContains": "Monthly Active Users",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.firebase_auth",
+      "provider": "gcp",
+      "unitRole": "mau",
+      "unit": "MAU",
+      "filter": {
+        "serviceDisplayName": "Firebase Authentication",
+        "descriptionContains": "Monthly Active Users",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.vertex_gemini",
+      "provider": "gcp",
+      "unitRole": "tokens_1m_in",
+      "unit": "1M Tokens",
+      "filter": {
+        "serviceDisplayName": "Vertex AI",
+        "descriptionContains": "Gemini",
+        "exclude": ["Output", "Audio", "Video", "Image"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.vertex_gemini",
+      "provider": "gcp",
+      "unitRole": "tokens_1m_out",
+      "unit": "1M Tokens",
+      "filter": {
+        "serviceDisplayName": "Vertex AI",
+        "descriptionContains": "Gemini",
+        "exclude": ["Input", "Audio", "Video", "Image"],
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.vertex_endpoint",
+      "provider": "gcp",
+      "unitRole": "vcpu_hour",
+      "unit": "vCPU-Hours",
+      "filter": {
+        "serviceDisplayName": "Vertex AI",
+        "descriptionContains": "Prediction",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.vertex_search",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "1K Queries",
+      "filter": {
+        "serviceDisplayName": "Vertex AI Search",
+        "descriptionContains": "Search",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.vision",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "1K Units",
+      "filter": {
+        "serviceDisplayName": "Cloud Vision API",
+        "descriptionContains": "Label Detection",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.speech_to_text",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "Minutes",
+      "filter": {
+        "serviceDisplayName": "Cloud Speech API",
+        "descriptionContains": "Speech",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.text_to_speech",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "1M Chars",
+      "filter": {
+        "serviceDisplayName": "Cloud Text-to-Speech API",
+        "descriptionContains": "Characters",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.translation",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "1M Chars",
+      "filter": {
+        "serviceDisplayName": "Cloud Translation API",
+        "descriptionContains": "Translated",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.natural_language",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "1K Records",
+      "filter": {
+        "serviceDisplayName": "Cloud Natural Language API",
+        "descriptionContains": "Sentiment",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.document_ai",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "1K Pages",
+      "filter": {
+        "serviceDisplayName": "Document AI",
+        "descriptionContains": "Pages",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.dialogflow",
+      "provider": "gcp",
+      "unitRole": "requests",
+      "unit": "1K Requests",
+      "filter": {
+        "serviceDisplayName": "Dialogflow",
+        "descriptionContains": "Requests",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.video_intelligence",
+      "provider": "gcp",
+      "unitRole": "unit",
+      "unit": "Minutes",
+      "filter": {
+        "serviceDisplayName": "Cloud Video Intelligence API",
+        "descriptionContains": "Label Detection",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "gcp.cloud_logging",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Cloud Logging",
+        "descriptionContains": "Log Storage",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "transfer.internet_egress",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "Network",
+        "descriptionContains": "Network Internet Egress",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "transfer.inter_az",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "InterzoneEgress",
+        "descriptionContains": "Inter-Zone",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "transfer.inter_region",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceGroup": "InterregionEgress",
+        "descriptionContains": "VM to VM Egress",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "transfer.nat_processing",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "descriptionContains": "NAT Gateway: Data processing",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "transfer.privatelink",
+      "provider": "gcp",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceDisplayName": "Compute Engine",
+        "descriptionContains": "Private Service Connect: Data Processing",
+        "keyBy": "description"
+      }
+    },
+    {
+      "serviceId": "oci.compute",
+      "provider": "oci",
+      "unitRole": "vcpu_hour",
+      "unit": "OCPU-Hours",
+      "filter": {
+        "serviceCategory": "Compute - Virtual Machine",
+        "metricContains": "OCPU Per Hour",
+        "displayNameContains": "Standard - E",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.compute",
+      "provider": "oci",
+      "unitRole": "memory_gb_hour",
+      "unit": "GB-Hours",
+      "filter": {
+        "serviceCategory": "Compute - Virtual Machine",
+        "metricContains": "Gigabytes Per Hour",
+        "displayNameContains": "Standard - E",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.functions",
+      "provider": "oci",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceCategory": "Application Development - Serverless",
+        "partNumber": "B90618",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.functions",
+      "provider": "oci",
+      "unitRole": "gb_second",
+      "unit": "GB-Seconds",
+      "filter": {
+        "serviceCategory": "Application Development - Serverless",
+        "partNumber": "B90617",
+        "keyBy": "partNumber",
+        "priceScale": 0.0001
+      }
+    },
+    {
+      "serviceId": "oci.container_instances",
+      "provider": "oci",
+      "unitRole": "vcpu_hour",
+      "unit": "OCPU-Hours",
+      "filter": {
+        "serviceCategory": "Compute - Virtual Machine",
+        "metricContains": "OCPU Per Hour",
+        "displayNameContains": "Standard - E",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.container_instances",
+      "provider": "oci",
+      "unitRole": "memory_gb_hour",
+      "unit": "GB-Hours",
+      "filter": {
+        "serviceCategory": "Compute - Virtual Machine",
+        "metricContains": "Gigabytes Per Hour",
+        "displayNameContains": "Standard - E",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.oke",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceCategory": "Cloud Infrastructure Kubernetes Engine (OKE)",
+        "partNumber": "B96109",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.dns",
+      "provider": "oci",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceCategory": "Networking - DNS",
+        "partNumber": "B88525",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.load_balancer",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceCategory": "Flexible Load Balancer",
+        "partNumber": "B93030",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.load_balancer",
+      "provider": "oci",
+      "unitRole": "lcu_hour",
+      "unit": "Mbps-Hours",
+      "filter": {
+        "serviceCategory": "Flexible Load Balancer",
+        "partNumber": "B93031",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.api_gateway",
+      "provider": "oci",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceCategory": "Application Development - API Management",
+        "partNumber": "B92072",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.waf",
+      "provider": "oci",
+      "unitRole": "requests",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceCategory": "WAF",
+        "partNumber": "B94277",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.network_firewall",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceCategory": "Network Firewall",
+        "partNumber": "B95403",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.network_firewall",
+      "provider": "oci",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceCategory": "Network Firewall",
+        "partNumber": "B95404",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.vcn_peering",
+      "provider": "oci",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceCategory": "MySQL",
+        "partNumber": "B109169",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.fastconnect",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceCategory": "Networking - FastConnect",
+        "partNumber": "B88325",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.object_storage",
+      "provider": "oci",
+      "unitRole": "storage_gb_month",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceCategory": "Storage - Object Storage",
+        "partNumber": "B91628",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.object_storage",
+      "provider": "oci",
+      "unitRole": "requests",
+      "unit": "10K Requests",
+      "filter": {
+        "serviceCategory": "Storage - Object Storage",
+        "partNumber": "B91627",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.archive_storage",
+      "provider": "oci",
+      "unitRole": "storage_gb_month",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceCategory": "Storage - Object Storage",
+        "partNumber": "B91633",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.block_volume",
+      "provider": "oci",
+      "unitRole": "storage_gb_month",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceCategory": "Storage - Block Volumes",
+        "partNumber": "B91961",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.file_storage",
+      "provider": "oci",
+      "unitRole": "storage_gb_month",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceCategory": "Storage - File Storage",
+        "partNumber": "B89057",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.autonomous_atp",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "ECPU-Hours",
+      "filter": {
+        "serviceCategory": "Database - Autonomous AI Database",
+        "partNumber": "B113049",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.autonomous_adw",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "ECPU-Hours",
+      "filter": {
+        "serviceCategory": "Database - Autonomous AI Database",
+        "partNumber": "B95701",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.base_db",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "ECPU-Hours",
+      "filter": {
+        "serviceCategory": "Database - Base Database Service - Virtual Machine",
+        "partNumber": "B112725",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.mysql_heatwave",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "ECPU-Hours",
+      "filter": {
+        "serviceCategory": "MySQL",
+        "partNumber": "B108030",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.postgres",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "OCPU-Hours",
+      "filter": {
+        "serviceCategory": "Database with PostgreSQL",
+        "partNumber": "B99060",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.nosql",
+      "provider": "oci",
+      "unitRole": "rcu_hour",
+      "unit": "Read Units-Mo",
+      "filter": {
+        "serviceCategory": "Database - NoSQL",
+        "partNumber": "B89738",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.nosql",
+      "provider": "oci",
+      "unitRole": "wcu_hour",
+      "unit": "Write Units-Mo",
+      "filter": {
+        "serviceCategory": "Database - NoSQL",
+        "partNumber": "B89737",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.cache_redis",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "GB-Hours",
+      "filter": {
+        "serviceCategory": "Cache with Redis",
+        "partNumber": "B98217",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.opensearch",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceCategory": "Search Service with OpenSearch",
+        "partNumber": "B93709",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.queue",
+      "provider": "oci",
+      "unitRole": "messages",
+      "unit": "1M Requests",
+      "filter": {
+        "serviceCategory": "OCI Queue",
+        "partNumber": "B95697",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.notifications",
+      "provider": "oci",
+      "unitRole": "messages",
+      "unit": "1M Deliveries",
+      "filter": {
+        "serviceCategory": "Observability - Notifications",
+        "partNumber": "B90940",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.streaming",
+      "provider": "oci",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceCategory": "OCI Streaming",
+        "partNumber": "B90938",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.integration",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceCategory": "Application Integration - OIC",
+        "partNumber": "B89639",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.vault_keys",
+      "provider": "oci",
+      "unitRole": "instance_hour",
+      "unit": "Hours",
+      "filter": {
+        "serviceCategory": "Security - Key Management",
+        "partNumber": "B90328",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.identity_domains",
+      "provider": "oci",
+      "unitRole": "mau",
+      "unit": "MAU",
+      "filter": {
+        "serviceCategory": "OCI IAM",
+        "partNumber": "B112199",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.genai",
+      "provider": "oci",
+      "unitRole": "tokens_1m_in",
+      "unit": "10K Transactions",
+      "filter": {
+        "serviceCategory": "OCI Generative AI - Models",
+        "partNumber": "B108080",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.genai_embed",
+      "provider": "oci",
+      "unitRole": "tokens_1m_in",
+      "unit": "10K Transactions",
+      "filter": {
+        "serviceCategory": "OCI Generative AI - Models",
+        "partNumber": "B108079",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.language",
+      "provider": "oci",
+      "unitRole": "unit",
+      "unit": "1K Transactions",
+      "filter": {
+        "serviceCategory": "OCI Language",
+        "partNumber": "B93423",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.vision",
+      "provider": "oci",
+      "unitRole": "unit",
+      "unit": "1K Transactions",
+      "filter": {
+        "serviceCategory": "OCI Vision",
+        "partNumber": "B94973",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.speech",
+      "provider": "oci",
+      "unitRole": "unit",
+      "unit": "Hours",
+      "filter": {
+        "serviceCategory": "OCI Speech",
+        "partNumber": "B94896",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.document_understanding",
+      "provider": "oci",
+      "unitRole": "unit",
+      "unit": "1K Transactions",
+      "filter": {
+        "serviceCategory": "OCI Document Understanding",
+        "partNumber": "B96110",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.digital_assistant",
+      "provider": "oci",
+      "unitRole": "requests",
+      "unit": "Requests-Hr",
+      "filter": {
+        "serviceCategory": "Oracle Digital Assistant",
+        "partNumber": "B90260",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.logging",
+      "provider": "oci",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB-Mo",
+      "filter": {
+        "serviceCategory": "Observability - Logging",
+        "partNumber": "B92593",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "oci.monitoring",
+      "provider": "oci",
+      "unitRole": "requests",
+      "unit": "1M Datapoints",
+      "filter": {
+        "serviceCategory": "Observability - Monitoring",
+        "partNumber": "B90925",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "transfer.internet_egress",
+      "provider": "oci",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceCategory": "Networking - Virtual Cloud Networks",
+        "partNumber": "B88327",
+        "keyBy": "partNumber"
+      }
+    },
+    {
+      "serviceId": "transfer.inter_region",
+      "provider": "oci",
+      "unitRole": "data_transfer_gb",
+      "unit": "GB",
+      "filter": {
+        "serviceCategory": "MySQL",
+        "partNumber": "B109169",
+        "keyBy": "partNumber"
+      }
     }
   ],
   "knownUnavailable": [
@@ -2073,6 +3384,26 @@
       "serviceId": "azure.communication_email",
       "provider": "azure",
       "reason": "Azure Communication Services Email meters are not exposed under a standalone serviceName in the Azure Retail Prices API."
+    },
+    {
+      "serviceId": "gcp.batch",
+      "provider": "gcp",
+      "reason": "Google Cloud Batch carries no separate orchestration charge; users pay only for underlying Compute Engine VMs and Persistent Disks."
+    },
+    {
+      "serviceId": "oci.batch",
+      "provider": "oci",
+      "reason": "OCI Batch orchestration (partNumber B112107) carries a $0 service rate in the Cost Estimator API; underlying Compute and Storage are billed separately."
+    },
+    {
+      "serviceId": "oci.vault_secrets",
+      "provider": "oci",
+      "reason": "OCI Vault Secrets have no separate SKU in the Cost Estimator API; secret storage sits within OCI Vault free allowance or Private Vault partitions."
+    },
+    {
+      "serviceId": "oci.datascience_deployment",
+      "provider": "oci",
+      "reason": "OCI Data Science model deployments bill as underlying Compute VM OCPU and RAM shapes without a separate orchestration meter in the Cost Estimator API."
     }
   ]
 }

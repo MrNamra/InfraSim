@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "verifiedAt": "2026-11-10",
+  "notes": "Verified equivalent regions across AWS, GCP, Azure, and OCI (spec 14-COST-ENGINE section 5).",
+  "regions": [
+    {
+      "key": "us-east",
+      "label": "US East (N. Virginia / Ashburn)",
+      "aws": "us-east-1",
+      "gcp": "us-east4",
+      "azure": "eastus",
+      "oci": "us-ashburn-1"
+    },
+    {
+      "key": "us-west",
+      "label": "US West (Oregon / Phoenix)",
+      "aws": "us-west-2",
+      "gcp": "us-west1",
+      "azure": "westus2",
+      "oci": "us-phoenix-1"
+    },
+    {
+      "key": "in-west",
+      "label": "India West / Central (Mumbai / Pune)",
+      "aws": "ap-south-1",
+      "gcp": "asia-south1",
+      "azure": "centralindia",
+      "oci": "ap-mumbai-1",
+      "note": "Azure Central India (Pune) and West India (Mumbai) differ in SKU availability."
+    },
+    {
+      "key": "in-south",
+      "label": "India South / Secondary (Hyderabad / Delhi / Chennai)",
+      "aws": "ap-south-2",
+      "gcp": "asia-south2",
+      "azure": "southindia",
+      "oci": "ap-hyderabad-1"
+    },
+    {
+      "key": "sg",
+      "label": "Singapore",
+      "aws": "ap-southeast-1",
+      "gcp": "asia-southeast1",
+      "azure": "southeastasia",
+      "oci": "ap-singapore-1"
+    },
+    {
+      "key": "jp-east",
+      "label": "Tokyo",
+      "aws": "ap-northeast-1",
+      "gcp": "asia-northeast1",
+      "azure": "japaneast",
+      "oci": "ap-tokyo-1"
+    },
+    {
+      "key": "au-east",
+      "label": "Sydney",
+      "aws": "ap-southeast-2",
+      "gcp": "australia-southeast1",
+      "azure": "australiaeast",
+      "oci": "ap-sydney-1"
+    },
+    {
+      "key": "eu-central",
+      "label": "Frankfurt",
+      "aws": "eu-central-1",
+      "gcp": "europe-west3",
+      "azure": "germanywestcentral",
+      "oci": "eu-frankfurt-1"
+    },
+    {
+      "key": "uk-south",
+      "label": "London",
+      "aws": "eu-west-2",
+      "gcp": "europe-west2",
+      "azure": "uksouth",
+      "oci": "uk-london-1"
+    },
+    {
+      "key": "sa-east",
+      "label": "Sao Paulo",
+      "aws": "sa-east-1",
+      "gcp": "southamerica-east1",
+      "azure": "brazilsouth",
+      "oci": "sa-saopaulo-1"
+    }
+  ]
+}

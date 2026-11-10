@@ -25,10 +25,14 @@ class PriceSyncService
         private readonly PriceSkuMapRepository $skuMapRepository,
         AwsPricingFetcher $awsFetcher,
         AzurePricingFetcher $azureFetcher,
+        GcpPricingFetcher $gcpFetcher,
+        OciPricingFetcher $ociFetcher,
     ) {
         $this->fetchers = [
             $awsFetcher->provider() => $awsFetcher,
             $azureFetcher->provider() => $azureFetcher,
+            $gcpFetcher->provider() => $gcpFetcher,
+            $ociFetcher->provider() => $ociFetcher,
         ];
     }
 

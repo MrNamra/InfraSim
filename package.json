@@ -19,6 +19,8 @@
     "test:e2e": "playwright test",
     "catalog:build": "tsx scripts/build-catalog.ts",
     "catalog:check": "tsx scripts/build-catalog.ts --check",
+    "cost:coverage": "tsx scripts/check-price-coverage.ts --check",
+    "cost:coverage:write": "tsx scripts/check-price-coverage.ts --write",
     "schema:generate": "pnpm --filter @infrasim/shared-types schema:generate",
     "schema:check": "pnpm --filter @infrasim/shared-types schema:check"
   },

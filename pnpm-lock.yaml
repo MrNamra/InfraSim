@@ -214,6 +214,9 @@ importers:
       '@infrasim/catalog':
         specifier: workspace:*
         version: link:../../packages/catalog
+      '@infrasim/cost-engine':
+        specifier: workspace:*
+        version: link:../../packages/cost-engine
       '@infrasim/diagnosis':
         specifier: workspace:*
         version: link:../../packages/diagnosis

@@ -242,13 +242,17 @@ class PriceSyncTest extends TestCase
             ->get('/api/prices/snapshot?providers=aws,azure&regions=us-east-1,eastus');
         $res304->assertStatus(304);
 
-        // Coverage endpoint confirms 100% AWS & Azure catalog coverage (0 missing non-free services).
+        // Coverage endpoint confirms 100% catalog coverage across AWS, Azure, GCP, and OCI.
         $covRes = $this->getJson('/api/prices/coverage');
         $covRes->assertOk()
             ->assertJsonPath('providers.aws.nonFreeServices', 74)
             ->assertJsonPath('providers.aws.missingServiceIds', [])
             ->assertJsonPath('providers.azure.nonFreeServices', 61)
-            ->assertJsonPath('providers.azure.missingServiceIds', []);
+            ->assertJsonPath('providers.azure.missingServiceIds', [])
+            ->assertJsonPath('providers.gcp.nonFreeServices', 53)
+            ->assertJsonPath('providers.gcp.missingServiceIds', [])
+            ->assertJsonPath('providers.oci.nonFreeServices', 41)
+            ->assertJsonPath('providers.oci.missingServiceIds', []);
 
         // Sync endpoint requires Sanctum authentication.
         $this->postJson('/api/prices/sync', ['provider' => 'aws'])->assertUnauthorized();
@@ -257,5 +261,96 @@ class PriceSyncTest extends TestCase
         $user = User::factory()->create();
         $token = $user->createToken('test')->plainTextToken;
         $this->withToken($token)->postJson('/api/prices/sync', ['provider' => 'aws'])->assertForbidden();
+    }
+
+    public function test_gcp_fixture_sync_computes_units_plus_nanos_tiers_and_requires_api_key_live(): void
+    {
+        config(['services.gcp.billing_api_key' => null, 'pricing.sources.gcp.api_key' => null]);
+        $this->artisan('prices:sync', ['--provider' => 'gcp', '--regions' => 'us-east4'])
+            ->assertExitCode(1);
+
+        $fixture = base_path('tests/Fixtures/pricing/gcp_billing_sample.json');
+        $this->artisan('prices:sync', [
+            '--provider' => 'gcp',
+            '--regions' => 'us-east4',
+            '--file' => $fixture,
+        ])->assertExitCode(0);
+
+        $snapshot = PriceSnapshot::query()->where('provider', 'gcp')->firstOrFail();
+
+        // Core & RAM split with units + nanos / 1e9 conversion; Preemptible excluded.
+        $core = Price::query()
+            ->where('snapshot_id', $snapshot->id)
+            ->where('service_id', 'gcp.compute_engine')
+            ->get();
+        $this->assertCount(2, $core);
+        $coreRow = $core->first(fn (Price $p): bool => ($p->attrs['unitRole'] ?? '') === 'vcpu_hour');
+        $ramRow = $core->first(fn (Price $p): bool => ($p->attrs['unitRole'] ?? '') === 'memory_gb_hour');
+        $this->assertNotNull($coreRow);
+        $this->assertNotNull($ramRow);
+        $this->assertEqualsWithDelta(0.0348, $coreRow->unit_price, 0.00001);
+        $this->assertEqualsWithDelta(0.004663, $ramRow->unit_price, 0.000001);
+
+        // Scaled request pricing ($0.40 per 1M invocations) + tiered internet egress.
+        $fnReq = Price::query()
+            ->where('snapshot_id', $snapshot->id)
+            ->where('service_id', 'gcp.cloud_functions')
+            ->where('region', 'global')
+            ->firstOrFail();
+        $this->assertEqualsWithDelta(0.40, $fnReq->unit_price, 0.0001);
+
+        $egressTiers = Price::query()
+            ->where('snapshot_id', $snapshot->id)
+            ->where('service_id', 'transfer.internet_egress')
+            ->orderBy('tier_min')
+            ->get();
+        $this->assertCount(2, $egressTiers);
+        $this->assertEqualsWithDelta(0.12, $egressTiers[0]->unit_price, 0.0001);
+        $this->assertEqualsWithDelta(1024.0, $egressTiers[0]->tier_max, 0.01);
+        $this->assertEqualsWithDelta(0.11, $egressTiers[1]->unit_price, 0.0001);
+        $this->assertNull($egressTiers[1]->tier_max);
+    }
+
+    public function test_oci_fixture_sync_uses_global_region_pay_as_you_go_and_scales_tiers(): void
+    {
+        $fixture = base_path('tests/Fixtures/pricing/oci_products_sample.json');
+        $this->artisan('prices:sync', [
+            '--provider' => 'oci',
+            '--file' => $fixture,
+        ])->assertExitCode(0);
+
+        $snapshot = PriceSnapshot::query()->where('provider', 'oci')->firstOrFail();
+
+        $ocpu = Price::query()
+            ->where('snapshot_id', $snapshot->id)
+            ->where('service_id', 'oci.compute')
+            ->get();
+        $this->assertCount(2, $ocpu);
+        $ocpuRow = $ocpu->first(fn (Price $p): bool => ($p->attrs['unitRole'] ?? '') === 'vcpu_hour');
+        $memRow = $ocpu->first(fn (Price $p): bool => ($p->attrs['unitRole'] ?? '') === 'memory_gb_hour');
+        $this->assertSame('global', $ocpuRow?->region);
+        $this->assertEqualsWithDelta(0.03, $ocpuRow?->unit_price ?? 0, 0.0001);
+        $this->assertEqualsWithDelta(0.002, $memRow?->unit_price ?? 0, 0.0001);
+
+        // Functions GB-Second scaled from 10,000 GB-s ($0.1417) -> $0.00001417/GB-s with 400,000 threshold.
+        $fnExecTiers = Price::query()
+            ->where('snapshot_id', $snapshot->id)
+            ->where('service_id', 'oci.functions')
+            ->where('sku_key', 'B90617')
+            ->orderBy('tier_min')
+            ->get();
+        $this->assertCount(2, $fnExecTiers);
+        $this->assertEqualsWithDelta(400000.0, $fnExecTiers[0]->tier_max, 1.0);
+        $this->assertEqualsWithDelta(0.00001417, $fnExecTiers[1]->unit_price, 0.0000001);
+
+        // Outbound Data Transfer preserves 10 TB free band + $0.0085/GB overage under region='global'.
+        $xfer = Price::query()
+            ->where('snapshot_id', $snapshot->id)
+            ->where('service_id', 'transfer.internet_egress')
+            ->orderBy('tier_min')
+            ->get();
+        $this->assertCount(2, $xfer);
+        $this->assertEqualsWithDelta(10240.0, $xfer[0]->tier_max, 0.1);
+        $this->assertEqualsWithDelta(0.0085, $xfer[1]->unit_price, 0.0001);
     }
 }
