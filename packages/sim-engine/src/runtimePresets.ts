@@ -25,6 +25,7 @@ export interface ResolvedNodeCapacities {
   cpuSpeedMultiplier: number;
   queueMaxLength: number;
   queuePolicy: 'reject' | 'drop-oldest';
+  fnOnLimit?: 'throttle' | 'queue';
   connectionsMax: number | null;
   connectionWaitMs: number;
   rateLimitRps: number | null;
@@ -61,9 +62,15 @@ export function resolveNodeCapacities(
 
   let slotsPerInstance = cfg.maxInFlightPerInstance;
   if (slotsPerInstance === undefined) {
-    if (service?.capacity.type === 'conc') {
+    if (kind === 'fn') {
+      slotsPerInstance =
+        cfg.coldStart?.concurrencyLimit ??
+        (service?.capacity.type === 'conc'
+          ? service.capacity.limit
+          : presetSpec.maxInFlightPerInstance);
+    } else if (service?.capacity.type === 'conc') {
       slotsPerInstance = service.capacity.limit;
-    } else if (kind === 'compute' || kind === 'fn') {
+    } else if (kind === 'compute') {
       slotsPerInstance = cfg.coldStart?.concurrencyLimit ?? presetSpec.maxInFlightPerInstance;
     } else if (
       kind === 'lb' ||
@@ -90,16 +97,28 @@ export function resolveNodeCapacities(
 
   const rawTotalSlots = Math.max(1, instances * Math.max(1, slotsPerInstance));
 
+  const fnOnLimit: 'throttle' | 'queue' | undefined =
+    kind === 'fn'
+      ? (cfg.coldStart?.onLimit ??
+        (service?.capacity.type === 'conc' ? service.capacity.onLimit : undefined) ??
+        'throttle')
+      : undefined;
+
   const vcpu = Math.max(0.25, cfg.vcpu ?? 1);
   let coresPerInstance = 0;
-  if (kind === 'compute' || kind === 'fn') {
+  let rawTotalCores = 0;
+  if (kind === 'compute') {
     if (presetKey === 'node' && !cfg.cluster) {
       coresPerInstance = Math.min(1, vcpu);
     } else {
       coresPerInstance = vcpu;
     }
+    rawTotalCores = instances * coresPerInstance;
+  } else if (kind === 'fn') {
+    // Each serverless concurrent execution sandbox owns isolated compute capacity
+    coresPerInstance = vcpu;
+    rawTotalCores = rawTotalSlots * vcpu;
   }
-  const rawTotalCores = instances * coresPerInstance;
   const cpuSpeedMultiplier = rawTotalCores > 0 && rawTotalCores < 1 ? 1 / rawTotalCores : 1;
   const discreteCores = rawTotalCores > 0 ? Math.max(1, Math.round(rawTotalCores)) : 0;
 
@@ -108,10 +127,11 @@ export function resolveNodeCapacities(
     defaultQueue = 10000;
   } else if (kind === 'sql' || kind === 'doc' || kind === 'graph') {
     defaultQueue = 500;
-  } else if (kind === 'fn' && cfg.coldStart?.onLimit === 'throttle') {
-    defaultQueue = 0;
+  } else if (kind === 'fn') {
+    defaultQueue = fnOnLimit === 'throttle' ? 0 : 1000;
   }
-  const rawQueueMax = cfg.queue?.maxLength ?? defaultQueue;
+  const rawQueueMax =
+    kind === 'fn' && fnOnLimit === 'throttle' ? 0 : (cfg.queue?.maxLength ?? defaultQueue);
 
   let rawConnMax: number | null = null;
   if (cfg.connections?.max !== undefined) {
@@ -168,6 +188,7 @@ export function resolveNodeCapacities(
     cpuSpeedMultiplier,
     queueMaxLength: scaledQueue.value,
     queuePolicy: cfg.queue?.policy ?? 'reject',
+    ...(fnOnLimit ? { fnOnLimit } : {}),
     connectionsMax,
     connectionWaitMs: cfg.connectionWaitMs ?? 5000,
     rateLimitRps,

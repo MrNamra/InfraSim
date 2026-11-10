@@ -47,6 +47,8 @@ export interface EffectiveServiceDefaults {
     p50: number;
     p95: number;
     idleTtlS: number;
+    onLimit: 'throttle' | 'queue';
+    concurrencyLimit: number;
   };
 }
 
@@ -90,15 +92,18 @@ export function getEffectiveServiceDefaults(service?: ServiceDefinition): Effect
     readRatio: kind === 'sql' || kind === 'kv' || kind === 'doc' ? 0.8 : undefined,
     writeLatencyMultiplier: kind === 'sql' || kind === 'kv' || kind === 'doc' ? 1.5 : undefined,
     connectionWaitMs: kind === 'sql' ? 500 : undefined,
-    coldStart: service?.coldStart
-      ? {
-          enabled: true,
-          probabilityModel: 'idle-based',
-          p50: service.coldStart.p50,
-          p95: service.coldStart.p95,
-          idleTtlS: service.coldStart.idleTtlS,
-        }
-      : undefined,
+    coldStart:
+      kind === 'fn' || service?.coldStart
+        ? {
+            enabled: Boolean(service?.coldStart),
+            probabilityModel: 'idle-based',
+            p50: service?.coldStart?.p50 ?? 250,
+            p95: service?.coldStart?.p95 ?? 900,
+            idleTtlS: service?.coldStart?.idleTtlS ?? 600,
+            onLimit: cap?.type === 'conc' ? (cap.onLimit ?? 'throttle') : 'throttle',
+            concurrencyLimit: maxInFlightPerInstance,
+          }
+        : undefined,
   };
 }
 
@@ -135,18 +140,23 @@ export function computeTheoreticalMaxRps(
   if (
     cap?.type === 'slots' ||
     cap?.type === 'conc' ||
-    config.maxInFlightPerInstance !== undefined
+    service?.kind === 'fn' ||
+    config.maxInFlightPerInstance !== undefined ||
+    config.coldStart?.concurrencyLimit !== undefined
   ) {
-    const inFlight = config.maxInFlightPerInstance ?? defaults.maxInFlightPerInstance;
+    const inFlight =
+      config.maxInFlightPerInstance ??
+      config.coldStart?.concurrencyLimit ??
+      defaults.maxInFlightPerInstance;
     const slotBound = (instances * inFlight) / p50Sec;
     candidates.push({
       rps: slotBound,
-      label: 'Concurrency slots',
+      label: service?.kind === 'fn' ? 'Serverless concurrency' : 'Concurrency slots',
       detail: `${instances} instance${instances === 1 ? '' : 's'} × ${inFlight} slots / ${(p50Sec * 1000).toFixed(1)} ms p50 = ${Math.round(slotBound)} RPS`,
     });
   }
 
-  if (service?.kind === 'compute' || service?.kind === 'fn') {
+  if (service?.kind === 'compute') {
     const preset = config.runtimePreset ?? defaults.runtimePreset;
     const rawVcpu = config.vcpu ?? defaults.vcpu;
     const effectiveCores = preset === 'node' && !config.cluster ? Math.min(1, rawVcpu) : rawVcpu;

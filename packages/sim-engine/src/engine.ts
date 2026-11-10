@@ -54,6 +54,7 @@ import {
   consumeStationWindowIntegrals,
   createStationState,
   createTokenBucket,
+  getActiveSlotCapacity,
   releaseCoreAndDequeue,
   releaseSlotAndDequeue,
   tryAcquireOrEnqueueSlot,
@@ -129,7 +130,8 @@ interface OutboundAttempt {
   maxRetries: number;
   backoffMs: number;
   jitter: boolean;
-  deadlineMs: number;
+  attemptTimeoutMs: number;
+  overallDeadlineMs: number;
   startMs: number;
   payloadBytes: number;
   opName?: string;
@@ -206,8 +208,11 @@ interface RuntimeNode {
   outgoingSync: RuntimeEdge[];
   outgoingAsync: RuntimeEdge[];
   rrCursor: number;
-  // Warm serverless instance timestamps
+  // Warm serverless instance timestamps & pre-resolved hot-path flags
   warmExpiryMs: number[];
+  hasScenarioOverrides: boolean;
+  hasOperationOverrides: boolean;
+  resolvedColdStart: NodeInstance['config']['coldStart'] | undefined;
   // Async queue backlog & worker pool
   asyncBacklog: QueuedAsyncMsg[];
   asyncWorkersBusy: number;
@@ -226,9 +231,12 @@ interface RuntimeNode {
   lbEdgeUnhealthy: Set<string>;
   lbFailStreaks: Map<string, number>;
   lbPassStreaks: Map<string, number>;
-  // Autoscaling state
+  // Autoscaling & LB health tracking state
+  warmingInstances: number;
   lastScaleOutMs: number;
   lastScaleInMs: number;
+  lastBucketArrivals: number;
+  lastBucketP95Ms: number;
   // Total counters across entire run
   totalArrivals: number;
   totalCompletions: number;
@@ -260,9 +268,13 @@ interface RuntimeNode {
   totalBucketedSlotAreaMs: number;
   totalBucketedCoreAreaMs: number;
   totalBucketedConnAreaMs: number;
+  totalBucketedSlotCapAreaMs: number;
+  totalBucketedCoreCapAreaMs: number;
   prevFrameCumSlotAreaMs: number;
   prevFrameCumCoreAreaMs: number;
   prevFrameCumConnAreaMs: number;
+  prevFrameCumSlotCapAreaMs: number;
+  prevFrameCumCoreCapAreaMs: number;
   lastFrameUtil: number;
   lastFrameCpuUtil: number;
   frameArrivals: number;
@@ -465,6 +477,23 @@ export async function runSimulation(
       outgoingAsync: [],
       rrCursor: 0,
       warmExpiryMs: [],
+      hasScenarioOverrides: Boolean(
+        n.config.scenarioOverrides && n.config.scenarioOverrides.length > 0,
+      ),
+      hasOperationOverrides: Boolean(
+        n.config.operations && Object.keys(n.config.operations).length > 0,
+      ),
+      resolvedColdStart:
+        n.config.coldStart ??
+        (kind === 'fn' && service?.coldStart
+          ? {
+              enabled: true,
+              probabilityModel: 'idle-based',
+              p50: service.coldStart.p50,
+              p95: service.coldStart.p95,
+              idleTtlS: service.coldStart.idleTtlS,
+            }
+          : undefined),
       asyncBacklog: [],
       asyncWorkersBusy: 0,
       killedInstances: 0,
@@ -479,8 +508,11 @@ export async function runSimulation(
       lbEdgeUnhealthy: new Set(),
       lbFailStreaks: new Map(),
       lbPassStreaks: new Map(),
+      warmingInstances: 0,
       lastScaleOutMs: -1e9,
       lastScaleInMs: -1e9,
+      lastBucketArrivals: 0,
+      lastBucketP95Ms: 0,
       totalArrivals: 0,
       totalCompletions: 0,
       totalErrors: {},
@@ -509,9 +541,13 @@ export async function runSimulation(
       totalBucketedSlotAreaMs: 0,
       totalBucketedCoreAreaMs: 0,
       totalBucketedConnAreaMs: 0,
+      totalBucketedSlotCapAreaMs: 0,
+      totalBucketedCoreCapAreaMs: 0,
       prevFrameCumSlotAreaMs: 0,
       prevFrameCumCoreAreaMs: 0,
       prevFrameCumConnAreaMs: 0,
+      prevFrameCumSlotCapAreaMs: 0,
+      prevFrameCumCoreCapAreaMs: 0,
       lastFrameUtil: 0,
       lastFrameCpuUtil: 0,
       frameArrivals: 0,
@@ -680,8 +716,15 @@ export async function runSimulation(
       const checkMs = Math.max(1, rn.node.config.autoscaling.checkIntervalS) * 1000;
       schedule(checkMs, { kind: 'SCALE_CHECK', node: rn });
     }
-    if (rn.kind === 'lb' && rn.node.config.lb?.healthCheck) {
-      const intervalMs = Math.max(1, rn.node.config.lb.healthCheck.intervalS) * 1000;
+    const lbHc =
+      rn.kind === 'lb'
+        ? (rn.node.config.lb?.healthCheck ??
+          (rn.outgoingSync.length > 1
+            ? { intervalS: 2, unhealthyThreshold: 2, healthyThreshold: 2, timeoutMs: 2000 }
+            : undefined))
+        : undefined;
+    if (lbHc) {
+      const intervalMs = Math.max(1, lbHc.intervalS) * 1000;
       schedule(intervalMs, { kind: 'HEALTH_CHECK', node: rn });
     }
     if (
@@ -755,11 +798,19 @@ export async function runSimulation(
     opName?: string,
     isWrite = false,
   ): LatencyModel => {
-    const ov = getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000);
-    const opRes = resolveNodeOperation(rn, opName, isWrite);
+    const ov = rn.hasScenarioOverrides
+      ? getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000)
+      : undefined;
+    if (ov?.latency) {
+      return ov.latency;
+    }
+    if (rn.hasOperationOverrides) {
+      const opRes = resolveNodeOperation(rn, opName, isWrite);
+      if (opRes.override?.latency) {
+        return opRes.override.latency;
+      }
+    }
     return (
-      ov?.latency ??
-      opRes.override?.latency ??
       rn.node.config.latency ??
       rn.service?.latency ?? {
         distribution: 'lognormal',
@@ -777,17 +828,21 @@ export async function runSimulation(
     if (rn.chaosErrorRateOverride !== null) {
       return { errorRate: rn.chaosErrorRateOverride, errorKind: 'server' };
     }
-    const ov = getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000);
+    const ov = rn.hasScenarioOverrides
+      ? getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000)
+      : undefined;
     if (ov?.errorRate !== undefined) {
       return { errorRate: ov.errorRate, errorKind: 'server' };
     }
-    const opRes = resolveNodeOperation(rn, opName, isWrite);
-    if (opRes.override?.errorRate !== undefined) {
-      return {
-        errorRate: opRes.override.errorRate,
-        errorKind: mapOperationErrorKind(opRes.override.errorKind),
-        ...(opRes.override.errorKind ? { opErrorTag: opRes.override.errorKind } : {}),
-      };
+    if (rn.hasOperationOverrides) {
+      const opRes = resolveNodeOperation(rn, opName, isWrite);
+      if (opRes.override?.errorRate !== undefined) {
+        return {
+          errorRate: opRes.override.errorRate,
+          errorKind: mapOperationErrorKind(opRes.override.errorKind),
+          ...(opRes.override.errorKind ? { opErrorTag: opRes.override.errorKind } : {}),
+        };
+      }
     }
     return {
       errorRate: rn.node.config.errorRate ?? rn.service?.failure.errorRate ?? 0,
@@ -809,12 +864,13 @@ export async function runSimulation(
   };
 
   const recomputeActiveInstances = (rn: RuntimeNode) => {
-    const total = rn.station.instancesTotal;
+    advanceStationIntegrals(rn.station, now);
+    const ready = Math.max(0, rn.station.instancesTotal - rn.warmingInstances);
     if (rn.azDown) {
       rn.station.instancesActive = 0;
       return;
     }
-    rn.station.instancesActive = Math.max(0, total - rn.killedInstances);
+    rn.station.instancesActive = Math.max(0, ready - rn.killedInstances);
   };
 
   const recordNodeOutcome = (call: CallCtx, ok: boolean, errorKind?: ErrorKind) => {
@@ -901,14 +957,19 @@ export async function runSimulation(
       }
     }
 
-    if (rn.kind === 'fn' && rn.node.config.coldStart?.enabled) {
+    if (rn.kind === 'fn') {
       const memGb = Math.max(0.128, rn.node.config.memoryGb ?? 0.5);
       const billedSec = Math.max(0.001, (now - call.serviceStartMs) / 1000) * memGb;
       rn.totalGbSeconds += billedSec;
-      const idleTtlMs = (rn.node.config.coldStart.idleTtlS ?? 600) * 1000;
-      rn.warmExpiryMs.push(now + idleTtlMs);
-      if (rn.warmExpiryMs.length > 2048) {
-        rn.warmExpiryMs.shift();
+      const coldCfg = rn.resolvedColdStart;
+      if (coldCfg?.enabled && coldCfg.probabilityModel !== 'fixed') {
+        const idleTtlMs = (coldCfg.idleTtlS ?? 600) * 1000;
+        const maxWarm = Math.max(1, Math.min(2048, rn.capacities.totalSlots));
+        if (rn.warmExpiryMs.length < maxWarm) {
+          rn.warmExpiryMs.push(now + idleTtlMs);
+        } else {
+          rn.warmExpiryMs[rn.warmExpiryMs.length - 1] = now + idleTtlMs;
+        }
       }
     }
 
@@ -937,7 +998,7 @@ export async function runSimulation(
         });
         return;
       }
-      const timeoutMs = Math.min(3000, Math.max(100, attemptState.deadlineMs - now));
+      const timeoutMs = Math.min(3000, Math.max(100, attemptState.overallDeadlineMs - now));
       const failKind: ErrorKind = mode === 'dns' ? 'not_reachable' : 'conn_timeout';
       emitLog(
         'error',
@@ -980,8 +1041,12 @@ export async function runSimulation(
     );
     edgeState.totalBytes += attemptState.payloadBytes;
 
-    // Schedule timeout watchdog in compact active timeout heap (avoids pushing dead timeout events into main heap)
-    const timeoutAtMs = Math.max(now + 5, attemptState.deadlineMs);
+    // Schedule attempt timeout watchdog in compact active timeout heap
+    const attemptDeadlineMs = Math.min(
+      attemptState.overallDeadlineMs,
+      now + attemptState.attemptTimeoutMs,
+    );
+    const timeoutAtMs = Math.max(now + 5, attemptDeadlineMs);
     enqueueTimeout(timeoutAtMs, token);
 
     const targetCall: CallCtx = {
@@ -992,7 +1057,7 @@ export async function runSimulation(
       incomingEdge: edgeState,
       arrivalMs: now + netLatencyMs,
       serviceStartMs: now + netLatencyMs,
-      deadlineMs: attemptState.deadlineMs,
+      deadlineMs: attemptDeadlineMs,
       callerTimedOut: false,
       settledWithCaller: false,
       cancelOnTimeout: Boolean(targetNode.node.config.cancelOnTimeout),
@@ -1041,14 +1106,14 @@ export async function runSimulation(
         const canRetry =
           attemptState.attemptIndex < attemptState.maxRetries &&
           outcome.errorKind !== 'circuit_open' &&
-          now < attemptState.deadlineMs - 5;
+          now < attemptState.overallDeadlineMs - 5;
 
         if (canRetry) {
           const expDelay = attemptState.backoffMs * Math.pow(2, attemptState.attemptIndex);
           const delayMs = attemptState.jitter
             ? expDelay * Math.max(0.1, edgeState.rng.next())
             : expDelay;
-          if (now + delayMs < attemptState.deadlineMs) {
+          if (now + delayMs < attemptState.overallDeadlineMs) {
             schedule(now + delayMs, {
               kind: 'RETRY_ATTEMPT',
               attemptState: {
@@ -1095,7 +1160,7 @@ export async function runSimulation(
     const lbIdle =
       caller?.node.kind === 'lb' ? caller.node.node.config.lb?.idleTimeoutMs : undefined;
     const effectiveTimeout = Math.min(nodeTimeout, lbIdle ?? nodeTimeout);
-    const deadlineMs = Math.min(parentDeadlineMs, now + effectiveTimeout);
+    const overallDeadlineMs = Math.max(parentDeadlineMs, now + 1);
     const retryCfg = edgeState.edge.retry;
 
     launchEdgeAttempt({
@@ -1106,7 +1171,8 @@ export async function runSimulation(
       maxRetries: retryCfg?.max ?? DEFAULT_EDGE_BASE_RETRY_MAX,
       backoffMs: retryCfg?.backoffMs ?? 50,
       jitter: retryCfg?.jitter ?? true,
-      deadlineMs,
+      attemptTimeoutMs: effectiveTimeout,
+      overallDeadlineMs,
       startMs: now,
       payloadBytes,
       opName,
@@ -1301,45 +1367,60 @@ export async function runSimulation(
 
   const triggerQueueWorkers = (rn: RuntimeNode) => {
     const conc = Math.max(1, rn.node.config.consumer?.concurrency ?? 10);
+    const batchSize = Math.max(1, rn.node.config.consumer?.batchSize ?? 1);
     while (
       rn.asyncWorkersBusy < conc &&
       rn.asyncBacklog.length > 0 &&
       rn.station.instancesActive > 0
     ) {
+      const batch: QueuedAsyncMsg[] = [];
+      while (batch.length < batchSize && rn.asyncBacklog.length > 0) {
+        batch.push(rn.asyncBacklog.shift()!);
+      }
+      if (batch.length === 0) {
+        break;
+      }
+
       if (rn.outgoingAll.length === 0) {
         // No downstream consumers attached; drain at consumer capacity latency without polluting producer completions
-        rn.asyncBacklog.shift();
         rn.asyncWorkersBusy += 1;
         const procMs = sampleNodeServiceLatency(rn);
         schedule(now + procMs, { kind: 'ASYNC_DRAIN_DONE', node: rn });
         continue;
       }
 
-      const msg = rn.asyncBacklog.shift()!;
       const edge = pickSyncEdgeWeighted(rn, rn.outgoingAll)!;
       rn.asyncWorkersBusy += 1;
+      const batchBytes = batch.reduce((acc, item) => acc + item.payloadBytes, 0);
+      const leadMsg = batch[0]!;
 
       invokeEdgeWithPolicy(
         null,
         edge,
         now + (rn.node.config.timeoutMs ?? 30_000),
-        msg.payloadBytes,
+        batchBytes,
         (outcome) => {
           rn.asyncWorkersBusy = Math.max(0, rn.asyncWorkersBusy - 1);
-          if (!outcome.ok && msg.retriesLeft > 0) {
-            rn.asyncBacklog.push({ ...msg, retriesLeft: msg.retriesLeft - 1 });
-          } else if (!outcome.ok && !rn.node.config.consumer?.dlq) {
-            emitLog(
-              'warn',
-              'platform',
-              `Consumer failed without DLQ on ${rn.node.id}: ${outcome.errorKind ?? 'server'}`,
-              rn.node.id,
-              msg.traceId || undefined,
-            );
+          if (!outcome.ok) {
+            for (const msg of batch) {
+              if (msg.retriesLeft > 0) {
+                rn.asyncBacklog.push({ ...msg, retriesLeft: msg.retriesLeft - 1 });
+              } else if (!rn.node.config.consumer?.dlq) {
+                emitLog(
+                  'warn',
+                  'platform',
+                  `Consumer failed without DLQ on ${rn.node.id}: ${outcome.errorKind ?? 'server'}`,
+                  rn.node.id,
+                  msg.traceId || undefined,
+                );
+              }
+            }
           }
           triggerQueueWorkers(rn);
         },
+        undefined,
       );
+      void leadMsg;
     }
   };
 
@@ -1420,18 +1501,26 @@ export async function runSimulation(
 
     // Serverless cold-start overhead if no warm container available
     let coldExtraMs = 0;
-    if (rn.kind === 'fn' && rn.node.config.coldStart?.enabled) {
+    const coldCfg = rn.kind === 'fn' ? rn.resolvedColdStart : undefined;
+    if (rn.kind === 'fn' && coldCfg?.enabled) {
       while (rn.warmExpiryMs.length > 0 && rn.warmExpiryMs[0]! <= now) {
         rn.warmExpiryMs.shift();
       }
-      if (rn.warmExpiryMs.length > 0) {
+      let isCold = false;
+      if (coldCfg.probabilityModel === 'fixed') {
+        isCold = rn.warmExpiryMs.length === 0 || rn.latencyRng.chance(0.05);
+      } else if (rn.warmExpiryMs.length > 0) {
         rn.warmExpiryMs.pop();
       } else {
+        isCold = true;
+      }
+      if (isCold) {
+        call.coldStarted = true;
         coldExtraMs = sampleLatency(
           {
             distribution: 'lognormal',
-            p50: rn.node.config.coldStart.p50,
-            p95: rn.node.config.coldStart.p95,
+            p50: coldCfg.p50,
+            p95: coldCfg.p95,
           },
           rn.latencyRng,
         );
@@ -1491,7 +1580,9 @@ export async function runSimulation(
       call.onFinish?.({ ok: false, errorKind: 'throttled', bytesOut: 0 });
       return;
     }
-    const activeScenarioOv = getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000);
+    const activeScenarioOv = rn.hasScenarioOverrides
+      ? getEffectiveScenarioOverride(rn.node, scenario.id, now / 1000)
+      : undefined;
     if (activeScenarioOv?.rateLimitRps !== undefined) {
       const key = `${activeScenarioOv.scenarioId ?? '*'}:${activeScenarioOv.fromS}:${activeScenarioOv.toS}:${activeScenarioOv.rateLimitRps}`;
       if (rn.scenarioRateBucket?.key !== key) {
@@ -1525,9 +1616,13 @@ export async function runSimulation(
       return;
     }
     if (slotRes.status === 'rejected') {
-      recordNodeOutcome(call, false, 'dropped_queue_full');
+      const errKind: ErrorKind =
+        rn.kind === 'fn' && rn.capacities.fnOnLimit === 'throttle'
+          ? 'throttled'
+          : 'dropped_queue_full';
+      recordNodeOutcome(call, false, errKind);
       call.settledWithCaller = true;
-      call.onFinish?.({ ok: false, errorKind: 'dropped_queue_full', bytesOut: 0 });
+      call.onFinish?.({ ok: false, errorKind: errKind, bytesOut: 0 });
       return;
     }
     if (slotRes.status === 'queued') {
@@ -1558,6 +1653,8 @@ export async function runSimulation(
       rn.totalBucketedSlotAreaMs += rn.station.slotBusyAreaMs;
       rn.totalBucketedCoreAreaMs += rn.station.coreBusyAreaMs;
       rn.totalBucketedConnAreaMs += rn.station.connBusyAreaMs;
+      rn.totalBucketedSlotCapAreaMs += rn.station.slotCapAreaMs;
+      rn.totalBucketedCoreCapAreaMs += rn.station.coreCapAreaMs;
       const integrals = consumeStationWindowIntegrals(rn.station, bucketEndMs, windowMs);
       const rawUtil = Math.max(integrals.slotUtil, integrals.cpuUtil, integrals.connUtil);
       const activeWaiters = rn.dbWaitQueue.reduce((acc, w) => (w.expired ? acc : acc + 1), 0);
@@ -1585,6 +1682,8 @@ export async function runSimulation(
       rn.totalInstanceSeconds += rn.station.instancesActive * (windowMs / 1000);
 
       const pct = rn.bucketHist.percentiles();
+      rn.lastBucketArrivals = rn.bucketArrivals;
+      rn.lastBucketP95Ms = pct.p95;
       perNodeBucket[rn.node.id] = {
         rpsIn: rn.bucketArrivals * scaleFactor,
         rpsOut: rn.bucketCompletions * scaleFactor,
@@ -1633,27 +1732,12 @@ export async function runSimulation(
     const nodeFrames: Record<string, NodeFrame> = {};
     for (const rn of orderedNodes) {
       advanceStationIntegrals(rn.station, now);
-      const activeSlots = Math.max(
-        1,
-        Math.round(
-          (rn.station.slotsCapacity * Math.max(1, rn.station.instancesActive)) /
-            Math.max(1, rn.station.instancesTotal),
-        ),
-      );
-      const activeCores =
-        rn.station.coresCapacity > 0
-          ? Math.max(
-              1,
-              Math.round(
-                (rn.station.coresCapacity * Math.max(1, rn.station.instancesActive)) /
-                  Math.max(1, rn.station.instancesTotal),
-              ),
-            )
-          : 0;
 
       const totalSlotNow = rn.totalBucketedSlotAreaMs + rn.station.slotBusyAreaMs;
       const totalCoreNow = rn.totalBucketedCoreAreaMs + rn.station.coreBusyAreaMs;
       const totalConnNow = rn.totalBucketedConnAreaMs + rn.station.connBusyAreaMs;
+      const totalSlotCapNow = rn.totalBucketedSlotCapAreaMs + rn.station.slotCapAreaMs;
+      const totalCoreCapNow = rn.totalBucketedCoreCapAreaMs + rn.station.coreCapAreaMs;
 
       const frameDtMs = now - rn.lastFrameCheckMs;
       let frameSlotUtil = rn.lastFrameUtil;
@@ -1664,10 +1748,11 @@ export async function runSimulation(
         const dSlot = Math.max(0, totalSlotNow - rn.prevFrameCumSlotAreaMs);
         const dCore = Math.max(0, totalCoreNow - rn.prevFrameCumCoreAreaMs);
         const dConn = Math.max(0, totalConnNow - rn.prevFrameCumConnAreaMs);
+        const dSlotCap = Math.max(0, totalSlotCapNow - rn.prevFrameCumSlotCapAreaMs);
+        const dCoreCap = Math.max(0, totalCoreCapNow - rn.prevFrameCumCoreCapAreaMs);
 
-        frameSlotUtil = rn.station.instancesActive <= 0 ? 0 : dSlot / (frameDtMs * activeSlots);
-        frameCpuUtil =
-          activeCores > 0 && rn.station.instancesActive > 0 ? dCore / (frameDtMs * activeCores) : 0;
+        frameSlotUtil = dSlotCap > 0 && rn.station.instancesActive > 0 ? dSlot / dSlotCap : 0;
+        frameCpuUtil = dCoreCap > 0 && rn.station.instancesActive > 0 ? dCore / dCoreCap : 0;
         frameConnUtil =
           rn.station.connectionsMax &&
           rn.station.connectionsMax > 0 &&
@@ -1679,6 +1764,8 @@ export async function runSimulation(
         rn.prevFrameCumSlotAreaMs = totalSlotNow;
         rn.prevFrameCumCoreAreaMs = totalCoreNow;
         rn.prevFrameCumConnAreaMs = totalConnNow;
+        rn.prevFrameCumSlotCapAreaMs = totalSlotCapNow;
+        rn.prevFrameCumCoreCapAreaMs = totalCoreCapNow;
       }
 
       const frameRawUtil = Math.min(1, Math.max(frameSlotUtil, frameCpuUtil, frameConnUtil));
@@ -1792,13 +1879,14 @@ export async function runSimulation(
     }
 
     const retryCfg = token.attempt;
-    const canRetry = retryCfg.attemptIndex < retryCfg.maxRetries && now < retryCfg.deadlineMs - 5;
+    const canRetry =
+      retryCfg.attemptIndex < retryCfg.maxRetries && now < retryCfg.overallDeadlineMs - 5;
     if (canRetry) {
       const expDelay = retryCfg.backoffMs * Math.pow(2, retryCfg.attemptIndex);
       const delayMs = retryCfg.jitter
         ? expDelay * Math.max(0.1, retryCfg.edgeState.rng.next())
         : expDelay;
-      if (now + delayMs < retryCfg.deadlineMs) {
+      if (now + delayMs < retryCfg.overallDeadlineMs) {
         schedule(now + delayMs, {
           kind: 'RETRY_ATTEMPT',
           attemptState: {
@@ -2141,12 +2229,12 @@ export async function runSimulation(
         if (!as) break;
         const metricVal =
           as.metric === 'cpu'
-            ? rn.lastCpuUtil
+            ? Math.max(rn.lastCpuUtil, rn.lastFrameCpuUtil)
             : as.metric === 'queue'
               ? (rn.station.slotQueue.length + rn.asyncBacklog.length) * scaleFactor
               : as.metric === 'rps'
-                ? rn.bucketArrivals * scaleFactor
-                : rn.lastSmoothedUtil;
+                ? Math.max(rn.bucketArrivals, rn.lastBucketArrivals) * scaleFactor
+                : Math.max(rn.lastSmoothedUtil, rn.lastFrameUtil);
         const curTotal = rn.station.instancesTotal;
         const rawDesired = Math.ceil(
           (curTotal * Math.max(0.01, metricVal)) / Math.max(0.01, as.target),
@@ -2154,9 +2242,11 @@ export async function runSimulation(
         const desired = Math.min(as.max, Math.max(as.min, rawDesired));
 
         if (desired > curTotal && now - rn.lastScaleOutMs >= as.scaleOutCooldownS * 1000) {
+          advanceStationIntegrals(rn.station, now);
           const delta = desired - curTotal;
           rn.lastScaleOutMs = now;
           rn.station.instancesTotal = desired;
+          rn.warmingInstances += delta;
           const nextCaps = resolveNodeCapacities(
             { ...rn.node, config: { ...rn.node.config, instances: desired } },
             rn.service,
@@ -2164,8 +2254,26 @@ export async function runSimulation(
           );
           rn.station.slotsCapacity = nextCaps.totalSlots;
           rn.station.coresCapacity = nextCaps.totalCores;
-          schedule(now + as.warmupS * 1000, { kind: 'ACTIVATE_SCALE', node: rn, delta });
-        } else if (desired < curTotal && now - rn.lastScaleInMs >= as.scaleInCooldownS * 1000) {
+          recomputeActiveInstances(rn);
+          if (as.warmupS <= 0) {
+            rn.warmingInstances = Math.max(0, rn.warmingInstances - delta);
+            recomputeActiveInstances(rn);
+            const activeSlots = getActiveSlotCapacity(rn.station);
+            while (rn.station.slotQueue.length > 0 && rn.station.inFlight < activeSlots) {
+              const nextQueued = rn.station.slotQueue.shift()!;
+              advanceStationIntegrals(rn.station, now);
+              rn.station.inFlight += 1;
+              startServiceAtNode(nextQueued.req);
+            }
+          } else {
+            schedule(now + as.warmupS * 1000, { kind: 'ACTIVATE_SCALE', node: rn, delta });
+          }
+        } else if (
+          desired < curTotal &&
+          rn.warmingInstances === 0 &&
+          now - rn.lastScaleInMs >= as.scaleInCooldownS * 1000
+        ) {
+          advanceStationIntegrals(rn.station, now);
           const nextInstances = Math.max(as.min, curTotal - 1);
           rn.lastScaleInMs = now;
           rn.station.instancesTotal = nextInstances;
@@ -2187,20 +2295,50 @@ export async function runSimulation(
       }
 
       case 'ACTIVATE_SCALE': {
-        recomputeActiveInstances(ev.node);
+        const rn = ev.node;
+        rn.warmingInstances = Math.max(0, rn.warmingInstances - ev.delta);
+        recomputeActiveInstances(rn);
+        const activeSlots = getActiveSlotCapacity(rn.station);
+        while (rn.station.slotQueue.length > 0 && rn.station.inFlight < activeSlots) {
+          const nextQueued = rn.station.slotQueue.shift()!;
+          advanceStationIntegrals(rn.station, now);
+          rn.station.inFlight += 1;
+          startServiceAtNode(nextQueued.req);
+        }
         break;
       }
 
       case 'HEALTH_CHECK': {
         const rn = ev.node;
-        const hc = rn.node.config.lb?.healthCheck;
+        const hc =
+          rn.node.config.lb?.healthCheck ??
+          (rn.outgoingSync.length > 1
+            ? { intervalS: 2, unhealthyThreshold: 2, healthyThreshold: 2, timeoutMs: 2000 }
+            : undefined);
         if (!hc) break;
         for (const edge of rn.outgoingSync) {
           const target = edge.toNode;
+          const oldestQueueWaitMs =
+            target.station.slotQueue.length > 0
+              ? now - target.station.slotQueue[0]!.enqueuedAtMs
+              : target.station.coreQueue.length > 0
+                ? now - target.station.coreQueue[0]!.enqueuedAtMs
+                : 0;
+          const targetP50 = target.node.config.latency?.p50 ?? target.service?.latency.p50 ?? 15;
+          const activeCap = Math.max(1, getActiveSlotCapacity(target.station));
+          const estQueueWaitMs =
+            (target.station.slotQueue.length * Math.max(1, targetP50)) / activeCap;
+          const recentProbeLatency = Math.max(
+            oldestQueueWaitMs,
+            estQueueWaitMs,
+            target.station.slotQueue.length > 0 || target.station.inFlight >= activeCap
+              ? target.lastBucketP95Ms
+              : 0,
+          );
           const overloadedCheck =
             target.station.instancesActive <= 0 ||
             target.lastHealth === 'down' ||
-            (target.station.slotQueue.length > 0 && target.totalHist.quantile(0.95) > hc.timeoutMs);
+            recentProbeLatency > hc.timeoutMs;
           if (overloadedCheck) {
             const fails = (rn.lbFailStreaks.get(edge.edge.id) ?? 0) + 1;
             rn.lbFailStreaks.set(edge.edge.id, fails);
@@ -2231,12 +2369,46 @@ export async function runSimulation(
           if (rn) {
             rn.killedInstances = active ? Math.min(rn.station.instancesTotal, chaos.count) : 0;
             recomputeActiveInstances(rn);
+            if (!active) {
+              const activeSlots = getActiveSlotCapacity(rn.station);
+              while (rn.station.slotQueue.length > 0 && rn.station.inFlight < activeSlots) {
+                const nextQueued = rn.station.slotQueue.shift()!;
+                advanceStationIntegrals(rn.station, now);
+                rn.station.inFlight += 1;
+                startServiceAtNode(nextQueued.req);
+              }
+              if (
+                rn.kind === 'queue' ||
+                rn.kind === 'topic' ||
+                rn.kind === 'stream' ||
+                rn.kind === 'bus'
+              ) {
+                triggerQueueWorkers(rn);
+              }
+            }
           }
         } else if (chaos.kind === 'az-outage') {
           for (const rn of orderedNodes) {
             if (rn.node.az === chaos.az) {
               rn.azDown = active;
               recomputeActiveInstances(rn);
+              if (!active) {
+                const activeSlots = getActiveSlotCapacity(rn.station);
+                while (rn.station.slotQueue.length > 0 && rn.station.inFlight < activeSlots) {
+                  const nextQueued = rn.station.slotQueue.shift()!;
+                  advanceStationIntegrals(rn.station, now);
+                  rn.station.inFlight += 1;
+                  startServiceAtNode(nextQueued.req);
+                }
+                if (
+                  rn.kind === 'queue' ||
+                  rn.kind === 'topic' ||
+                  rn.kind === 'stream' ||
+                  rn.kind === 'bus'
+                ) {
+                  triggerQueueWorkers(rn);
+                }
+              }
             }
           }
         } else if (chaos.kind === 'add-latency') {

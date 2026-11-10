@@ -27,6 +27,7 @@ export default defineConfig({
     alias: packageAliases,
   },
   test: {
+    maxWorkers: 2,
     include: [
       'apps/web/src/**/*.test.ts',
       'packages/*/src/**/*.test.ts',

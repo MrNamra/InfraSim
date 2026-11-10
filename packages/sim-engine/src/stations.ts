@@ -73,7 +73,45 @@ export interface StationState<TReq = unknown, TCore = unknown, TConn = unknown> 
   slotBusyAreaMs: number;
   coreBusyAreaMs: number;
   connBusyAreaMs: number;
+  slotCapAreaMs: number;
+  coreCapAreaMs: number;
   queueIntegralMs: number;
+}
+
+/** Computes currently active concurrency slot count adjusted by active/total instance ratio. */
+export function getActiveSlotCapacity<TReq, TCore, TConn>(
+  station: StationState<TReq, TCore, TConn>,
+): number {
+  if (station.instancesActive <= 0) {
+    return 0;
+  }
+  if (station.instancesActive === station.instancesTotal) {
+    return station.slotsCapacity;
+  }
+  return Math.max(
+    1,
+    Math.round(
+      (station.slotsCapacity * station.instancesActive) / Math.max(1, station.instancesTotal),
+    ),
+  );
+}
+
+/** Computes currently active CPU core count adjusted by active/total instance ratio. */
+export function getActiveCoreCapacity<TReq, TCore, TConn>(
+  station: StationState<TReq, TCore, TConn>,
+): number {
+  if (station.coresCapacity <= 0 || station.instancesActive <= 0) {
+    return 0;
+  }
+  if (station.instancesActive === station.instancesTotal) {
+    return station.coresCapacity;
+  }
+  return Math.max(
+    1,
+    Math.round(
+      (station.coresCapacity * station.instancesActive) / Math.max(1, station.instancesTotal),
+    ),
+  );
 }
 
 /** Creates an empty StationState seeded from resolved node capacities. */
@@ -107,6 +145,8 @@ export function createStationState<TReq = unknown, TCore = unknown, TConn = unkn
     slotBusyAreaMs: 0,
     coreBusyAreaMs: 0,
     connBusyAreaMs: 0,
+    slotCapAreaMs: 0,
+    coreCapAreaMs: 0,
     queueIntegralMs: 0,
   };
 }
@@ -121,6 +161,8 @@ export function advanceStationIntegrals<TReq, TCore, TConn>(
     station.slotBusyAreaMs += dt * station.inFlight;
     station.coreBusyAreaMs += dt * station.busyCores;
     station.connBusyAreaMs += dt * station.busyConnections;
+    station.slotCapAreaMs += dt * getActiveSlotCapacity(station);
+    station.coreCapAreaMs += dt * getActiveCoreCapacity(station);
     station.queueIntegralMs += dt * (station.slotQueue.length + station.coreQueue.length);
     station.lastIntegralMs = nowMs;
   }
@@ -143,12 +185,8 @@ export function consumeStationWindowIntegrals<TReq, TCore, TConn>(
 } {
   advanceStationIntegrals(station, windowEndMs);
   const safeDur = Math.max(1, windowDurationMs);
-  const slotDenom = safeDur * Math.max(1, station.slotsCapacity);
-  const slotUtil = station.instancesActive <= 0 ? 0 : station.slotBusyAreaMs / slotDenom;
-  const cpuUtil =
-    station.coresCapacity > 0 && station.instancesActive > 0
-      ? station.coreBusyAreaMs / (safeDur * station.coresCapacity)
-      : 0;
+  const slotUtil = station.slotCapAreaMs > 0 ? station.slotBusyAreaMs / station.slotCapAreaMs : 0;
+  const cpuUtil = station.coreCapAreaMs > 0 ? station.coreBusyAreaMs / station.coreCapAreaMs : 0;
   const connUtil =
     station.connectionsMax !== null && station.connectionsMax > 0 && station.instancesActive > 0
       ? station.connBusyAreaMs / (safeDur * station.connectionsMax)
@@ -159,6 +197,8 @@ export function consumeStationWindowIntegrals<TReq, TCore, TConn>(
   station.slotBusyAreaMs = 0;
   station.coreBusyAreaMs = 0;
   station.connBusyAreaMs = 0;
+  station.slotCapAreaMs = 0;
+  station.coreCapAreaMs = 0;
   station.queueIntegralMs = 0;
 
   return { slotUtil, cpuUtil, connUtil, avgQueueDepth, avgInFlight };
