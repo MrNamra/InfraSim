@@ -45,6 +45,7 @@ import type {
 import type { AutoFillPatchPreview, ExtractedScenarioResult } from '@infrasim/sandbox';
 import { getService, type CloudTargetProvider } from '@infrasim/catalog';
 import type * as CostEngineMod from '@infrasim/cost-engine';
+import type * as NetworkAnalyzerMod from '@infrasim/network-analyzer';
 import type { CostBreakdownMeta } from '@infrasim/cost-engine';
 import { Button, Keycap, LogoMark } from '@infrasim/ui-kit';
 import {
@@ -74,6 +75,7 @@ import { formatVirtualTime } from '../lib/timeFormat';
 import type { StarterTemplate } from '../lib/templates';
 import { useCostStore } from '../store/costStore';
 import { useDesignStore } from '../store/designStore';
+import { useNetworkStore } from '../store/networkStore';
 import { type SimSpeed, useSimulationStore } from '../store/simulationStore';
 import { Canvas } from './canvas/Canvas';
 import type { NodeCostChipInfo } from './canvas/CanvasSimContext';
@@ -113,6 +115,9 @@ const LatencyMockTab = dynamic(
   { ssr: false },
 );
 const CodeTab = dynamic(() => import('./inspector/CodeTab').then((m) => m.CodeTab), {
+  ssr: false,
+});
+const NetworkTab = dynamic(() => import('./inspector/NetworkTab').then((m) => m.NetworkTab), {
   ssr: false,
 });
 const CostTab = dynamic(() => import('./inspector/CostTab').then((m) => m.CostTab), {
@@ -179,6 +184,10 @@ const TracesDockTab = dynamic(() => import('./dock/TracesDockTab').then((m) => m
 const LogsDockTab = dynamic(() => import('./dock/LogsDockTab').then((m) => m.LogsDockTab), {
   ssr: false,
 });
+const ReachabilityDockTab = dynamic(
+  () => import('./dock/ReachabilityDockTab').then((m) => m.ReachabilityDockTab),
+  { ssr: false },
+);
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -322,6 +331,7 @@ export function EditorShell() {
   const addGroup = useDesignStore((s) => s.addGroup);
   const connectEdge = useDesignStore((s) => s.connectEdge);
   const selectNode = useDesignStore((s) => s.selectNode);
+  const selectEdge = useDesignStore((s) => s.selectEdge);
   const updateGroup = useDesignStore((s) => s.updateGroup);
   const updateNodeLabel = useDesignStore((s) => s.updateNodeLabel);
   const updateNodePlacement = useDesignStore((s) => s.updateNodePlacement);
@@ -377,6 +387,11 @@ export function EditorShell() {
   const setHoursPerMonth = useCostStore((s) => s.setHoursPerMonth);
   const setTrafficAssumption = useCostStore((s) => s.setTrafficAssumption);
   const setInstanceCountMode = useCostStore((s) => s.setInstanceCountMode);
+
+  const networkAnalysis = useNetworkStore((s) => s.analysis);
+  const focusedEdgeId = useNetworkStore((s) => s.focusedEdgeId);
+  const setNetworkAnalysis = useNetworkStore((s) => s.setAnalysis);
+  const setFocusedEdgeId = useNetworkStore((s) => s.setFocusedEdgeId);
 
   const reducedMotion = systemReducedMotion || reduceMotionOverride;
   const isSimActive = simStatus === 'running' || simPlaying;
@@ -551,7 +566,7 @@ export function EditorShell() {
   );
 
   const handleInspectNode = useCallback(
-    (nodeId: string, tab: 'config' | 'latency' | 'code' | 'cost' | 'why') => {
+    (nodeId: string, tab: InspectorTab) => {
       selectNode(nodeId);
       setInspectorTab(tab);
     },
@@ -883,6 +898,42 @@ export function EditorShell() {
     () => mergeCustomServices(userCustomServices, design.customServices),
     [userCustomServices, design.customServices],
   );
+
+  const networkAnalyzerRef = useRef<typeof NetworkAnalyzerMod | null>(null);
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      const runCheck = (mod: typeof NetworkAnalyzerMod) => {
+        if (!active) return;
+        const t0 = performance.now();
+        const result = mod.analyzeDesignNetwork(design, {
+          customServices: availableCustomServices,
+        });
+        setNetworkAnalysis(result, performance.now() - t0);
+      };
+      if (networkAnalyzerRef.current) {
+        runCheck(networkAnalyzerRef.current);
+      } else {
+        void import('@infrasim/network-analyzer').then((mod) => {
+          networkAnalyzerRef.current = mod;
+          runCheck(mod);
+        });
+      }
+    }, 150);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [design, availableCustomServices, setNetworkAnalysis]);
+
+  const blockedEdgeCount = useMemo(() => {
+    if (!networkAnalysis) return 0;
+    let count = 0;
+    for (const res of Object.values(networkAnalysis.edges)) {
+      if (!res.reachable) count += 1;
+    }
+    return count;
+  }, [networkAnalysis]);
 
   const selectedNode = useMemo(
     () => (selectedNodeId ? (design.nodes.find((n) => n.id === selectedNodeId) ?? null) : null),
@@ -1933,6 +1984,11 @@ export function EditorShell() {
             nodeCosts={nodeCosts}
             reducedMotion={reducedMotion}
             onInspectNode={handleInspectNode}
+            onInspectEdgeNetwork={(edgeId) => {
+              setFocusedEdgeId(edgeId);
+              setDockTab('reachability');
+              setDockCollapsed(false);
+            }}
             onInjectChaosNode={(nodeId, az) => {
               setCostPopoverOpen(false);
               setChaosTargetNode({ nodeId, ...(az ? { az } : {}) });
@@ -2052,7 +2108,33 @@ export function EditorShell() {
             })}
           </div>
 
-          {selectedGroup ? (
+          {selectedGroup && inspectorTab === 'network' ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <div className="border-b border-[var(--border-hairline)] px-4 py-2.5 text-[12px]">
+                <div className="text-[10px] font-medium text-[var(--text-muted)]">
+                  Container ({selectedGroup.kind})
+                </div>
+                <div className="mt-0.5 truncate text-[13px] font-medium text-[var(--text-primary)]">
+                  {selectedGroup.label}
+                </div>
+              </div>
+              <NetworkTab
+                design={design}
+                node={null}
+                group={selectedGroup}
+                analysis={networkAnalysis}
+                onApplyPatchedDesign={(nextDesign, changeLabel) => {
+                  applyPatchedDesign(nextDesign);
+                  if (changeLabel) setStatusNotice(changeLabel);
+                }}
+                onOpenReachabilityDock={(edgeId) => {
+                  if (edgeId) setFocusedEdgeId(edgeId);
+                  setDockTab('reachability');
+                  setDockCollapsed(false);
+                }}
+              />
+            </div>
+          ) : selectedGroup ? (
             <div className="flex-1 space-y-3 overflow-y-auto p-4 text-[12px]">
               <div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)]">
@@ -2239,6 +2321,23 @@ export function EditorShell() {
                   }}
                   onOpenNetworkTab={() => setInspectorTab('network')}
                 />
+              ) : inspectorTab === 'network' ? (
+                <NetworkTab
+                  design={design}
+                  node={selectedNode}
+                  service={selectedNodeService}
+                  group={null}
+                  analysis={networkAnalysis}
+                  onApplyPatchedDesign={(nextDesign, changeLabel) => {
+                    applyPatchedDesign(nextDesign);
+                    if (changeLabel) setStatusNotice(changeLabel);
+                  }}
+                  onOpenReachabilityDock={(edgeId) => {
+                    if (edgeId) setFocusedEdgeId(edgeId);
+                    setDockTab('reachability');
+                    setDockCollapsed(false);
+                  }}
+                />
               ) : inspectorTab === 'cost' ? (
                 <CostTab
                   node={selectedNode}
@@ -2269,6 +2368,24 @@ export function EditorShell() {
                 </div>
               )}
             </div>
+          ) : inspectorTab === 'network' ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <NetworkTab
+                design={design}
+                node={null}
+                group={null}
+                analysis={networkAnalysis}
+                onApplyPatchedDesign={(nextDesign, changeLabel) => {
+                  applyPatchedDesign(nextDesign);
+                  if (changeLabel) setStatusNotice(changeLabel);
+                }}
+                onOpenReachabilityDock={(edgeId) => {
+                  if (edgeId) setFocusedEdgeId(edgeId);
+                  setDockTab('reachability');
+                  setDockCollapsed(false);
+                }}
+              />
+            </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
               <Sliders className="mb-2 h-4 w-4 text-[var(--text-muted)]" strokeWidth={1.5} />
@@ -2295,8 +2412,12 @@ export function EditorShell() {
             {DOCK_TABS.map((tab) => {
               const Icon = tab.icon;
               const active = dockTab === tab.id;
-              const insightsBadge =
-                tab.id === 'insights' && simResult ? simResult.insights.length : 0;
+              const badgeCount =
+                tab.id === 'insights' && simResult
+                  ? simResult.insights.length
+                  : tab.id === 'reachability'
+                    ? blockedEdgeCount
+                    : 0;
               return (
                 <button
                   key={tab.id}
@@ -2314,9 +2435,12 @@ export function EditorShell() {
                 >
                   <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
                   <span>{tab.label}</span>
-                  {insightsBadge > 0 ? (
-                    <span className="rounded-full bg-[rgba(229,72,77,0.16)] px-1.5 font-mono text-[10px] tabular-nums text-[var(--status-overloaded)]">
-                      {insightsBadge}
+                  {badgeCount > 0 ? (
+                    <span
+                      data-testid={`dock-badge-${tab.id}`}
+                      className="rounded-full bg-[rgba(229,72,77,0.16)] px-1.5 font-mono text-[10px] tabular-nums text-[var(--status-overloaded)]"
+                    >
+                      {badgeCount}
                     </span>
                   ) : null}
                 </button>
@@ -2411,6 +2535,21 @@ export function EditorShell() {
               onSelectNode={(nodeId, openWhy) =>
                 handleInspectNode(nodeId, openWhy ? 'why' : 'latency')
               }
+            />
+          ) : dockTab === 'reachability' ? (
+            <ReachabilityDockTab
+              design={design}
+              analysis={networkAnalysis}
+              focusedEdgeId={focusedEdgeId}
+              customServices={availableCustomServices}
+              isSimRunning={simStatus === 'running'}
+              onSelectEdge={(edgeId) => {
+                setFocusedEdgeId(edgeId);
+                selectEdge(edgeId);
+              }}
+              onSetAnalysis={setNetworkAnalysis}
+              onApplyPatchedDesign={handleApplyPatchedDesign}
+              onRerunVerify={handleRerunVerify}
             />
           ) : dockTab === 'cost' ? (
             <CostDockTab

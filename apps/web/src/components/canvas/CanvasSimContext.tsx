@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { SimFrame } from '@infrasim/shared-types';
+import type { NetworkAnalysis, SimFrame } from '@infrasim/shared-types';
 
 export interface EdgeGeometryEntry {
   edgeId: string;
@@ -28,6 +28,7 @@ export interface CanvasSimStateValue {
   currentFrame: SimFrame | null;
   nodeReasons: Record<string, string>;
   nodeCosts?: Record<string, NodeCostChipInfo>;
+  networkAnalysis?: NetworkAnalysis | null;
   shakingAllowedIds: ReadonlySet<string>;
   reducedMotion: boolean;
 }

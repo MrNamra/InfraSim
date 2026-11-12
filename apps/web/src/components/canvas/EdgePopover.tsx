@@ -1,7 +1,7 @@
 'use client';
 
-import { Trash2, X } from 'lucide-react';
-import type { EdgeInstance } from '@infrasim/shared-types';
+import { AlertTriangle, CheckCircle2, Network, Trash2, X, XCircle } from 'lucide-react';
+import type { EdgeInstance, NetworkAnalysis } from '@infrasim/shared-types';
 import type { InferredEdgePlacement } from '@infrasim/sim-engine';
 import { Button } from '@infrasim/ui-kit';
 
@@ -10,6 +10,8 @@ export interface EdgePopoverProps {
   sourceLabel: string;
   targetLabel: string;
   inferredPlacement?: InferredEdgePlacement | null;
+  reachability?: NetworkAnalysis['edges'][string] | null;
+  onInspectReachability?: (edgeId: string) => void;
   onUpdate: (edgeId: string, updater: (draft: EdgeInstance) => void) => void;
   onDelete: (edgeId: string) => void;
   onClose: () => void;
@@ -35,6 +37,8 @@ export function EdgePopover({
   sourceLabel,
   targetLabel,
   inferredPlacement = null,
+  reachability = null,
+  onInspectReachability,
   onUpdate,
   onDelete,
   onClose,
@@ -65,6 +69,78 @@ export function EdgePopover({
       </div>
 
       <div className="mt-3 space-y-3 text-[12px]">
+        {reachability ? (
+          <div
+            data-testid="edge-reachability-banner"
+            className={`rounded-[8px] border p-2.5 text-[11px] ${
+              !reachability.reachable
+                ? 'border-[var(--status-overloaded)] bg-[rgba(229,72,77,0.08)]'
+                : reachability.riskyReason
+                  ? 'border-[var(--status-warm)] bg-[rgba(229,160,13,0.08)]'
+                  : 'border-[var(--border-hairline)] bg-[var(--bg-sunken)]'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-1.5 font-medium">
+                {!reachability.reachable ? (
+                  <XCircle
+                    className="h-3.5 w-3.5 shrink-0 text-[var(--status-overloaded)]"
+                    strokeWidth={1.5}
+                  />
+                ) : reachability.riskyReason ? (
+                  <AlertTriangle
+                    className="h-3.5 w-3.5 shrink-0 text-[var(--status-warm)]"
+                    strokeWidth={1.5}
+                  />
+                ) : (
+                  <CheckCircle2
+                    className="h-3.5 w-3.5 shrink-0 text-[var(--status-ok)]"
+                    strokeWidth={1.5}
+                  />
+                )}
+                <span className="text-[var(--text-primary)]">
+                  {!reachability.reachable
+                    ? `Blocked (${reachability.reasonCode ?? 'DENY'})`
+                    : reachability.riskyReason
+                      ? 'Reachable (risky)'
+                      : 'Reachable'}
+                </span>
+              </div>
+              {onInspectReachability ? (
+                <button
+                  type="button"
+                  data-testid="edge-inspect-fix-btn"
+                  onClick={() => onInspectReachability(edge.id)}
+                  className="inline-flex shrink-0 items-center gap-1 font-medium text-[var(--accent)] hover:underline"
+                >
+                  <Network className="h-3 w-3" strokeWidth={1.5} />
+                  <span>{!reachability.reachable ? 'Inspect & fix' : 'Trace hops'}</span>
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-1 leading-4 text-[var(--text-secondary)]">
+              {!reachability.reachable
+                ? reachability.explanation.short
+                : (reachability.riskyReason ?? reachability.explanation.short)}
+            </p>
+            {reachability.viaNat || reachability.viaEndpoint || reachability.extraLatencyMs ? (
+              <div className="mt-1.5 flex flex-wrap gap-1 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+                {reachability.viaNat ? (
+                  <span className="rounded bg-[var(--bg-surface)] px-1 py-0.5">NAT</span>
+                ) : null}
+                {reachability.viaEndpoint ? (
+                  <span className="rounded bg-[var(--bg-surface)] px-1 py-0.5">Endpoint</span>
+                ) : null}
+                {reachability.extraLatencyMs ? (
+                  <span className="rounded bg-[var(--bg-surface)] px-1 py-0.5">
+                    +{reachability.extraLatencyMs} ms hop
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-2 gap-2">
           <label className="block">
             <span className="text-[11px] text-[var(--text-muted)]">Protocol</span>

@@ -1,6 +1,7 @@
 'use client';
 
 import { memo } from 'react';
+import { Globe, Lock } from 'lucide-react';
 import { NodeResizer, type Node, type NodeProps } from '@xyflow/react';
 import type { GroupInstance } from '@infrasim/shared-types';
 
@@ -58,8 +59,16 @@ function GroupNodeComponent({ data, selected }: NodeProps<GroupFlowNode>) {
             </span>
           ) : null}
           {group.kind === 'subnet' && group.public !== undefined ? (
-            <span className="rounded-[4px] border border-[var(--border-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">
-              {group.public ? 'Public' : 'Private'}
+            <span
+              data-testid={`subnet-visibility-${group.id}`}
+              className="inline-flex items-center gap-1 rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]"
+            >
+              {group.public ? (
+                <Globe className="h-2.5 w-2.5 text-[var(--accent)]" strokeWidth={1.5} />
+              ) : (
+                <Lock className="h-2.5 w-2.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+              )}
+              <span>{group.public ? 'Public' : 'Private'}</span>
             </span>
           ) : null}
         </div>

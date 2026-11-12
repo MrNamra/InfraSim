@@ -40,6 +40,7 @@ import {
 import { DRAG_SERVICE_MIME } from '../../lib/palette';
 import { mergeCustomServices } from '../../lib/customServices';
 import { useDesignStore } from '../../store/designStore';
+import { useNetworkStore } from '../../store/networkStore';
 import {
   CanvasSimStateContext,
   EdgePathRegistryContext,
@@ -70,7 +71,11 @@ export interface CanvasProps {
   nodeReasons?: Record<string, string>;
   nodeCosts?: Record<string, NodeCostChipInfo>;
   reducedMotion?: boolean;
-  onInspectNode?: (nodeId: string, tab: 'config' | 'latency' | 'cost' | 'why') => void;
+  onInspectNode?: (
+    nodeId: string,
+    tab: 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why',
+  ) => void;
+  onInspectEdgeNetwork?: (edgeId: string) => void;
   onInjectChaosNode?: (nodeId: string, az?: string) => void;
   onLoadTemplateClick?: () => void;
   registerViewportCenterGetter?: (getter: () => { x: number; y: number }) => void;
@@ -89,6 +94,7 @@ function CanvasInner({
   nodeCosts = {},
   reducedMotion = false,
   onInspectNode,
+  onInspectEdgeNetwork,
   onInjectChaosNode,
   onLoadTemplateClick,
   registerViewportCenterGetter,
@@ -97,6 +103,7 @@ function CanvasInner({
   const rfInstanceRef = useRef<ReactFlowInstance<CanvasFlowNode, InfraFlowEdge> | null>(null);
 
   const design = useDesignStore((s) => s.design);
+  const networkAnalysis = useNetworkStore((s) => s.analysis);
   const userCustomServices = useDesignStore((s) => s.userCustomServices);
   const selectedNodeId = useDesignStore((s) => s.selectedNodeId);
   const selectedEdgeId = useDesignStore((s) => s.selectedEdgeId);
@@ -264,10 +271,11 @@ function CanvasInner({
       currentFrame,
       nodeReasons,
       nodeCosts,
+      networkAnalysis,
       shakingAllowedIds,
       reducedMotion,
     }),
-    [currentFrame, nodeReasons, nodeCosts, shakingAllowedIds, reducedMotion],
+    [currentFrame, nodeReasons, nodeCosts, networkAnalysis, shakingAllowedIds, reducedMotion],
   );
 
   // Register viewport-center getter for double-click insert in Palette
@@ -668,6 +676,8 @@ function CanvasInner({
           sourceLabel={selectedEdgeSourceLabel}
           targetLabel={selectedEdgeTargetLabel}
           inferredPlacement={selectedEdgeInferredPlacement}
+          reachability={networkAnalysis?.edges[selectedEdgeObj.id] ?? null}
+          onInspectReachability={onInspectEdgeNetwork}
           onUpdate={updateEdge}
           onDelete={(edgeId) => deleteElements({ edgeIds: [edgeId] })}
           onClose={() => selectEdge(null)}
