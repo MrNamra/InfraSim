@@ -176,26 +176,23 @@ const NETWORK_OBJECT_ROLES = new Map<string, { provider: CloudProviderId; role: 
   ['aws_network_acl_rule', { provider: 'aws', role: 'nacl_rule' }],
   ['aws_vpc_peering_connection', { provider: 'aws', role: 'peering' }],
   ['aws_vpc_endpoint', { provider: 'aws', role: 'endpoint' }],
-  ['aws_route53_zone', { provider: 'aws', role: 'dns_zone' }],
   ['google_compute_firewall', { provider: 'gcp', role: 'firewall' }],
   ['google_compute_router', { provider: 'gcp', role: 'router' }],
-  ['google_dns_managed_zone', { provider: 'gcp', role: 'dns_zone' }],
   ['google_compute_network_peering', { provider: 'gcp', role: 'peering' }],
   ['google_compute_security_policy', { provider: 'gcp', role: 'waf' }],
   ['azurerm_network_security_group', { provider: 'azure', role: 'nsg' }],
   ['azurerm_network_security_rule', { provider: 'azure', role: 'nsg_rule' }],
   ['azurerm_subnet_network_security_group_association', { provider: 'azure', role: 'nsg_assoc' }],
+  ['azurerm_subnet_route_table_association', { provider: 'azure', role: 'route_assoc' }],
   ['azurerm_route_table', { provider: 'azure', role: 'route_table' }],
   ['azurerm_virtual_network_peering', { provider: 'azure', role: 'peering' }],
   ['azurerm_private_endpoint', { provider: 'azure', role: 'endpoint' }],
-  ['azurerm_dns_zone', { provider: 'azure', role: 'dns_zone' }],
   ['oci_core_internet_gateway', { provider: 'oci', role: 'igw' }],
   ['oci_core_service_gateway', { provider: 'oci', role: 'service_gw' }],
   ['oci_core_security_list', { provider: 'oci', role: 'security_list' }],
   ['oci_core_network_security_group', { provider: 'oci', role: 'nsg' }],
   ['oci_core_network_security_group_security_rule', { provider: 'oci', role: 'nsg_rule' }],
   ['oci_core_route_table', { provider: 'oci', role: 'route_table' }],
-  ['oci_dns_zone', { provider: 'oci', role: 'dns_zone' }],
 ]);
 
 const EDGE_SOURCE_ROLES = new Map<string, string>([
@@ -363,6 +360,8 @@ function mapResourceTypeToServiceId(
       return { provider: 'aws', serviceId: 'aws.ssm_parameter' };
     case 'aws_kms_key':
       return { provider: 'aws', serviceId: 'aws.kms' };
+    case 'aws_route53_zone':
+      return { provider: 'aws', serviceId: 'aws.route53' };
     case 'aws_sagemaker_endpoint':
       return { provider: 'aws', serviceId: 'aws.sagemaker_endpoint' };
 
@@ -410,6 +409,8 @@ function mapResourceTypeToServiceId(
       return { provider: 'gcp', serviceId: 'gcp.secret_manager' };
     case 'google_bigquery_dataset':
       return { provider: 'gcp', serviceId: 'gcp.bigquery' };
+    case 'google_dns_managed_zone':
+      return { provider: 'gcp', serviceId: 'gcp.cloud_dns' };
     case 'google_vertex_ai_endpoint':
       return { provider: 'gcp', serviceId: 'gcp.vertex_endpoint' };
 
@@ -460,6 +461,8 @@ function mapResourceTypeToServiceId(
       return { provider: 'azure', serviceId: 'azure.key_vault' };
     case 'azurerm_api_management':
       return { provider: 'azure', serviceId: 'azure.apim' };
+    case 'azurerm_dns_zone':
+      return { provider: 'azure', serviceId: 'azure.dns' };
     case 'azurerm_cognitive_deployment':
       return { provider: 'azure', serviceId: 'azure.openai' };
     case 'azurerm_search_service':
@@ -508,6 +511,8 @@ function mapResourceTypeToServiceId(
       return { provider: 'oci', serviceId: 'oci.notifications' };
     case 'oci_vault_secret':
       return { provider: 'oci', serviceId: 'oci.vault_secrets' };
+    case 'oci_dns_zone':
+      return { provider: 'oci', serviceId: 'oci.dns' };
     case 'oci_generative_ai_endpoint':
       return { provider: 'oci', serviceId: 'oci.genai' };
 
