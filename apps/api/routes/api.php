@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChallengeController;
 use App\Http\Controllers\CustomServiceController;
+use App\Http\Controllers\DesignController;
 use App\Http\Controllers\FixtureController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PriceController;
@@ -38,7 +39,17 @@ Route::middleware('throttle:api')->group(function (): void {
         });
     });
 
+    Route::get('/shared/{token}', [DesignController::class, 'showShared']);
+
     Route::middleware('auth:sanctum')->group(function (): void {
+        Route::get('/designs', [DesignController::class, 'index']);
+        Route::post('/designs', [DesignController::class, 'store']);
+        Route::get('/designs/{id}', [DesignController::class, 'show']);
+        Route::put('/designs/{id}', [DesignController::class, 'update']);
+        Route::delete('/designs/{id}', [DesignController::class, 'destroy']);
+        Route::get('/designs/{id}/versions', [DesignController::class, 'versions']);
+        Route::post('/designs/{id}/share', [DesignController::class, 'share']);
+
         Route::get('/custom-services', [CustomServiceController::class, 'index']);
         Route::post('/custom-services', [CustomServiceController::class, 'store']);
         Route::put('/custom-services/{customService}', [CustomServiceController::class, 'update']);

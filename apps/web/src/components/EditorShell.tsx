@@ -214,6 +214,10 @@ const TerraformImportModal = dynamic(
   () => import('./TerraformImportModal').then((m) => m.TerraformImportModal),
   { ssr: false },
 );
+const ShareAndVersionsModal = dynamic(
+  () => import('./ShareAndVersionsModal').then((m) => m.ShareAndVersionsModal),
+  { ssr: false },
+);
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -292,6 +296,7 @@ export function EditorShell() {
   }>({ open: false });
   const [terraformExportOpen, setTerraformExportOpen] = useState(false);
   const [terraformImportOpen, setTerraformImportOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
   const [previousMonthlyCost, setPreviousMonthlyCost] = useState<{
@@ -1554,6 +1559,12 @@ export function EditorShell() {
         onSelect: () => setChallengesOpen(true),
       },
       {
+        id: 'open-share-versions',
+        group: 'Design',
+        label: 'Share design or manage cloud versions',
+        onSelect: () => setShareOpen(true),
+      },
+      {
         id: 'load-template-tpl-3tier',
         group: 'Templates',
         label: 'Load template: Simple 3-tier web app',
@@ -2229,8 +2240,10 @@ export function EditorShell() {
 
           <button
             type="button"
+            data-testid="topbar-share-btn"
             aria-label="Share design"
-            onClick={() => setStatusNotice('Design sharing activates in Phase 6')}
+            title="Share read-only snapshot or manage cloud versions"
+            onClick={() => setShareOpen(true)}
             className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)]"
           >
             <Share2 className="h-4 w-4" strokeWidth={1.5} />
@@ -3087,6 +3100,19 @@ export function EditorShell() {
         onClose={() => setTerraformImportOpen(false)}
         onPlaceDesign={handlePlaceImportedDesign}
         onCreateCustomForUnsupported={handleCreateCustomFromUnsupported}
+      />
+
+      <ShareAndVersionsModal
+        open={shareOpen}
+        token={token}
+        design={design}
+        onClose={() => setShareOpen(false)}
+        onRestoreDesign={(doc) => {
+          loadDesign(structuredClone(doc), true);
+          resetSimulation(true);
+          setAppliedFixLabel(null);
+        }}
+        onNotice={(msg) => setStatusNotice(msg)}
       />
     </div>
   );

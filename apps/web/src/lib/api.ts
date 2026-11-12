@@ -372,3 +372,146 @@ export async function fetchChallengeLeaderboardApi(
   );
   return res.entries;
 }
+
+export interface CloudDesignSummary {
+  id: string;
+  name: string;
+  schemaVersion: number;
+  version: number;
+  visibility: 'private' | 'unlisted';
+  shareToken: string | null;
+  nodeCount: number;
+  edgeCount: number;
+  updatedAt?: string;
+}
+
+export interface CloudDesignDetail extends CloudDesignSummary {
+  doc: Design;
+}
+
+export interface CloudDesignVersion {
+  id: number;
+  version: number;
+  doc: Design;
+  createdAt?: string;
+}
+
+export class DesignVersionConflictError extends Error {
+  constructor(
+    message: string,
+    public readonly currentVersion: number,
+    public readonly latestDoc: Design,
+  ) {
+    super(message);
+    this.name = 'DesignVersionConflictError';
+  }
+}
+
+/** List saved cloud designs owned by the signed-in user. */
+export async function listDesignsApi(token: string): Promise<CloudDesignSummary[]> {
+  const res = await apiRequest<{ designs: CloudDesignSummary[] }>('/api/designs', { token });
+  return res.designs;
+}
+
+/** Create a new cloud design record starting at version 1. */
+export async function createDesignApi(token: string, doc: Design): Promise<CloudDesignDetail> {
+  const res = await apiRequest<{ design: CloudDesignDetail }>('/api/designs', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({
+      id: doc.id,
+      name: doc.name,
+      schemaVersion: doc.schemaVersion,
+      doc,
+    }),
+  });
+  return res.design;
+}
+
+/** Fetch full cloud design document by UUID. */
+export async function fetchDesignApi(token: string, id: string): Promise<CloudDesignDetail> {
+  const res = await apiRequest<{ design: CloudDesignDetail }>(
+    `/api/designs/${encodeURIComponent(id)}`,
+    { token },
+  );
+  return res.design;
+}
+
+/** Update a cloud design with optimistic `base_version` check (throws DesignVersionConflictError on 409). */
+export async function updateDesignApi(
+  token: string,
+  id: string,
+  baseVersion: number,
+  doc: Design,
+): Promise<CloudDesignDetail> {
+  const response = await fetch(`${getApiBaseUrl()}/api/designs/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      name: doc.name,
+      base_version: baseVersion,
+      doc,
+    }),
+  });
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (response.status === 409) {
+    throw new DesignVersionConflictError(
+      typeof data.message === 'string' ? data.message : 'Design version conflict',
+      typeof data.currentVersion === 'number' ? data.currentVersion : baseVersion,
+      data.latestDoc as Design,
+    );
+  }
+  if (!response.ok) {
+    throw new Error(
+      typeof data.message === 'string' ? data.message : `Update failed (${response.status})`,
+    );
+  }
+  return (data as { design: CloudDesignDetail }).design;
+}
+
+/** Fetch immutable version snapshots for an owned cloud design. */
+export async function fetchDesignVersionsApi(
+  token: string,
+  id: string,
+): Promise<CloudDesignVersion[]> {
+  const res = await apiRequest<{ versions: CloudDesignVersion[] }>(
+    `/api/designs/${encodeURIComponent(id)}/versions`,
+    { token },
+  );
+  return res.versions;
+}
+
+/** Generate or revoke an unlisted read-only share token for an owned cloud design. */
+export async function shareDesignApi(
+  token: string,
+  id: string,
+  revoke = false,
+): Promise<{ visibility: 'private' | 'unlisted'; shareToken: string | null }> {
+  return apiRequest<{ visibility: 'private' | 'unlisted'; shareToken: string | null }>(
+    `/api/designs/${encodeURIComponent(id)}/share`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ revoke }),
+    },
+  );
+}
+
+/** Fetch a read-only shared design by unlisted token (public unauthenticated). */
+export async function fetchSharedDesignApi(shareToken: string): Promise<{
+  id: string;
+  name: string;
+  version: number;
+  doc: Design;
+  updatedAt?: string;
+}> {
+  const res = await apiRequest<{
+    design: { id: string; name: string; version: number; doc: Design; updatedAt?: string };
+  }>(`/api/shared/${encodeURIComponent(shareToken)}`);
+  return res.design;
+}
