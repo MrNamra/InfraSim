@@ -41,4 +41,3 @@ apps/web/public/monaco/
 .DS_Store
 *.swp
 .idea/
-.vscode/

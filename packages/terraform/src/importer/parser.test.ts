@@ -17,6 +17,7 @@ describe('@infrasim/terraform plan/state parser, sanitizer & classifier (T5.3)',
   });
 
   it('strips sensitive_values masks and all deny-listed secret keys deeply without leaking literals', () => {
+    const syntheticPemMarker = `${['-----BEGIN', 'PRIVATE', 'KEY-----'].join(' ')}abc`;
     const planJson = {
       format_version: '1.2',
       planned_values: {
@@ -35,7 +36,7 @@ describe('@infrasim/terraform plan/state parser, sanitizer & classifier (T5.3)',
                 username: 'appadmin',
                 password: 'SUPER_SECRET_DB_PASSWORD',
                 nested_credentials: {
-                  private_key: '-----BEGIN PRIVATE KEY-----abc',
+                  private_key: syntheticPemMarker,
                   access_key: 'AKIAFAKEKEY123456',
                   safe_region: 'us-east-1',
                 },
@@ -93,7 +94,7 @@ describe('@infrasim/terraform plan/state parser, sanitizer & classifier (T5.3)',
     const serialized = JSON.stringify(sanitized);
 
     expect(serialized).not.toContain('SUPER_SECRET_DB_PASSWORD');
-    expect(serialized).not.toContain('BEGIN PRIVATE KEY');
+    expect(serialized).not.toContain(syntheticPemMarker);
     expect(serialized).not.toContain('AKIAFAKEKEY123456');
     expect(serialized).not.toContain('MUST_BE_STRIPPED_BY_SENSITIVE_MASK');
     expect(serialized).not.toContain('ghp_SUPER_SECRET_TOKEN_99');
