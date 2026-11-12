@@ -218,6 +218,9 @@ export const designJsonSchema = {
             "concurrency": {
               "type": "number"
             },
+            "countMaxTokensUpfront": {
+              "type": "boolean"
+            },
             "maxContextTokens": {
               "type": "number"
             },
@@ -391,11 +394,63 @@ export const designJsonSchema = {
                 "normalized"
               ]
             },
+            "responseMode": {
+              "type": "string",
+              "enum": [
+                "fixed",
+                "template",
+                "echo",
+                "json-fill",
+                "tool-call",
+                "sequence"
+              ]
+            },
+            "sequenceResponses": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "jsonSchema": {
+              "$ref": "#/definitions/Record%3Cstring%2Cunknown%3E"
+            },
+            "jobDurationMs": {
+              "type": "number"
+            },
+            "chunkTokens": {
+              "type": "number"
+            },
             "dimensions": {
               "type": "number"
+            },
+            "passages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "score": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "text",
+                  "score"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "additionalProperties": false
+        },
+        "httpAliases": {
+          "$ref": "#/definitions/Record%3Cstring%2Cstring%3E"
         },
         "storageGb": {
           "type": "number"
@@ -575,6 +630,16 @@ export const designJsonSchema = {
       "additionalProperties": false,
       "description": "Load balancer target health check configuration."
     },
+    "Record<string,unknown>": {
+      "type": "object",
+      "additionalProperties": {}
+    },
+    "Record<string,string>": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
     "Record<string,OperationOverride>": {
       "type": "object",
       "additionalProperties": {
@@ -619,16 +684,6 @@ export const designJsonSchema = {
       },
       "additionalProperties": false,
       "description": "Override parameters for a single operation on a node."
-    },
-    "Record<string,string>": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "Record<string,unknown>": {
-      "type": "object",
-      "additionalProperties": {}
     },
     "ScenarioOverride": {
       "type": "object",
@@ -1555,6 +1610,9 @@ export const designJsonSchema = {
         "scriptId": {
           "type": "string"
         },
+        "thresholds": {
+          "$ref": "#/definitions/Record%3Cstring%2Cstring%5B%5D%3E"
+        },
         "chaos": {
           "type": "array",
           "items": {
@@ -1790,6 +1848,15 @@ export const designJsonSchema = {
       "additionalProperties": false,
       "description": "Weighted user journey executed by simulated clients."
     },
+    "Record<string,string[]>": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
     "ChaosEvent": {
       "anyOf": [
         {
@@ -1983,7 +2050,10 @@ export const designJsonSchema = {
         },
         "language": {
           "type": "string",
-          "const": "javascript"
+          "enum": [
+            "javascript",
+            "typescript"
+          ]
         },
         "source": {
           "type": "string"
@@ -2013,7 +2083,7 @@ export const designJsonSchema = {
         "env"
       ],
       "additionalProperties": false,
-      "description": "User-authored JS handler or k6-style traffic script."
+      "description": "User-authored JS or TS handler or k6-style traffic script."
     },
     "PayloadFixture": {
       "type": "object",

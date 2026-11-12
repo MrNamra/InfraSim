@@ -76,6 +76,7 @@ export interface NodeConfig {
     tpm?: number;
     rpm?: number;
     concurrency?: number;
+    countMaxTokensUpfront?: boolean;
     maxContextTokens?: number;
     maxOutputTokens?: number;
   };
@@ -117,8 +118,15 @@ export interface NodeConfig {
     slowdownProb?: number;
     contentFilterRate?: number;
     responseShape?: 'provider' | 'normalized';
+    responseMode?: 'fixed' | 'template' | 'echo' | 'json-fill' | 'tool-call' | 'sequence';
+    sequenceResponses?: string[];
+    jsonSchema?: Record<string, unknown>;
+    jobDurationMs?: number;
+    chunkTokens?: number;
     dimensions?: number;
+    passages?: { id: string; text: string; score: number }[];
   };
+  httpAliases?: Record<string, string>;
   storageGb?: number;
   scannedBytes?: number;
 
@@ -223,6 +231,7 @@ export interface Scenario {
   profile: TrafficProfile;
   flows: UserFlow[];
   scriptId?: string;
+  thresholds?: Record<string, string[]>;
   chaos: ChaosEvent[];
   seedOverride?: number;
 }
@@ -259,12 +268,12 @@ export type ChaosEvent =
   | { atS: number; durationS: number; kind: 'throttle'; nodeId: string; rps: number }
   | { atS: number; durationS: number; kind: 'cache-flush'; nodeId: string; warmupS: number };
 
-/** User-authored JS handler or k6-style traffic script. */
+/** User-authored JS or TS handler or k6-style traffic script. */
 export interface ScriptAsset {
   id: string;
   name: string;
   kind: 'handler' | 'scenario';
-  language: 'javascript';
+  language: 'javascript' | 'typescript';
   source: string;
   entry: string;
   memoryMb: number;

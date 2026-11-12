@@ -1,2 +1,7 @@
-/** Placeholder export for the QuickJS-WASM user code sandbox (implemented in Phase 3). */
 export const SANDBOX_DEFAULT_MEMORY_MB = 128;
+
+export * from './types.js';
+export * from './prng.js';
+export * from './sourceMap.js';
+export * from './guestPrelude.js';
+export * from './runtime.js';

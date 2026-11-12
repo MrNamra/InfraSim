@@ -48,6 +48,8 @@ export interface LogEntry {
   traceId?: string;
   message: string;
   data?: unknown;
+  replayedFromProfile?: boolean;
+  site?: { file?: string; line: number; col: number };
 }
 
 /** Real-time frame streamed from the simulation worker at virtual time intervals. */

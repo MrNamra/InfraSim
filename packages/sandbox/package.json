@@ -13,8 +13,10 @@
     }
   },
   "dependencies": {
+    "@infrasim/catalog": "workspace:*",
     "@infrasim/shared-types": "workspace:*",
-    "@infrasim/catalog": "workspace:*"
+    "esbuild-wasm": "^0.28.2",
+    "quickjs-emscripten": "^0.32.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
