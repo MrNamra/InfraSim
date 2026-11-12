@@ -407,3 +407,251 @@ export const healthCheckCascadeRule: Rule = {
     ];
   },
 };
+
+/** Rule: Downstream failing > 50% while callers continue retrying without a circuit breaker. */
+export const noCircuitBreakerRule: Rule = {
+  id: 'no-circuit-breaker',
+  title: 'Missing circuit breaker against failing dependency',
+  severity: 'critical',
+  requires: ['sim'],
+  lessonSlug: 'retries-backoff-and-circuit-breakers',
+  appliesTo: (ctx) => {
+    if (!ctx.result) return [];
+    const matches = [];
+    for (const edge of ctx.design.edges) {
+      if (edge.callType !== 'sync' || edge.circuitBreaker) continue;
+      if (!edge.retry || edge.retry.max <= 0) continue;
+
+      const toSummary = ctx.result.perNode[edge.to];
+      if (!toSummary || toSummary.requests <= 0) continue;
+      const errTotal = sumSummaryErrors(toSummary) + toSummary.drops;
+      const errRatio = errTotal / Math.max(1, toSummary.requests);
+      if (errRatio > 0.5) {
+        const caller = ctx.design.nodes.find((n) => n.id === edge.from);
+        const target = ctx.design.nodes.find((n) => n.id === edge.to);
+        matches.push({
+          nodeIds: [edge.from, edge.to],
+          edgeIds: [edge.id],
+          evidence: {
+            edgeId: edge.id,
+            callerLabel: caller?.label ?? edge.from,
+            targetLabel: target?.label ?? edge.to,
+            errorPct: Math.round(errRatio * 100),
+            maxRetries: edge.retry.max,
+          },
+          trafficShare: getTrafficShare(toSummary.requests, ctx),
+          durationFraction: Math.max(0.4, Math.min(1, errRatio)),
+        });
+      }
+    }
+    return matches;
+  },
+  explain: (m) => ({
+    short: `${m.evidence.callerLabel} → ${m.evidence.targetLabel} has no circuit breaker while ${m.evidence.errorPct}% of calls fail and retry.`,
+    deep: `What happened: ${m.evidence.targetLabel} failed ${m.evidence.errorPct}% of calls while ${m.evidence.callerLabel} kept sending up to ${m.evidence.maxRetries} retries.\nHow to fix: Attach a circuit breaker on the edge to fail fast while the dependency recovers.\nTrade-off: Fast-fails return immediate 503s during open state instead of blocking caller threads.`,
+  }),
+  fixes: (m, ctx) => {
+    const eIdx = edgeIndexOf(ctx, String(m.evidence.edgeId ?? ''));
+    if (eIdx < 0) return [];
+    return [
+      {
+        label: 'Attach circuit breaker (5 failures / 10 s open)',
+        patch: [
+          {
+            op: 'add',
+            path: `/edges/${eIdx}/circuitBreaker`,
+            value: { failureThreshold: 5, windowMs: 10_000, openMs: 10_000 },
+          },
+        ],
+        tradeOff: 'Fails fast on outage instead of blocking threads',
+      },
+    ];
+  },
+};
+
+/** Rule: Load balancer idle timeout shorter than backend p99 causes premature connection resets. */
+export const lbIdleTimeoutMismatchRule: Rule = {
+  id: 'lb-idle-timeout-mismatch',
+  title: 'LB idle timeout shorter than backend p99',
+  severity: 'warning',
+  requires: ['sim'],
+  appliesTo: (ctx) => {
+    if (!ctx.result) return [];
+    const matches = [];
+    for (const lbNode of ctx.design.nodes) {
+      const svc = resolveNodeService(lbNode.serviceId, ctx);
+      if (svc?.kind !== 'lb' && svc?.kind !== 'gw') continue;
+      const idleMs = lbNode.config.lb?.idleTimeoutMs;
+      if (idleMs === undefined || idleMs <= 0) continue;
+
+      for (const edge of ctx.design.edges) {
+        if (edge.from !== lbNode.id || edge.callType !== 'sync') continue;
+        const target = ctx.design.nodes.find((n) => n.id === edge.to);
+        const targetSum = ctx.result.perNode[edge.to];
+        if (!target || !targetSum || targetSum.requests <= 0) continue;
+
+        if (idleMs < targetSum.p99) {
+          matches.push({
+            nodeIds: [lbNode.id, target.id],
+            edgeIds: [edge.id],
+            evidence: {
+              lbLabel: lbNode.label,
+              targetLabel: target.label,
+              idleTimeoutMs: idleMs,
+              backendP99Ms: Math.round(targetSum.p99),
+            },
+            trafficShare: getTrafficShare(targetSum.requests, ctx),
+            durationFraction: 0.6,
+          });
+        }
+      }
+    }
+    return matches;
+  },
+  explain: (m) => ({
+    short: `${m.evidence.lbLabel} closes connections after ${m.evidence.idleTimeoutMs} ms, before ${m.evidence.targetLabel} finishes at ${m.evidence.backendP99Ms} ms p99.`,
+    deep: `What happened: Tail requests to ${m.evidence.targetLabel} exceeded ${m.evidence.lbLabel}'s idle timeout (${m.evidence.idleTimeoutMs} ms).\nHow to fix: Raise the LB idle timeout above backend p99 or speed up slow backend queries.`,
+  }),
+  fixes: (m, ctx) => {
+    const lbIdx = nodeIndexOf(ctx, m.nodeIds[0]);
+    if (lbIdx < 0) return [];
+    const curLb = ctx.design.nodes[lbIdx]!.config.lb ?? { algorithm: 'round-robin' as const };
+    const suggested = Math.max(
+      5000,
+      Math.ceil((Number(m.evidence.backendP99Ms ?? 2000) * 1.5) / 1000) * 1000,
+    );
+    return [
+      {
+        label: `Raise LB idle timeout to ${suggested} ms`,
+        patch: [
+          {
+            op: 'add',
+            path: `/nodes/${lbIdx}/config/lb`,
+            value: { ...curLb, idleTimeoutMs: suggested },
+          },
+        ],
+      },
+    ];
+  },
+};
+
+/** Rule: Failing async queue/worker pipeline lacking a Dead-Letter Queue (DLQ). */
+export const noDlqRule: Rule = {
+  id: 'no-dlq',
+  title: 'Async consumer failing without a DLQ',
+  severity: 'warning',
+  requires: ['sim'],
+  appliesTo: (ctx) => {
+    if (!ctx.result) return [];
+    const matches = [];
+    for (const node of ctx.design.nodes) {
+      const svc = resolveNodeService(node.serviceId, ctx);
+      const isAsyncNode =
+        svc?.kind === 'queue' || svc?.kind === 'bus' || node.config.consumer !== undefined;
+      if (!isAsyncNode) continue;
+      if (node.config.consumer?.dlq) continue;
+
+      const summary = ctx.result.perNode[node.id];
+      if (!summary || summary.requests <= 0) continue;
+      const failures = sumSummaryErrors(summary) + summary.drops;
+      const incomingAsync = ctx.design.edges.some(
+        (e) => e.to === node.id && e.callType === 'async',
+      );
+      if (failures > 0 || (svc?.kind === 'queue' && incomingAsync && summary.peakQueueDepth > 20)) {
+        matches.push({
+          nodeIds: [node.id],
+          evidence: {
+            nodeLabel: node.label,
+            failures,
+            peakQueueDepth: Math.round(summary.peakQueueDepth),
+          },
+          trafficShare: getTrafficShare(summary.requests, ctx),
+          durationFraction: 0.5,
+        });
+      }
+    }
+    return matches;
+  },
+  explain: (m) => ({
+    short: `${m.evidence.nodeLabel} experienced ${m.evidence.failures} failed/dropped async messages with no Dead-Letter Queue (DLQ) configured.`,
+    deep: `What happened: Poison messages or consumer failures retried or dropped without a DLQ (${m.evidence.failures} failures, peak queue ${m.evidence.peakQueueDepth}).\nHow to fix: Enable a Dead-Letter Queue so failed messages are isolated for inspection rather than lost or stalling healthy workers.`,
+  }),
+  fixes: (m, ctx) => {
+    const idx = nodeIndexOf(ctx, m.nodeIds[0]);
+    if (idx < 0) return [];
+    const cur = ctx.design.nodes[idx]!.config.consumer ?? {
+      concurrency: 10,
+      batchSize: 10,
+      pollMs: 100,
+      maxRetries: 3,
+      dlq: false,
+    };
+    return [
+      {
+        label: 'Enable Dead-Letter Queue (DLQ)',
+        patch: [{ op: 'add', path: `/nodes/${idx}/config/consumer`, value: { ...cur, dlq: true } }],
+      },
+    ];
+  },
+};
+
+/** Rule: Synchronous call on user path to a slow (> 1 s) dependency where async queueing fits better. */
+export const syncWhereAsyncRule: Rule = {
+  id: 'sync-where-async',
+  title: 'Slow synchronous call on user request path',
+  severity: 'warning',
+  requires: ['sim'],
+  appliesTo: (ctx) => {
+    if (!ctx.result) return [];
+    const matches = [];
+    for (const edge of ctx.design.edges) {
+      if (edge.callType !== 'sync') continue;
+      const fromNode = ctx.design.nodes.find((n) => n.id === edge.from);
+      const toNode = ctx.design.nodes.find((n) => n.id === edge.to);
+      if (!fromNode || !toNode) continue;
+      if (fromNode.serviceId === 'generic.client' || fromNode.serviceId === 'generic.users')
+        continue;
+
+      const toSummary = ctx.result.perNode[toNode.id];
+      const toSvc = resolveNodeService(toNode.serviceId, ctx);
+      if (!toSummary || toSummary.requests <= 0) continue;
+
+      const slowService =
+        toSummary.p95 >= 1000 ||
+        toSvc?.kind === 'doc-ai' ||
+        toSvc?.kind === 'email' ||
+        (toSvc?.kind === 'ml' && toSummary.p95 >= 500);
+
+      if (slowService && toSummary.p95 >= 1000) {
+        matches.push({
+          nodeIds: [edge.from, edge.to],
+          edgeIds: [edge.id],
+          evidence: {
+            edgeId: edge.id,
+            callerLabel: fromNode.label,
+            targetLabel: toNode.label,
+            targetP95Ms: Math.round(toSummary.p95),
+          },
+          trafficShare: getTrafficShare(toSummary.requests, ctx),
+          durationFraction: 0.65,
+        });
+      }
+    }
+    return matches;
+  },
+  explain: (m) => ({
+    short: `${m.evidence.callerLabel} blocks synchronously on ${m.evidence.targetLabel} (${m.evidence.targetP95Ms} ms p95 > 1 s).`,
+    deep: `What happened: Request threads on ${m.evidence.callerLabel} stay occupied waiting ${m.evidence.targetP95Ms} ms for ${m.evidence.targetLabel}.\nHow to fix: Convert this step to an asynchronous queue + background worker and return 202 Accepted immediately.\nTrade-off: Clients poll or subscribe for completion instead of receiving the result in the initial HTTP response.`,
+  }),
+  fixes: (m, ctx) => {
+    const eIdx = edgeIndexOf(ctx, String(m.evidence.edgeId ?? ''));
+    if (eIdx < 0) return [];
+    return [
+      {
+        label: 'Switch edge to asynchronous fire-and-forget',
+        patch: [{ op: 'replace', path: `/edges/${eIdx}/callType`, value: 'async' }],
+        tradeOff: 'Requires polling/webhook for final job status',
+      },
+    ];
+  },
+};

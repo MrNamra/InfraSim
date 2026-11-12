@@ -19,15 +19,40 @@ import {
   serverlessThrottledRule,
   singleDbNoReplicaRule,
 } from './rules/database.js';
-import { networkEdgeBlockedRule, networkSecuritySmellRule } from './rules/network.js';
+import {
+  costDominantLineRule,
+  egressHeavyRule,
+  natCostHotspotRule,
+  overSpecVsNeedRule,
+} from './rules/cost.js';
+import {
+  crossAzChattyRule,
+  crossRegionLatencyRule,
+  dbPublicRule,
+  networkEdgeBlockedRule,
+  networkSecuritySmellRule,
+  noNatPrivateEgressRule,
+  wideOpenIngressRule,
+} from './rules/network.js';
 import {
   healthCheckCascadeRule,
+  lbIdleTimeoutMismatchRule,
+  noCircuitBreakerRule,
+  noDlqRule,
   noTimeoutRule,
   retryStormRule,
   singlePointOfFailureRule,
+  syncWhereAsyncRule,
   timeoutInversionRule,
   zombieWorkRule,
 } from './rules/resilience.js';
+import {
+  coldStartTailRule,
+  contextTooLargeRule,
+  gatewayTimeoutVsLlmRule,
+  llmOnCriticalPathRule,
+  llmTpmThrottleRule,
+} from './rules/serverlessAi.js';
 import type { DiagnosisContext, Rule } from './types.js';
 
 export const PHASE1_RULES: Rule[] = [
@@ -61,6 +86,34 @@ export const FIRST_20_RULES: Rule[] = [
   healthCheckCascadeRule,
 ];
 
+/** All cost-only rules evaluated when a `CostReport` is provided. */
+export const COST_RULES: Rule[] = [
+  costDominantLineRule,
+  natCostHotspotRule,
+  egressHeavyRule,
+  overSpecVsNeedRule,
+];
+
+/** Complete Spec 17 deterministic diagnosis rule library (41 rules across Capacity, DB/Cache, Resilience, Serverless/AI, Network, and Cost). */
+export const ALL_DIAGNOSIS_RULES: Rule[] = [
+  ...FIRST_20_RULES,
+  noCircuitBreakerRule,
+  lbIdleTimeoutMismatchRule,
+  noDlqRule,
+  syncWhereAsyncRule,
+  coldStartTailRule,
+  gatewayTimeoutVsLlmRule,
+  llmTpmThrottleRule,
+  llmOnCriticalPathRule,
+  contextTooLargeRule,
+  dbPublicRule,
+  wideOpenIngressRule,
+  noNatPrivateEgressRule,
+  crossAzChattyRule,
+  crossRegionLatencyRule,
+  ...COST_RULES,
+];
+
 const SEVERITY_WEIGHT: Record<'info' | 'warning' | 'critical', number> = {
   info: 1,
   warning: 2,
@@ -69,12 +122,12 @@ const SEVERITY_WEIGHT: Record<'info' | 'warning' | 'critical', number> = {
 
 /**
  * Evaluates all deterministic rules against `ctx`, deduplicates generic fallback noise
- * when a more specific cause exists on the same node, and sorts insights deterministically
- * by `impact = severityWeight * trafficShare * durationFraction` (then severity and ruleId).
+ * when a more specific cause exists on the same node, builds the causal root-cause DAG,
+ * and sorts insights deterministically.
  */
 export function diagnose(
   ctx: DiagnosisContext,
-  rules: readonly Rule[] = FIRST_20_RULES,
+  rules: readonly Rule[] = ALL_DIAGNOSIS_RULES,
 ): Insight[] {
   const candidates: (Insight & { _orderKey: string })[] = [];
 
