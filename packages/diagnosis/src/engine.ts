@@ -9,11 +9,24 @@ import {
   slotsExhaustedRule,
 } from './rules/capacity.js';
 import {
+  cacheLowHitRatioRule,
+  cacheStampedeRule,
   dbPoolExhaustedRule,
   dbReadHeavyNoCacheRule,
+  hotPartitionRule,
+  serverlessDbConnectionsRule,
   serverlessThrottledRule,
+  singleDbNoReplicaRule,
 } from './rules/database.js';
 import { networkEdgeBlockedRule, networkSecuritySmellRule } from './rules/network.js';
+import {
+  healthCheckCascadeRule,
+  noTimeoutRule,
+  retryStormRule,
+  singlePointOfFailureRule,
+  timeoutInversionRule,
+  zombieWorkRule,
+} from './rules/resilience.js';
 import type { DiagnosisContext, Rule } from './types.js';
 
 export const PHASE1_RULES: Rule[] = [
@@ -31,6 +44,22 @@ export const PHASE1_RULES: Rule[] = [
   idleOverprovisionedRule,
 ];
 
+/** First 23 deterministic rules (Capacity, DB & Cache, Resilience, Network). */
+export const FIRST_20_RULES: Rule[] = [
+  ...PHASE1_RULES,
+  cacheLowHitRatioRule,
+  cacheStampedeRule,
+  serverlessDbConnectionsRule,
+  hotPartitionRule,
+  singleDbNoReplicaRule,
+  singlePointOfFailureRule,
+  retryStormRule,
+  noTimeoutRule,
+  timeoutInversionRule,
+  zombieWorkRule,
+  healthCheckCascadeRule,
+];
+
 const SEVERITY_WEIGHT: Record<'info' | 'warning' | 'critical', number> = {
   info: 1,
   warning: 2,
@@ -42,7 +71,10 @@ const SEVERITY_WEIGHT: Record<'info' | 'warning' | 'critical', number> = {
  * when a more specific cause exists on the same node, and sorts insights deterministically
  * by `impact = severityWeight * trafficShare * durationFraction` (then severity and ruleId).
  */
-export function diagnose(ctx: DiagnosisContext, rules: readonly Rule[] = PHASE1_RULES): Insight[] {
+export function diagnose(
+  ctx: DiagnosisContext,
+  rules: readonly Rule[] = FIRST_20_RULES,
+): Insight[] {
   const candidates: (Insight & { _orderKey: string })[] = [];
 
   for (const rule of rules) {
