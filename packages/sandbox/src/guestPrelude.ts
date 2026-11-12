@@ -488,7 +488,10 @@ export function buildGuestPrelude(opts: GuestPreludeOptions): string {
             yield __makeDiscoveryProxy(serviceId, op, [...pathParts, '0']);
           };
         }
-        if (prop === 'then' || prop === '__isDiscoveryProxy') {
+        if (prop === '__isDiscoveryProxy') {
+          return true;
+        }
+        if (prop === 'then') {
           return undefined;
         }
         if (prop === 'toString' || prop === 'valueOf') {

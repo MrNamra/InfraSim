@@ -8,6 +8,7 @@ import {
   isRestrictedBuiltin,
   isSafeBuiltin,
 } from './shims/allowlistLibs.js';
+import { generateCloudSdkShimModule } from './shims/cloudSdks.js';
 import { DEFAULT_DRY_RUN_LIMITS, type BundleResult, type SandboxErrorReport } from './types.js';
 
 export type VirtualSdkGenerator = (specifier: string) => string | null;
@@ -25,8 +26,8 @@ const VIRTUAL_PREFIX = '/design/';
 const UNSUPPORTED_MARKER = 'INFRASIM_UNSUPPORTED_MODULE::';
 const MISSING_REL_MARKER = 'INFRASIM_MISSING_SCRIPT::';
 
-let esbuildInitPromise: Promise<void> | null = null;
-const registeredSdkGenerators: VirtualSdkGenerator[] = [];
+const esbuildInitPromiseRef = { current: null as Promise<void> | null };
+const registeredSdkGenerators: VirtualSdkGenerator[] = [generateCloudSdkShimModule];
 const bundleCache = new Map<string, BundleResult>();
 
 /** Registers a virtual SDK shim generator (used internally by T3.4 drop-in cloud SDK shims). */
@@ -45,7 +46,7 @@ export function clearBundleCache(): void {
 /** Stops any background esbuild-wasm worker/subprocess cleanly on teardown. */
 export async function stopSandboxBundler(): Promise<void> {
   bundleCache.clear();
-  esbuildInitPromise = null;
+  esbuildInitPromiseRef.current = null;
   await esbuild.stop();
 }
 
@@ -62,9 +63,9 @@ async function ensureEsbuildInitialized(wasmUrl?: string): Promise<void> {
     return;
   }
 
-  if (!esbuildInitPromise) {
+  if (!esbuildInitPromiseRef.current) {
     const resolvedWasmUrl = wasmUrl || '/wasm/esbuild.wasm';
-    esbuildInitPromise = esbuild
+    esbuildInitPromiseRef.current = esbuild
       .initialize({
         wasmURL: resolvedWasmUrl,
         worker: false,
@@ -72,12 +73,12 @@ async function ensureEsbuildInitialized(wasmUrl?: string): Promise<void> {
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (!msg.includes('already called')) {
-          esbuildInitPromise = null;
+          esbuildInitPromiseRef.current = null;
           throw err;
         }
       });
   }
-  await esbuildInitPromise;
+  await esbuildInitPromiseRef.current;
 }
 
 function normalizePosixPath(p: string): string {
