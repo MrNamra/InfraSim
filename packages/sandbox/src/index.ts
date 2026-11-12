@@ -16,3 +16,5 @@ export * from './platformLogs.js';
 export * from './runtime.js';
 export * from './profileKey.js';
 export * from './profiler.js';
+export * from './scenarioScript.js';
+export * from './scenarioThresholds.js';

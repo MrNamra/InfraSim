@@ -5,6 +5,8 @@ import type {
   AutoFillDiscoveryReport,
   DryRunInput,
   DryRunResult,
+  ExtractScenarioInput,
+  ExtractedScenarioResult,
   FixtureSuiteReport,
   ProfileHandlerInput,
   ProfileRunSummary,
@@ -24,6 +26,7 @@ export interface SandboxClientOptions {
       input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
     ) => Promise<AutoFillDiscoveryReport>;
     profile?: (input: Omit<ProfileHandlerInput, 'mockResolver'>) => Promise<ProfileRunSummary>;
+    extractScenario?: (input: ExtractScenarioInput) => Promise<ExtractedScenarioResult>;
     terminate: () => void;
   };
 }
@@ -35,6 +38,7 @@ export interface SandboxClientHandle {
     input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
   ) => Promise<AutoFillDiscoveryReport>;
   profile: (input: Omit<ProfileHandlerInput, 'mockResolver'>) => Promise<ProfileRunSummary>;
+  extractScenario: (input: ExtractScenarioInput) => Promise<ExtractedScenarioResult>;
   terminate: () => void;
 }
 
@@ -46,6 +50,7 @@ interface WorkerInstance {
     input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
   ) => Promise<AutoFillDiscoveryReport>;
   profile?: (input: Omit<ProfileHandlerInput, 'mockResolver'>) => Promise<ProfileRunSummary>;
+  extractScenario?: (input: ExtractScenarioInput) => Promise<ExtractedScenarioResult>;
   terminate: () => void;
 }
 
@@ -103,6 +108,7 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
       runSuite: (input) => remote.runSuite(input),
       autoFill: (input) => remote.autoFill(input),
       profile: (input) => remote.profile(input),
+      extractScenario: (input) => remote.extractScenario(input),
       terminate: () => {
         remote[Comlink.releaseProxy]();
         rawWorker.terminate();
@@ -388,6 +394,42 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
           },
         }),
         profileWatchdogMs,
+      );
+    },
+
+    async extractScenario(input) {
+      const worker = spawnWorker();
+      if (!worker || !worker.extractScenario) {
+        const mod = await import('@infrasim/sandbox');
+        return mod.extractScenarioFromScript(input);
+      }
+      return runWithWatchdog(
+        worker,
+        () => worker.extractScenario!(input),
+        (message) => ({
+          options: {},
+          flows: [],
+          checkDefinitions: [],
+          errors: [
+            {
+              category: 'CpuBudgetExceeded',
+              name: 'WorkerWatchdogTimeout',
+              message,
+            },
+          ],
+        }),
+        (msg) => ({
+          options: {},
+          flows: [],
+          checkDefinitions: [],
+          errors: [
+            {
+              category: 'UserCodeError',
+              name: 'WorkerCrashError',
+              message: `Scenario extraction crashed (${msg})`,
+            },
+          ],
+        }),
       );
     },
 

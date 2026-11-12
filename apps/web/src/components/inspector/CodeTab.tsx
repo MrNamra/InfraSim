@@ -47,6 +47,7 @@ import { computeProfileCacheKey } from '@infrasim/sandbox/profile-key';
 import type {
   AutoFillPatchPreview,
   DryRunResult,
+  ExtractedScenarioResult,
   FixtureSuiteReport,
   PayloadDoctorHint,
   ProfileRunSummary,
@@ -80,6 +81,7 @@ export interface CodeTabProps {
   onEditCallMock: (targetNodeId: string | undefined, serviceId: string, opName: string) => void;
   onApplyMockPatches: (patches: readonly AutoFillPatchPreview[]) => Design;
   onRecordDryRunLogs?: (entries: readonly LogEntry[]) => void;
+  onSyncScenarioScript?: (extracted: ExtractedScenarioResult, scriptId: string) => void;
   onOpenNetworkTab?: () => void;
 }
 
@@ -195,6 +197,7 @@ export function CodeTab({
   onEditCallMock,
   onApplyMockPatches,
   onRecordDryRunLogs,
+  onSyncScenarioScript,
   onOpenNetworkTab,
 }: CodeTabProps) {
   const isClientNode = node.serviceId === 'generic.client';
@@ -248,6 +251,8 @@ export function CodeTab({
   const [autoFillRunning, setAutoFillRunning] = useState(false);
   const [autoFillPatches, setAutoFillPatches] = useState<AutoFillPatchPreview[] | null>(null);
   const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
+  const [scenarioSyncing, setScenarioSyncing] = useState(false);
+  const [extractedScenario, setExtractedScenario] = useState<ExtractedScenarioResult | null>(null);
   const [suiteReport, setSuiteReport] = useState<FixtureSuiteReport | null>(null);
   const [expandedCalls, setExpandedCalls] = useState<Record<number, boolean>>({});
   const [fixtureNotice, setFixtureNotice] = useState<string | null>(null);
@@ -724,6 +729,26 @@ export function CodeTab({
     effectiveIterations,
     onSaveProfileSummary,
   ]);
+
+  const handleSyncScenarioScript = useCallback(async () => {
+    if (!attachedScript || attachedScript.kind !== 'scenario') return;
+    setScenarioSyncing(true);
+    try {
+      const client = getSharedSandboxClient();
+      const extracted = await client.extractScenario({
+        script: attachedScript,
+        designScripts: design.scripts,
+        seed: runSeed,
+        env: node.config.mockEnv,
+      });
+      setExtractedScenario(extracted);
+      if (extracted.errors.length === 0) {
+        onSyncScenarioScript?.(extracted, attachedScript.id);
+      }
+    } finally {
+      setScenarioSyncing(false);
+    }
+  }, [attachedScript, design.scripts, runSeed, node.config.mockEnv, onSyncScenarioScript]);
 
   const handleSaveAsFixture = useCallback(async () => {
     if (!parsedEventState.valid) {
@@ -1238,6 +1263,75 @@ export function CodeTab({
                 ) : null}
               </div>
             </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* k6-Style Scenario Extraction & Sync */}
+      {isClientNode && attachedScript.kind === 'scenario' ? (
+        <section
+          data-testid="scenario-script-sync"
+          className="space-y-2.5 border-t border-[var(--border-hairline)] pt-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] font-medium text-[var(--text-primary)]">
+              Traffic scenario script
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              data-testid="sync-scenario-script-btn"
+              disabled={scenarioSyncing}
+              onClick={() => void handleSyncScenarioScript()}
+              className="h-7 px-2.5 text-[11px]"
+            >
+              <RefreshCw
+                className={`h-3 w-3 ${scenarioSyncing ? 'animate-spin' : ''}`}
+                strokeWidth={1.5}
+              />
+              <span>{scenarioSyncing ? 'Extracting' : 'Sync to scenario'}</span>
+            </Button>
+          </div>
+          <p className="text-[11px] leading-4 text-[var(--text-muted)]">
+            Runs default() in the sandbox to extract options, weighted request flows, and pass/fail
+            thresholds into the active scenario.
+          </p>
+
+          {extractedScenario ? (
+            extractedScenario.errors.length > 0 ? (
+              <div className="rounded-[6px] border border-[rgba(229,72,77,0.3)] bg-[rgba(229,72,77,0.08)] p-2 text-[11px] text-[var(--status-overloaded)]">
+                {extractedScenario.errors[0]?.message}
+              </div>
+            ) : (
+              <div
+                data-testid="extracted-scenario-preview"
+                className="space-y-1.5 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-2.5 text-[11px]"
+              >
+                <div className="flex items-center justify-between font-mono text-[10px] tabular-nums text-[var(--text-secondary)]">
+                  <span>
+                    {extractedScenario.options.rps !== undefined
+                      ? `${extractedScenario.options.rps} req/s`
+                      : 'Scenario rate preserved'}{' '}
+                    · {extractedScenario.options.durationS ?? '—'} s
+                    {extractedScenario.options.rampUpS
+                      ? ` (ramp ${extractedScenario.options.rampUpS} s)`
+                      : ''}
+                  </span>
+                  <span className="text-[var(--status-ok)]">Synced</span>
+                </div>
+                <div className="space-y-0.5 text-[10px] text-[var(--text-muted)]">
+                  {extractedScenario.flows.map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between font-mono tabular-nums"
+                    >
+                      <span className="truncate text-[var(--text-secondary)]">{f.name}</span>
+                      <span>{Math.round(f.weight * 100)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
           ) : null}
         </section>
       ) : null}

@@ -2,6 +2,7 @@ import * as Comlink from 'comlink';
 import {
   bundleUserScript,
   executeInSandbox,
+  extractScenarioFromScript,
   generateAutoFillPatches,
   profileHandlerScript,
   runFixtureSuite,
@@ -10,6 +11,8 @@ import {
   type BundleScriptInput,
   type DryRunInput,
   type DryRunResult,
+  type ExtractScenarioInput,
+  type ExtractedScenarioResult,
   type FixtureSuiteReport,
   type ProfileHandlerInput,
   type ProfileRunSummary,
@@ -26,6 +29,7 @@ export interface SandboxWorkerApi {
     input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
   ) => Promise<AutoFillDiscoveryReport>;
   profile: (input: Omit<ProfileHandlerInput, 'mockResolver'>) => Promise<ProfileRunSummary>;
+  extractScenario: (input: ExtractScenarioInput) => Promise<ExtractedScenarioResult>;
 }
 
 function getOrigin(): string {
@@ -78,6 +82,16 @@ const workerApi: SandboxWorkerApi = {
   async profile(input) {
     const origin = getOrigin();
     return profileHandlerScript({
+      ...input,
+      quickJsWasmUrl:
+        input.quickJsWasmUrl ?? (origin ? `${origin}/wasm/quickjs-release-sync.wasm` : undefined),
+      esbuildWasmUrl: input.esbuildWasmUrl ?? (origin ? `${origin}/wasm/esbuild.wasm` : undefined),
+    });
+  },
+
+  async extractScenario(input) {
+    const origin = getOrigin();
+    return extractScenarioFromScript({
       ...input,
       quickJsWasmUrl:
         input.quickJsWasmUrl ?? (origin ? `${origin}/wasm/quickjs-release-sync.wasm` : undefined),

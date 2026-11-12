@@ -41,7 +41,7 @@ import type {
   Provider,
   ServiceDefinition,
 } from '@infrasim/shared-types';
-import type { AutoFillPatchPreview } from '@infrasim/sandbox';
+import type { AutoFillPatchPreview, ExtractedScenarioResult } from '@infrasim/sandbox';
 import { getService, type CloudTargetProvider } from '@infrasim/catalog';
 import {
   CURATED_REGION_MAP,
@@ -2163,6 +2163,23 @@ export function EditorShell() {
                   onEditCallMock={handleEditCallMock}
                   onApplyMockPatches={handleApplyMockPatches}
                   onRecordDryRunLogs={appendSimLogs}
+                  onSyncScenarioScript={(extracted: ExtractedScenarioResult, scriptId: string) => {
+                    const targetScenarioId = activeScenario?.id;
+                    if (!targetScenarioId) return;
+                    void import('@infrasim/sandbox/thresholds').then(
+                      ({ applyExtractedScenarioToScenario }) => {
+                        updateScenario(targetScenarioId, (s) => {
+                          Object.assign(
+                            s,
+                            applyExtractedScenarioToScenario(s, extracted, scriptId),
+                          );
+                        });
+                        setStatusNotice(
+                          `Synced ${extracted.flows.length} scenario flow(s) from script`,
+                        );
+                      },
+                    );
+                  }}
                   onOpenNetworkTab={() => setInspectorTab('network')}
                 />
               ) : inspectorTab === 'cost' ? (
@@ -2304,6 +2321,7 @@ export function EditorShell() {
               result={simResult}
               previousResult={simPreviousResult}
               chaos={activeScenario?.chaos ?? []}
+              scenarioThresholds={activeScenario?.thresholds}
               selectedNodeId={selectedNodeId}
               currentTimeS={currentFrame ? currentFrame.tVirtualMs / 1000 : null}
               elapsedWallMs={simElapsedWallMs}

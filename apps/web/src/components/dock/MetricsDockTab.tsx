@@ -9,7 +9,9 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from 'react';
+import { CheckCircle2, XCircle } from 'lucide-react';
 import { getService } from '@infrasim/catalog';
+import { evaluateScenarioThresholds } from '@infrasim/sandbox/thresholds';
 import { computeErlangC } from '@infrasim/sim-engine';
 import type { ChaosEvent, Design, SimulationResult } from '@infrasim/shared-types';
 import { chartClientXToTimeS, chartTimeSToPercent } from '../../lib/chartCursor';
@@ -22,6 +24,7 @@ export interface MetricsDockTabProps {
   result: SimulationResult | null;
   previousResult: SimulationResult | null;
   chaos?: readonly ChaosEvent[];
+  scenarioThresholds?: Record<string, string[]>;
   selectedNodeId: string | null;
   currentTimeS: number | null;
   elapsedWallMs: number | null;
@@ -85,6 +88,7 @@ export function MetricsDockTab({
   result,
   previousResult,
   chaos = [],
+  scenarioThresholds,
   selectedNodeId,
   currentTimeS,
   elapsedWallMs,
@@ -471,6 +475,12 @@ export function MetricsDockTab({
     }
   };
 
+  const activeThresholds = scenarioThresholds ?? design.scenarios[0]?.thresholds;
+  const thresholdResults = useMemo(
+    () => (result && activeThresholds ? evaluateScenarioThresholds(activeThresholds, result) : []),
+    [result, activeThresholds],
+  );
+
   const cursorPct =
     currentTimeS !== null ? chartTimeSToPercent(currentTimeS, maxX, svgWidth, padX) : null;
   const hoverSvgX =
@@ -558,6 +568,37 @@ export function MetricsDockTab({
           {elapsedWallMs !== null ? <span>Ran in {elapsedWallMs} ms</span> : null}
         </div>
       </div>
+
+      {thresholdResults.length > 0 ? (
+        <div
+          data-testid="scenario-thresholds"
+          className="flex flex-wrap items-center gap-2 border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] px-3 py-1 text-[10px]"
+        >
+          <span className="font-medium text-[var(--text-muted)]">Thresholds</span>
+          {thresholdResults.map((t, idx) => (
+            <span
+              key={`${t.metric}-${idx}`}
+              data-testid="threshold-badge"
+              data-passed={t.passed ? 'true' : 'false'}
+              title={`${t.metric} ${t.expression}`}
+              className={`inline-flex items-center gap-1 rounded-[4px] border px-1.5 py-0.5 font-mono tabular-nums ${
+                t.passed
+                  ? 'border-[rgba(76,195,138,0.3)] bg-[rgba(76,195,138,0.1)] text-[var(--status-ok)]'
+                  : 'border-[rgba(229,72,77,0.3)] bg-[rgba(229,72,77,0.1)] text-[var(--status-overloaded)]'
+              }`}
+            >
+              {t.passed ? (
+                <CheckCircle2 className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+              ) : (
+                <XCircle className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+              )}
+              <span>
+                {t.metric} ({t.label})
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {/* Main Split: Hero SVG Chart + Per-Node Table */}
       <div className="flex min-h-0 flex-1 divide-x divide-[var(--border-hairline)]">

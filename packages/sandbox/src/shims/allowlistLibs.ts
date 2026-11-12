@@ -25,6 +25,8 @@ export const ALLOWED_SANDBOX_MODULES = [
   'oci-generativeaiinference',
   'oci-queue',
   'oci-common',
+  'k6',
+  'k6/http',
 ] as const;
 
 const RESTRICTED_SIMULATOR_BUILTINS = new Set([
@@ -102,7 +104,9 @@ export function isAllowedAllowlistPackage(specifier: string): boolean {
     specifier === 'oci-objectstorage' ||
     specifier === 'oci-generativeaiinference' ||
     specifier === 'oci-queue' ||
-    specifier === 'oci-common'
+    specifier === 'oci-common' ||
+    specifier === 'k6' ||
+    specifier === 'k6/http'
   ) {
     return true;
   }
@@ -144,6 +148,33 @@ export const connect = () => throwUnsupported();
 export const spawn = () => throwUnsupported();
 export const exec = () => throwUnsupported();
 export const execSync = () => throwUnsupported();
+`;
+  }
+
+  if (specifier === 'k6') {
+    return `
+export const check = (...args) => globalThis.check?.(...args) ?? true;
+export const sleep = (...args) => globalThis.sleep?.(...args);
+export const group = (...args) => globalThis.group?.(...args);
+export default { check, sleep, group };
+`;
+  }
+
+  if (specifier === 'k6/http') {
+    return `
+const httpProxy = new Proxy({}, {
+  get(_t, prop) {
+    if (prop === '__esModule') return true;
+    if (prop === 'default') return httpProxy;
+    return (...args) => globalThis.http?.[prop]?.(...args);
+  },
+});
+export const get = (...args) => globalThis.http?.get(...args);
+export const post = (...args) => globalThis.http?.post(...args);
+export const put = (...args) => globalThis.http?.put(...args);
+export const del = (...args) => globalThis.http?.del(...args);
+export const patch = (...args) => globalThis.http?.patch(...args);
+export default httpProxy;
 `;
   }
 

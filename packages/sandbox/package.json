@@ -25,6 +25,11 @@
       "types": "./dist/profileKey.d.ts",
       "import": "./dist/profileKey.js",
       "default": "./dist/profileKey.js"
+    },
+    "./thresholds": {
+      "types": "./dist/scenarioThresholds.d.ts",
+      "import": "./dist/scenarioThresholds.js",
+      "default": "./dist/scenarioThresholds.js"
     }
   },
   "dependencies": {
