@@ -10,12 +10,21 @@ export interface JsonPatchOp {
 export interface FixSuggestion {
   label: string;
   patch: JsonPatchOp[];
+  tradeOff?: string;
 }
 
 /** Two-level explanation rendered in the Why? tab and Insights dock. */
 export interface InsightExplanation {
   short: string;
   deep: string;
+}
+
+/** Node/rule link along a causal chain from deepest root cause up to downstream symptoms. */
+export interface CausalChainLink {
+  nodeId: string;
+  nodeLabel: string;
+  ruleId: string;
+  title: string;
 }
 
 /** Deterministic diagnostic insight emitted from simulation, network, or cost analysis. */
@@ -29,4 +38,10 @@ export interface Insight {
   evidence?: Record<string, string | number>;
   impactScore?: number;
   lessonSlug?: string;
+  isRootCause?: boolean;
+  causedByNodeId?: string;
+  causedByRuleId?: string;
+  rootCauseNodeId?: string;
+  rootCauseRuleId?: string;
+  causalChain?: CausalChainLink[];
 }

@@ -4,9 +4,11 @@ import { useState } from 'react';
 import {
   AlertOctagon,
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Crosshair,
   Info,
   Play,
   Wrench,
@@ -22,6 +24,7 @@ import type {
   SimulationResult,
 } from '@infrasim/shared-types';
 import { Button } from '@infrasim/ui-kit';
+import { formatMoney } from '../../lib/costFormat';
 import { computeTheoreticalMaxRps } from '../../lib/nodeDefaults';
 
 export interface WhyTabProps {
@@ -30,10 +33,13 @@ export interface WhyTabProps {
   service?: ServiceDefinition;
   result: SimulationResult | null;
   previousResult: SimulationResult | null;
+  currentMonthlyCost?: { total: number; currency: string } | null;
+  previousMonthlyCost?: { total: number; currency: string } | null;
   appliedFixLabel: string | null;
   isRunning: boolean;
   onApplyPatchedDesign: (nextDesign: Design, fixLabel: string) => void;
   onRerunVerify: () => void;
+  onSelectNodeWhy?: (nodeId: string) => void;
 }
 
 const SEVERITY_STYLE: Record<
@@ -87,17 +93,20 @@ function formatEvidenceEntry(key: string, val: string | number): string {
   return `${key}: ${val}`;
 }
 
-/** Node "Why?" diagnostic tab displaying ranked causes, evidence, deep explanations, and patch fixes. */
+/** Node "Why?" diagnostic tab displaying ranked causes, root-cause chains, evidence, deep explanations, and patch fixes. */
 export function WhyTab({
   design,
   node,
   service,
   result,
   previousResult,
+  currentMonthlyCost,
+  previousMonthlyCost,
   appliedFixLabel,
   isRunning,
   onApplyPatchedDesign,
   onRerunVerify,
+  onSelectNodeWhy,
 }: WhyTabProps) {
   const [expandedRuleIds, setExpandedRuleIds] = useState<Record<string, boolean>>({});
   const [expandedDiffKey, setExpandedDiffKey] = useState<string | null>(null);
@@ -186,6 +195,21 @@ export function WhyTab({
               {prevErrors?.toLocaleString()} → {curErrors.toLocaleString()}
             </span>
           </div>
+          {previousMonthlyCost && currentMonthlyCost ? (
+            <div className="mt-0.5 flex items-center justify-between font-mono tabular-nums">
+              <span className="text-[var(--text-secondary)]">Monthly cost</span>
+              <span
+                className={
+                  currentMonthlyCost.total < previousMonthlyCost.total
+                    ? 'text-[var(--status-ok)]'
+                    : 'text-[var(--text-primary)]'
+                }
+              >
+                {formatMoney(previousMonthlyCost.total, previousMonthlyCost.currency)} →{' '}
+                {formatMoney(currentMonthlyCost.total, currentMonthlyCost.currency)}
+              </span>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -235,9 +259,18 @@ export function WhyTab({
                 className="space-y-2.5 rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-sunken)] p-3"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <SevIcon className={`h-4 w-4 shrink-0 ${sev.colorClass}`} strokeWidth={1.5} />
                     <span className={`text-[11px] font-medium ${sev.colorClass}`}>{sev.label}</span>
+                    {insight.isRootCause ? (
+                      <span
+                        data-testid={`root-cause-badge-${insight.ruleId}`}
+                        className="inline-flex items-center gap-1 rounded-[4px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-primary)]"
+                      >
+                        <Crosshair className="h-2.5 w-2.5 text-[var(--accent)]" strokeWidth={1.5} />
+                        <span>Root cause</span>
+                      </span>
+                    ) : null}
                   </div>
                   {insight.impactScore !== undefined ? (
                     <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
@@ -249,6 +282,49 @@ export function WhyTab({
                 <h3 className="text-[13px] font-medium leading-4 text-[var(--text-primary)]">
                   {insight.title}
                 </h3>
+
+                {insight.causalChain && insight.causalChain.length > 1 ? (
+                  <div
+                    data-testid={`causal-chain-${insight.ruleId}`}
+                    className="flex flex-wrap items-center gap-1 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 py-1 text-[10px] text-[var(--text-secondary)]"
+                  >
+                    <span className="font-medium text-[var(--text-muted)]">Chain:</span>
+                    {insight.causalChain.map((link, cIdx) => (
+                      <span
+                        key={`${link.nodeId}-${link.ruleId}-${cIdx}`}
+                        className="inline-flex items-center gap-1"
+                      >
+                        {cIdx > 0 ? (
+                          <ArrowRight
+                            className="h-2.5 w-2.5 text-[var(--text-muted)]"
+                            strokeWidth={1.5}
+                          />
+                        ) : null}
+                        {onSelectNodeWhy && link.nodeId !== node.id ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectNodeWhy(link.nodeId)}
+                            className="rounded-[4px] bg-[var(--bg-sunken)] px-1 py-0.5 font-mono text-[var(--accent)] hover:underline"
+                            title={`${link.title} (${link.ruleId})`}
+                          >
+                            {link.nodeLabel}
+                          </button>
+                        ) : (
+                          <span
+                            className={`rounded-[4px] bg-[var(--bg-sunken)] px-1 py-0.5 font-mono ${
+                              cIdx === 0
+                                ? 'font-medium text-[var(--text-primary)]'
+                                : 'text-[var(--text-secondary)]'
+                            }`}
+                            title={`${link.title} (${link.ruleId})`}
+                          >
+                            {link.nodeLabel}
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
 
                 {evidenceEntries.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
@@ -333,6 +409,11 @@ export function WhyTab({
                                 </Button>
                               </div>
                             </div>
+                            {fix.tradeOff ? (
+                              <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                                Trade-off: {fix.tradeOff}
+                              </p>
+                            ) : null}
                             {showDiff ? (
                               <pre className="mt-1.5 overflow-x-auto rounded-[4px] bg-[var(--bg-sunken)] p-1.5 font-mono text-[10px] text-[var(--status-ok)]">
                                 {fix.patch.map(formatPatchLine).join('\n')}

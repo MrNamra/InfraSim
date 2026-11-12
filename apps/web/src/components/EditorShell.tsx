@@ -281,6 +281,12 @@ export function EditorShell() {
   const [terraformImportOpen, setTerraformImportOpen] = useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
+  const [previousMonthlyCost, setPreviousMonthlyCost] = useState<{
+    total: number;
+    currency: string;
+  } | null>(null);
+  const lastCompletedCostRef = useRef<{ total: number; currency: string } | null>(null);
+  const liveCostRef = useRef<{ total: number; currency: string } | null>(null);
   const [focusedOpState, setFocusedOpState] = useState<{
     nodeId: string;
     opName: string;
@@ -747,13 +753,19 @@ export function EditorShell() {
   const handleRunSimulation = useCallback(async () => {
     setScenarioOpen(false);
     setAppliedFixLabel(null);
+    if (simResult && lastCompletedCostRef.current) {
+      setPreviousMonthlyCost(lastCompletedCostRef.current);
+    }
     const curDesign = useDesignStore.getState().design;
     await ensureHandlerProfiles(curDesign);
     await startSimulation(curDesign, activeScenarioId);
-  }, [activeScenarioId, ensureHandlerProfiles, startSimulation]);
+  }, [activeScenarioId, ensureHandlerProfiles, simResult, startSimulation]);
 
   const handleApplyPatchedDesign = useCallback(
     (nextDesign: typeof design, fixLabel: string) => {
+      if (liveCostRef.current) {
+        lastCompletedCostRef.current = liveCostRef.current;
+      }
       applyPatchedDesign(nextDesign);
       setAppliedFixLabel(fixLabel);
     },
@@ -762,9 +774,12 @@ export function EditorShell() {
 
   const handleRerunVerify = useCallback(() => {
     setAppliedFixLabel(null);
+    if (simResult) {
+      setPreviousMonthlyCost(lastCompletedCostRef.current ?? liveCostRef.current);
+    }
     const curDesign = useDesignStore.getState().design;
     void ensureHandlerProfiles(curDesign).then(() => startSimulation(curDesign, activeScenarioId));
-  }, [activeScenarioId, ensureHandlerProfiles, startSimulation]);
+  }, [activeScenarioId, ensureHandlerProfiles, simResult, startSimulation]);
 
   const handleSaveCustomService = useCallback(
     async (
@@ -1137,6 +1152,27 @@ export function EditorShell() {
           },
     [costEngineMod, costReport, design, simResult, availableCustomServices],
   );
+
+  const currentMonthlyCost = useMemo(
+    () =>
+      costEngineMod ? { total: costReport.monthlyTotal, currency: costReport.currency } : null,
+    [costEngineMod, costReport.monthlyTotal, costReport.currency],
+  );
+
+  useEffect(() => {
+    if (costEngineMod) {
+      liveCostRef.current = {
+        total: costReport.monthlyTotal,
+        currency: costReport.currency,
+      };
+    }
+    if (simStatus === 'completed' && costEngineMod && !appliedFixLabel) {
+      lastCompletedCostRef.current = {
+        total: costReport.monthlyTotal,
+        currency: costReport.currency,
+      };
+    }
+  }, [simStatus, costEngineMod, appliedFixLabel, costReport.monthlyTotal, costReport.currency]);
 
   const nodeCosts = useMemo<Record<string, NodeCostChipInfo>>(() => {
     const out: Record<string, NodeCostChipInfo> = {};
@@ -2470,10 +2506,13 @@ export function EditorShell() {
                   service={selectedNodeService}
                   result={simResult}
                   previousResult={simPreviousResult}
+                  currentMonthlyCost={currentMonthlyCost}
+                  previousMonthlyCost={previousMonthlyCost}
                   appliedFixLabel={appliedFixLabel}
                   isRunning={simStatus === 'running'}
                   onApplyPatchedDesign={handleApplyPatchedDesign}
                   onRerunVerify={handleRerunVerify}
+                  onSelectNodeWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
                 />
               ) : (
                 <div className="p-4 text-[12px] text-[var(--text-secondary)]">
@@ -2702,6 +2741,9 @@ export function EditorShell() {
             <InsightsDockTab
               design={design}
               result={simResult}
+              previousResult={simPreviousResult}
+              currentMonthlyCost={currentMonthlyCost}
+              previousMonthlyCost={previousMonthlyCost}
               appliedFixLabel={appliedFixLabel}
               isRunning={simStatus === 'running'}
               onSelectNodeWhy={(nodeId) => handleInspectNode(nodeId, 'why')}

@@ -1,4 +1,5 @@
 import type { Insight } from '@infrasim/shared-types';
+import { applyCausalDagAndRank } from './causalDag.js';
 import {
   autoscaleTooSlowRule,
   bottleneckNodeRule,
@@ -127,5 +128,8 @@ export function diagnose(
     return a._orderKey.localeCompare(b._orderKey);
   });
 
-  return filtered.map(({ _orderKey: _drop, ...insight }) => insight);
+  return applyCausalDagAndRank(
+    ctx.design,
+    filtered.map(({ _orderKey: _drop, ...insight }) => insight),
+  );
 }
