@@ -27,6 +27,7 @@ import type {
 } from '@infrasim/shared-types';
 import { formatMoney, formatSnapshotAge, formatUnitPrice } from '../../lib/costFormat';
 import { CostComparisonView } from './CostComparisonView';
+import { CostSweepView } from './CostSweepView';
 
 export interface CostDockTabProps {
   design: Design;
@@ -40,6 +41,7 @@ export interface CostDockTabProps {
   lastFetchedAt: string | null;
   isOfflineFallback: boolean;
   defaultRegion?: string;
+  selectedNodeId?: string | null;
   customServices?: CustomServiceDefinition[];
   onRefreshPrices: () => void;
   onSyncAllCloudsPrices?: () => void;
@@ -47,6 +49,7 @@ export interface CostDockTabProps {
   onSelectRegion?: (regionCode: string) => void;
   onOpenAssumptions: () => void;
   onOpenProviderSwitch?: (targetProvider?: CloudTargetProvider) => void;
+  onApplyPatchedDesign?: (nextDesign: Design, changeLabel: string) => void;
 }
 
 type SortKey = 'subtotal' | 'label' | 'provider';
@@ -76,6 +79,7 @@ export function CostDockTab({
   lastFetchedAt,
   isOfflineFallback,
   defaultRegion = 'us-east-1',
+  selectedNodeId = null,
   customServices = [],
   onRefreshPrices,
   onSyncAllCloudsPrices,
@@ -83,15 +87,16 @@ export function CostDockTab({
   onSelectRegion,
   onOpenAssumptions,
   onOpenProviderSwitch,
+  onApplyPatchedDesign,
 }: CostDockTabProps) {
   const [sortKey, setSortKey] = useState<SortKey>('subtotal');
   const [sortDesc, setSortDesc] = useState(true);
   const [showWhatIf, setShowWhatIf] = useState(false);
   const [rpsMultiplier, setRpsMultiplier] = useState(1);
   const [instanceScale, setInstanceScale] = useState(1);
-  const [activeSubView, setActiveSubView] = useState<'breakdown' | 'transfer' | 'compare'>(
-    'breakdown',
-  );
+  const [activeSubView, setActiveSubView] = useState<
+    'breakdown' | 'transfer' | 'compare' | 'sweep'
+  >('breakdown');
 
   const currency = report.currency || assumptions.currency;
   const fxRate =
@@ -506,6 +511,18 @@ export function CostDockTab({
             >
               Compare clouds & regions
             </button>
+            <button
+              type="button"
+              data-testid="cost-subtab-sweep"
+              onClick={() => setActiveSubView('sweep')}
+              className={`h-6 rounded-[5px] px-2 text-[11px] font-medium transition-colors ${
+                activeSubView === 'sweep'
+                  ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              Cost vs latency sweep
+            </button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
@@ -623,7 +640,7 @@ export function CostDockTab({
                   </tbody>
                 </table>
               )
-            ) : (
+            ) : activeSubView === 'compare' ? (
               <CostComparisonView
                 design={design}
                 result={result}
@@ -635,6 +652,15 @@ export function CostDockTab({
                 onSyncAllCloudsPrices={onSyncAllCloudsPrices}
                 onSwitchProviderClick={(prov) => onOpenProviderSwitch?.(prov)}
                 onSelectRegion={(reg) => onSelectRegion?.(reg)}
+              />
+            ) : (
+              <CostSweepView
+                design={design}
+                result={result}
+                assumptions={assumptions}
+                snapshot={snapshot}
+                selectedNodeId={selectedNodeId}
+                onApplyPatchedDesign={onApplyPatchedDesign}
               />
             )}
           </div>

@@ -407,6 +407,7 @@ export function EditorShell() {
   const simElapsedWallMs = useSimulationStore((s) => s.elapsedWallMs);
   const simResult = useSimulationStore((s) => s.result);
   const simPreviousResult = useSimulationStore((s) => s.previousResult);
+  const simPinnedRun = useSimulationStore((s) => s.pinnedRun);
   const simLogs = useSimulationStore((s) => s.logs);
   const simError = useSimulationStore((s) => s.errorMessage);
   const missingClientPromptOpen = useSimulationStore((s) => s.missingClientPromptOpen);
@@ -429,6 +430,8 @@ export function EditorShell() {
   const advancePlayback = useSimulationStore((s) => s.advancePlayback);
   const setSpeed = useSimulationStore((s) => s.setSpeed);
   const dismissMissingClientPrompt = useSimulationStore((s) => s.dismissMissingClientPrompt);
+  const pinCurrentRunAsA = useSimulationStore((s) => s.pinCurrentRunAsA);
+  const clearPinnedRun = useSimulationStore((s) => s.clearPinnedRun);
   const resetSimulation = useSimulationStore((s) => s.resetSimulation);
 
   const costSnapshot = useCostStore((s) => s.snapshot);
@@ -2872,6 +2875,9 @@ export function EditorShell() {
               design={design}
               result={simResult}
               previousResult={simPreviousResult}
+              pinnedRun={simPinnedRun}
+              currentMonthlyCostUsd={currentMonthlyCost?.total ?? null}
+              currency={currentMonthlyCost?.currency ?? costReport.currency}
               chaos={activeScenario?.chaos ?? []}
               scenarioThresholds={activeScenario?.thresholds}
               selectedNodeId={selectedNodeId}
@@ -2879,6 +2885,8 @@ export function EditorShell() {
               elapsedWallMs={simElapsedWallMs}
               onSeekToTimeS={seekToTimeS}
               onSelectBottleneck={(nodeId) => handleInspectNode(nodeId, 'why')}
+              onPinRunA={() => pinCurrentRunAsA(currentMonthlyCost?.total ?? null)}
+              onUnpinRunA={() => clearPinnedRun()}
             />
           ) : dockTab === 'logs' ? (
             <LogsDockTab
@@ -2941,6 +2949,7 @@ export function EditorShell() {
               lastFetchedAt={costLastFetchedAt}
               isOfflineFallback={costIsOfflineFallback}
               defaultRegion={primaryRegion}
+              selectedNodeId={selectedNodeId}
               customServices={availableCustomServices}
               onRefreshPrices={() =>
                 void syncPriceSnapshot(snapshotProviders, snapshotRegions, { force: true })
@@ -2949,6 +2958,9 @@ export function EditorShell() {
               onSelectNode={(nodeId) => handleInspectNode(nodeId, 'cost')}
               onSelectRegion={handleSelectComparisonRegion}
               onOpenAssumptions={() => setCostPopoverOpen(true)}
+              onApplyPatchedDesign={(nextDesign, changeLabel) => {
+                handleApplyPatchedDesign(nextDesign, changeLabel);
+              }}
               onOpenProviderSwitch={(targetProv) =>
                 setProviderSwitchModal({
                   open: true,

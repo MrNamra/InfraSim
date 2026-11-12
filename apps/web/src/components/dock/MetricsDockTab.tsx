@@ -9,12 +9,13 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from 'react';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle2, Pin, PinOff, XCircle } from 'lucide-react';
 import { getService } from '@infrasim/catalog';
 import { evaluateScenarioThresholds } from '@infrasim/sandbox/thresholds';
 import { computeErlangC } from '@infrasim/sim-engine';
 import type { ChaosEvent, Design, SimulationResult } from '@infrasim/shared-types';
 import { chartClientXToTimeS, chartTimeSToPercent } from '../../lib/chartCursor';
+import { formatMoney } from '../../lib/costFormat';
 import { downsampleLttb } from '../../lib/lttb';
 import { computeTheoreticalMaxRps } from '../../lib/nodeDefaults';
 import { formatVirtualTime } from '../../lib/timeFormat';
@@ -23,6 +24,13 @@ export interface MetricsDockTabProps {
   design: Design;
   result: SimulationResult | null;
   previousResult: SimulationResult | null;
+  pinnedRun?: {
+    label: string;
+    result: SimulationResult;
+    monthlyCostUsd: number | null;
+  } | null;
+  currentMonthlyCostUsd?: number | null;
+  currency?: string;
   chaos?: readonly ChaosEvent[];
   scenarioThresholds?: Record<string, string[]>;
   selectedNodeId: string | null;
@@ -30,6 +38,8 @@ export interface MetricsDockTabProps {
   elapsedWallMs: number | null;
   onSeekToTimeS: (tS: number) => void;
   onSelectBottleneck: (nodeId: string) => void;
+  onPinRunA?: () => void;
+  onUnpinRunA?: () => void;
 }
 
 type ChartMode = 'rps' | 'latency' | 'utilization' | 'queue';
@@ -87,6 +97,9 @@ export function MetricsDockTab({
   design,
   result,
   previousResult,
+  pinnedRun = null,
+  currentMonthlyCostUsd = null,
+  currency = 'USD',
   chaos = [],
   scenarioThresholds,
   selectedNodeId,
@@ -94,6 +107,8 @@ export function MetricsDockTab({
   elapsedWallMs,
   onSeekToTimeS,
   onSelectBottleneck,
+  onPinRunA,
+  onUnpinRunA,
 }: MetricsDockTabProps) {
   const [chartMode, setChartMode] = useState<ChartMode>('rps');
   const [filterNodeId, setFilterNodeId] = useState<string>('__auto__');
@@ -148,8 +163,10 @@ export function MetricsDockTab({
       return { seriesLines: [], yUnit: '', maxX: 1, maxY: 1 };
     }
 
+    const baselineResult = pinnedRun?.result ?? previousResult;
+    const baselineLabel = pinnedRun ? pinnedRun.label : 'Prev';
     const buckets = result.series.buckets;
-    const prevBuckets = previousResult?.series.buckets ?? [];
+    const prevBuckets = baselineResult?.series.buckets ?? [];
     const lines: SeriesLine[] = [];
     let unit = '';
     const durMax = Math.max(1, buckets[buckets.length - 1]!.tS);
@@ -195,7 +212,7 @@ export function MetricsDockTab({
       if (comparePrev && prevBuckets.length > 0) {
         lines.push({
           id: 'prev-rps',
-          label: 'Prev Completed',
+          label: `${baselineLabel} Completed`,
           color: 'var(--text-muted)',
           dashed: true,
           points: prevBuckets.map((b) => ({
@@ -235,6 +252,18 @@ export function MetricsDockTab({
           y: effectiveNodeFilter ? (b.perNode[effectiveNodeFilter]?.p99 ?? 0) : b.p99,
         })),
       });
+      if (comparePrev && prevBuckets.length > 0) {
+        lines.push({
+          id: 'prev-p95',
+          label: `${baselineLabel} p95 ms`,
+          color: 'var(--text-muted)',
+          dashed: true,
+          points: prevBuckets.map((b) => ({
+            x: b.tS,
+            y: effectiveNodeFilter ? (b.perNode[effectiveNodeFilter]?.p95 ?? 0) : b.p95,
+          })),
+        });
+      }
       if (showTheory && theoryNode) {
         const meanMs = theoryNode.config.latency?.p50 ?? theorySvc?.latency.p50 ?? 15;
         const capPerInst =
@@ -361,7 +390,16 @@ export function MetricsDockTab({
       maxX: durMax,
       maxY: computedMaxY * 1.1,
     };
-  }, [result, previousResult, effectiveNodeFilter, chartMode, comparePrev, showTheory, design]);
+  }, [
+    result,
+    previousResult,
+    pinnedRun,
+    effectiveNodeFilter,
+    chartMode,
+    comparePrev,
+    showTheory,
+    design,
+  ]);
 
   const svgWidth = 560;
   const svgHeight = 128;
@@ -560,6 +598,29 @@ export function MetricsDockTab({
         </div>
 
         <div className="flex items-center gap-3 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+          {onPinRunA && onUnpinRunA ? (
+            pinnedRun ? (
+              <button
+                type="button"
+                data-testid="pin-run-a-btn"
+                onClick={onUnpinRunA}
+                className="inline-flex h-6 items-center gap-1 rounded-[5px] border border-[var(--accent)] bg-[var(--accent-soft)] px-2 font-sans text-[10px] font-medium text-[var(--text-primary)]"
+              >
+                <PinOff className="h-3 w-3" strokeWidth={1.5} />
+                <span>Unpin Run A</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-testid="pin-run-a-btn"
+                onClick={onPinRunA}
+                className="inline-flex h-6 items-center gap-1 rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 font-sans text-[10px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+              >
+                <Pin className="h-3 w-3" strokeWidth={1.5} />
+                <span>Pin as Run A</span>
+              </button>
+            )
+          ) : null}
           {targetMaxRps?.rps ? (
             <span data-testid="summary-theoretical-max-rps" title={targetMaxRps.explanation}>
               Max theoretical: {targetMaxRps.rps.toLocaleString()} req/s
@@ -568,6 +629,108 @@ export function MetricsDockTab({
           {elapsedWallMs !== null ? <span>Ran in {elapsedWallMs} ms</span> : null}
         </div>
       </div>
+
+      {pinnedRun
+        ? (() => {
+            const aErrs = sumResultErrors(pinnedRun.result);
+            const aErrPct =
+              pinnedRun.result.summary.totalRequests > 0
+                ? (aErrs / pinnedRun.result.summary.totalRequests) * 100
+                : 0;
+            const p95Delta = Math.round(result.summary.p95 - pinnedRun.result.summary.p95);
+            const errDelta = errorPct - aErrPct;
+            const rpsDelta = result.summary.throughputRps - pinnedRun.result.summary.throughputRps;
+            const costDelta =
+              pinnedRun.monthlyCostUsd !== null && currentMonthlyCostUsd !== null
+                ? currentMonthlyCostUsd - pinnedRun.monthlyCostUsd
+                : null;
+            return (
+              <div
+                data-testid="ab-comparison-bar"
+                className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] px-3 py-1.5 text-[11px]"
+              >
+                <span className="font-medium text-[var(--text-primary)]">A/B Run comparison</span>
+                <div className="flex flex-wrap items-center gap-4 font-mono tabular-nums">
+                  <span className="text-[var(--text-secondary)]">
+                    p95:{' '}
+                    <strong className="font-medium text-[var(--text-primary)]">
+                      {Math.round(pinnedRun.result.summary.p95)}ms →{' '}
+                      {Math.round(result.summary.p95)}ms
+                    </strong>{' '}
+                    <span
+                      className={
+                        p95Delta < 0
+                          ? 'text-[var(--status-ok)]'
+                          : p95Delta > 0
+                            ? 'text-[var(--status-overloaded)]'
+                            : 'text-[var(--text-muted)]'
+                      }
+                    >
+                      ({p95Delta > 0 ? `+${p95Delta}` : p95Delta}ms)
+                    </span>
+                  </span>
+                  <span className="text-[var(--text-secondary)]">
+                    Err:{' '}
+                    <strong className="font-medium text-[var(--text-primary)]">
+                      {aErrPct.toFixed(2)}% → {errorPct.toFixed(2)}%
+                    </strong>{' '}
+                    <span
+                      className={
+                        errDelta < -0.01
+                          ? 'text-[var(--status-ok)]'
+                          : errDelta > 0.01
+                            ? 'text-[var(--status-overloaded)]'
+                            : 'text-[var(--text-muted)]'
+                      }
+                    >
+                      ({errDelta > 0 ? `+${errDelta.toFixed(2)}` : errDelta.toFixed(2)}%)
+                    </span>
+                  </span>
+                  <span className="text-[var(--text-secondary)]">
+                    RPS:{' '}
+                    <strong className="font-medium text-[var(--text-primary)]">
+                      {pinnedRun.result.summary.throughputRps.toFixed(1)} →{' '}
+                      {result.summary.throughputRps.toFixed(1)}
+                    </strong>{' '}
+                    <span
+                      className={
+                        rpsDelta > 0.5
+                          ? 'text-[var(--status-ok)]'
+                          : rpsDelta < -0.5
+                            ? 'text-[var(--status-warm)]'
+                            : 'text-[var(--text-muted)]'
+                      }
+                    >
+                      ({rpsDelta > 0 ? `+${rpsDelta.toFixed(1)}` : rpsDelta.toFixed(1)})
+                    </span>
+                  </span>
+                  {costDelta !== null &&
+                  pinnedRun.monthlyCostUsd !== null &&
+                  currentMonthlyCostUsd !== null ? (
+                    <span className="text-[var(--text-secondary)]">
+                      Cost:{' '}
+                      <strong className="font-medium text-[var(--text-primary)]">
+                        {formatMoney(pinnedRun.monthlyCostUsd, currency)} →{' '}
+                        {formatMoney(currentMonthlyCostUsd, currency)}
+                      </strong>{' '}
+                      <span
+                        className={
+                          costDelta < 0 ? 'text-[var(--status-ok)]' : 'text-[var(--text-muted)]'
+                        }
+                      >
+                        (
+                        {costDelta >= 0
+                          ? `+${formatMoney(costDelta, currency)}`
+                          : formatMoney(costDelta, currency)}
+                        )
+                      </span>
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })()
+        : null}
 
       {thresholdResults.length > 0 ? (
         <div
@@ -651,14 +814,14 @@ export function MetricsDockTab({
                 <span>Erlang C theory</span>
               </label>
 
-              {previousResult ? (
+              {pinnedRun || previousResult ? (
                 <label className="flex items-center gap-1 text-[10px] text-[var(--text-secondary)]">
                   <input
                     type="checkbox"
                     checked={comparePrev}
                     onChange={(e) => setComparePrev(e.target.checked)}
                   />
-                  <span>Compare prev</span>
+                  <span>{pinnedRun ? 'Overlay Run A' : 'Compare prev'}</span>
                 </label>
               ) : null}
             </div>

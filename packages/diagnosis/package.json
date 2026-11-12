@@ -15,6 +15,11 @@
       "types": "./dist/challenges/index.d.ts",
       "import": "./dist/challenges/index.js",
       "default": "./dist/challenges/index.js"
+    },
+    "./sweep": {
+      "types": "./dist/sweep.d.ts",
+      "import": "./dist/sweep.js",
+      "default": "./dist/sweep.js"
     }
   },
   "dependencies": {

@@ -94,6 +94,11 @@ export interface SimulationStoreState {
   elapsedWallMs: number | null;
   result: SimulationResult | null;
   previousResult: SimulationResult | null;
+  pinnedRun: {
+    label: string;
+    result: SimulationResult;
+    monthlyCostUsd: number | null;
+  } | null;
   logs: LogEntry[];
   missingClientPromptOpen: boolean;
   lastRunDesignId: string | null;
@@ -123,6 +128,8 @@ export interface SimulationStoreState {
   advancePlayback: (deltaWallMs: number) => void;
   setSpeed: (speed: SimSpeed) => void;
   dismissMissingClientPrompt: () => void;
+  pinCurrentRunAsA: (monthlyCostUsd?: number | null) => void;
+  clearPinnedRun: () => void;
   resetSimulation: (clearPrevious?: boolean) => void;
 }
 
@@ -157,6 +164,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
   elapsedWallMs: null,
   result: null,
   previousResult: null,
+  pinnedRun: null,
   logs: [],
   missingClientPromptOpen: false,
   lastRunDesignId: null,
@@ -462,6 +470,20 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
 
   dismissMissingClientPrompt: () => set({ missingClientPromptOpen: false }),
 
+  pinCurrentRunAsA: (monthlyCostUsd = null) =>
+    set((state) => {
+      if (!state.result) return state;
+      return {
+        pinnedRun: {
+          label: 'Run A',
+          result: state.result,
+          monthlyCostUsd,
+        },
+      };
+    }),
+
+  clearPinnedRun: () => set({ pinnedRun: null }),
+
   resetSimulation: (clearPrevious = false) => {
     activeRunToken += 1;
     if (activeAbortController) {
@@ -481,6 +503,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       logs: [],
       missingClientPromptOpen: false,
       previousResult: clearPrevious ? null : state.previousResult,
+      pinnedRun: clearPrevious ? null : state.pinnedRun,
     }));
   },
 }));
