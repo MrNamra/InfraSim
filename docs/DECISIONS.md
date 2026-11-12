@@ -110,3 +110,16 @@ Recorded decisions where specs offered alternatives, flagged ambiguities, or int
 - **Separate ephemeral return-port validation for stateless subnet firewalls**: Stateful firewalls (`sg`, `gcp-fw`, `nsg`, default `oci-sl`/`oci-nsg`) automatically track outbound/inbound connection state, whereas stateless subnet NACLs (`stateful: false`) explicitly check TCP ephemeral return ports (`32768-60999` inside `1024-65535`) on both destination egress and source ingress, emitting `EPHEMERAL_PORTS_BLOCKED` and generating minimal ephemeral-range fixes when missing.
 - **Unconfigured legacy designs stay reachable by default**: Topologies created without subnet attachments (`!srcAtt?.subnetId && !dstAtt?.subnetId`) remain reachable (while still enforcing node `listeningPorts` and PaaS `firewallAllowlist` rules), ensuring all Phase 1–3 architectures and golden simulation scenarios behave identically unless virtual networking isolation is explicitly introduced.
 - **Lazy analyzer loading in workbench (`<= 400 kB` First Load JS)**: `@infrasim/network-analyzer`, `NetworkTab`, and `ReachabilityDockTab` load dynamically via `next/dynamic` and `import()` inside a 150 ms debounced effect in `EditorShell` (`/` First Load JS stays `~384 kB`), while `simWorkerCore` computes `analyzeDesignNetwork` automatically whenever omitted so `sim-engine` always honors `ETIMEDOUT` (`conn_timeout`), `ECONNREFUSED` (`conn_refused`), `ENOTFOUND` (`not_reachable`), hop latencies, and cost transfer categories (`viaNat`, `viaPrivateLink`, `crossAz`, `crossRegion`).
+
+## Phase 5 — Terraform Export & Import
+
+### 15. Verified Terraform Provider Constraints & Schema Details (`T5.1–T5.2`)
+
+- **Verified provider constraints (`packages/terraform/config/providers.json`)**:
+  - `terraform.required_version`: `>= 1.5.0` (matches import/`show -json` baseline and standalone rule syntax).
+  - `hashicorp/aws`: `~> 6.0` (verified standalone `aws_vpc_security_group_ingress_rule` / `aws_vpc_security_group_egress_rule` resources as preferred over inline SG rules; when `ip_protocol = "-1"`, `from_port` and `to_port` are omitted per AWS provider validation; AL2023 AMI resolves dynamically via `data "aws_ssm_parameter" "al2023_ami"` with name `/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64`).
+  - `hashicorp/google`: `~> 8.10`
+  - `hashicorp/azurerm`: `~> 5.13`
+  - `oracle/oci`: `~> 9.11` (verified `oci_psql_db_system` resource uses `network_details { subnet_id }`, `storage_details`, `credentials`, and flex `shape = "VM.Standard.E4.Flex"`; verified `oci_generative_ai_dedicated_ai_cluster` / `oci_generative_ai_endpoint` / `oci_generative_ai_model` for OCI Generative AI).
+- **Order-independent naming (`TerraformNameAllocator`)**: Pre-allocating `(scope, entityId, label)` entries sorted canonically by `(baseSlug, entityId)` guarantees node/group/edge array reordering inside a `Design` yields byte-identical HCL files and ZIP archives (with fixed `fflate` mtime metadata).
+- **Pure-TS HCL AST + structural HCL2 validator**: Generated files use a typed AST printer (`printHclFile`) formatted in canonical `terraform fmt` 2-space style with aligned `=` signs and string/interpolation escaping (`$${`, `%%{`), validated in CI without invoking any `terraform` binary via a self-contained HCL2 parser (`validateHclSyntax`).

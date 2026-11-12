@@ -13,8 +13,10 @@
     }
   },
   "dependencies": {
+    "@infrasim/catalog": "workspace:*",
     "@infrasim/shared-types": "workspace:*",
-    "@infrasim/catalog": "workspace:*"
+    "elkjs": "^0.12.1",
+    "fflate": "^0.8.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

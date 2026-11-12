@@ -21,6 +21,7 @@
     "@infrasim/sandbox": "workspace:*",
     "@infrasim/shared-types": "workspace:*",
     "@infrasim/sim-engine": "workspace:*",
+    "@infrasim/terraform": "workspace:*",
     "@infrasim/ui-kit": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12.12.1",

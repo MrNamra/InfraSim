@@ -188,6 +188,14 @@ const ReachabilityDockTab = dynamic(
   () => import('./dock/ReachabilityDockTab').then((m) => m.ReachabilityDockTab),
   { ssr: false },
 );
+const TerraformDockTab = dynamic(
+  () => import('./dock/TerraformDockTab').then((m) => m.TerraformDockTab),
+  { ssr: false },
+);
+const TerraformExportModal = dynamic(
+  () => import('./TerraformExportModal').then((m) => m.TerraformExportModal),
+  { ssr: false },
+);
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -263,6 +271,7 @@ export function EditorShell() {
     open: boolean;
     targetProvider?: CloudTargetProvider;
   }>({ open: false });
+  const [terraformExportOpen, setTerraformExportOpen] = useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
   const [focusedOpState, setFocusedOpState] = useState<{
@@ -1216,6 +1225,21 @@ export function EditorShell() {
         },
       },
       {
+        id: 'tab-terraform',
+        group: 'Dock',
+        label: 'Open Terraform live preview',
+        onSelect: () => {
+          setDockCollapsed(false);
+          setDockTab('terraform');
+        },
+      },
+      {
+        id: 'export-terraform-modal',
+        group: 'Terraform',
+        label: 'Export Terraform (.tf ZIP)...',
+        onSelect: () => setTerraformExportOpen(true),
+      },
+      {
         id: 'tab-latency',
         group: 'Inspector',
         label: 'Open Latency & Mock tab',
@@ -1900,6 +1924,18 @@ export function EditorShell() {
 
           <button
             type="button"
+            data-testid="topbar-export-terraform-btn"
+            aria-label="Export Terraform"
+            title="Export Terraform HCL (.tf / ZIP)"
+            onClick={() => setTerraformExportOpen(true)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[11px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+          >
+            <FileCode2 className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+            <span className="hidden 2xl:inline">Export</span>
+          </button>
+
+          <button
+            type="button"
             aria-label="Share design"
             onClick={() => setStatusNotice('Design sharing activates in Phase 6')}
             className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)]"
@@ -2551,6 +2587,12 @@ export function EditorShell() {
               onApplyPatchedDesign={handleApplyPatchedDesign}
               onRerunVerify={handleRerunVerify}
             />
+          ) : dockTab === 'terraform' ? (
+            <TerraformDockTab
+              design={design}
+              defaultRegion={primaryRegion}
+              onOpenExportModal={() => setTerraformExportOpen(true)}
+            />
           ) : dockTab === 'cost' ? (
             <CostDockTab
               design={design}
@@ -2697,6 +2739,13 @@ export function EditorShell() {
             `Switched architecture to ${targetProvider.toUpperCase()} (${targetRegion}) — undo with Ctrl+Z`,
           );
         }}
+      />
+
+      <TerraformExportModal
+        open={terraformExportOpen}
+        design={design}
+        defaultRegion={primaryRegion}
+        onClose={() => setTerraformExportOpen(false)}
       />
     </div>
   );

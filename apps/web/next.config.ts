@@ -17,6 +17,7 @@ export default function createNextConfig(phase: string): NextConfig {
       '@infrasim/diagnosis',
       '@infrasim/network-analyzer',
       '@infrasim/sandbox',
+      '@infrasim/terraform',
     ],
   };
 }

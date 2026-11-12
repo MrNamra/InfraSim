@@ -1,2 +1,10 @@
-/** Placeholder Terraform HCL exporter and plan.json importer (implemented in Phase 5). */
-export const TERRAFORM_MAX_INPUT_BYTES = 5 * 1024 * 1024;
+export * from './types.js';
+export * from './providersConfig.js';
+export * from './naming.js';
+export * from './hcl/ast.js';
+export * from './hcl/printer.js';
+export * from './hcl/validator.js';
+export * from './exporter.js';
+
+/** Package version marker. */
+export const TERRAFORM_PKG_VERSION = '0.1.0';
