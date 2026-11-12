@@ -464,6 +464,31 @@ export const designJsonSchema = {
         "httpAliases": {
           "$ref": "#/definitions/Record%3Cstring%2Cstring%3E"
         },
+        "listeningPorts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "protocol": {
+                "type": "string"
+              },
+              "port": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "protocol",
+              "port"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "firewallAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "storageGb": {
           "type": "number"
         },

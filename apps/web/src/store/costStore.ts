@@ -1,12 +1,17 @@
 'use client';
 
 import { create } from 'zustand';
-import {
-  DEFAULT_COST_ASSUMPTIONS,
-  type CostAssumptions,
-  type PriceSnapshot,
-} from '@infrasim/cost-engine';
+import type { CostAssumptions, PriceSnapshot } from '@infrasim/cost-engine';
 import { fetchPriceSnapshotApi } from '../lib/api';
+
+const DEFAULT_COST_ASSUMPTIONS: Pick<
+  CostAssumptions,
+  'hoursPerMonth' | 'traffic' | 'instanceCountMode'
+> = {
+  hoursPerMonth: 730,
+  traffic: { mode: 'run-average' },
+  instanceCountMode: 'average',
+};
 
 const SNAPSHOT_STORAGE_KEY = 'infrasim.priceSnapshot.v1';
 const ASSUMPTIONS_STORAGE_KEY = 'infrasim.costAssumptions.v1';

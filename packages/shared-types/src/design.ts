@@ -131,6 +131,8 @@ export interface NodeConfig {
     passages?: { id: string; text: string; score: number }[];
   };
   httpAliases?: Record<string, string>;
+  listeningPorts?: { protocol: string; port: number }[];
+  firewallAllowlist?: string[];
   storageGb?: number;
   scannedBytes?: number;
 

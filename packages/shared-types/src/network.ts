@@ -180,8 +180,22 @@ export interface NetworkAnalysis {
       viaNat?: boolean;
       viaEndpoint?: boolean;
       extraLatencyMs?: number;
+      riskyReason?: string;
     }
   >;
+  smells?: {
+    ruleId: string;
+    severity: 'info' | 'warning' | 'critical';
+    nodeIds: string[];
+    edgeIds: string[];
+    title: string;
+    short: string;
+    deep: string;
+    fixes: {
+      label: string;
+      patch: { op: string; path: string; value?: unknown; from?: string }[];
+    }[];
+  }[];
 }
 
 /** Creates an empty NetworkConfig with initialized empty arrays. */

@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import type {
   CostAssumptions,
+  CostReport,
   CustomServiceDefinition,
   Design,
   GroupInstance,
@@ -43,12 +44,8 @@ import type {
 } from '@infrasim/shared-types';
 import type { AutoFillPatchPreview, ExtractedScenarioResult } from '@infrasim/sandbox';
 import { getService, type CloudTargetProvider } from '@infrasim/catalog';
-import {
-  CURATED_REGION_MAP,
-  estimateMonthlyCost,
-  listRegionsForProvider,
-  summarizeCostBreakdown,
-} from '@infrasim/cost-engine';
+import type * as CostEngineMod from '@infrasim/cost-engine';
+import type { CostBreakdownMeta } from '@infrasim/cost-engine';
 import { Button, Keycap, LogoMark } from '@infrasim/ui-kit';
 import {
   createCustomServiceApi,
@@ -236,7 +233,18 @@ export function EditorShell() {
   const [primaryRegion, setPrimaryRegion] = useState('us-east-1');
   const [editingTitle, setEditingTitle] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
+  const [costEngineMod, setCostEngineMod] = useState<typeof CostEngineMod | null>(null);
   const [scenarioPopoverTab, setScenarioPopoverTab] = useState<'traffic' | 'chaos'>('traffic');
+
+  useEffect(() => {
+    let active = true;
+    void import('@infrasim/cost-engine').then((mod) => {
+      if (active) setCostEngineMod(mod);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [chaosTargetNode, setChaosTargetNode] = useState<{
     nodeId: string;
     az?: string;
@@ -809,11 +817,27 @@ export function EditorShell() {
   );
 
   const handleSyncAllComparisonPrices = useCallback(() => {
-    const allRegions = Array.from(
-      new Set([...CURATED_REGION_MAP.flatMap((r) => [r.aws, r.gcp, r.azure, r.oci]), 'global']),
-    );
-    void syncPriceSnapshot(['aws', 'gcp', 'azure', 'oci'], allRegions, { force: true });
-  }, [syncPriceSnapshot]);
+    if (costEngineMod) {
+      const allRegions = Array.from(
+        new Set([
+          ...costEngineMod.CURATED_REGION_MAP.flatMap((r) => [r.aws, r.gcp, r.azure, r.oci]),
+          'global',
+        ]),
+      );
+      void syncPriceSnapshot(['aws', 'gcp', 'azure', 'oci'], allRegions, { force: true });
+      return;
+    }
+    void import('@infrasim/cost-engine').then((mod) => {
+      setCostEngineMod(mod);
+      const allRegions = Array.from(
+        new Set([
+          ...mod.CURATED_REGION_MAP.flatMap((r) => [r.aws, r.gcp, r.azure, r.oci]),
+          'global',
+        ]),
+      );
+      void syncPriceSnapshot(['aws', 'gcp', 'azure', 'oci'], allRegions, { force: true });
+    });
+  }, [costEngineMod, syncPriceSnapshot]);
 
   const selectedNodeInsightCount = useMemo(() => {
     if (!simResult || !selectedNodeId) return 0;
@@ -878,8 +902,11 @@ export function EditorShell() {
   );
 
   const primaryProviderRegions = useMemo(
-    () => listRegionsForProvider(design.settings.primaryProvider ?? 'aws'),
-    [design.settings.primaryProvider],
+    () =>
+      costEngineMod
+        ? costEngineMod.listRegionsForProvider(design.settings.primaryProvider ?? 'aws')
+        : [{ key: primaryRegion, code: primaryRegion, label: primaryRegion }],
+    [costEngineMod, design.settings.primaryProvider, primaryRegion],
   );
 
   // Keep primaryRegion consistent when design changes via undo/redo, templates, or provider switch
@@ -958,21 +985,49 @@ export function EditorShell() {
     ],
   );
 
-  const costReport = useMemo(
+  const costReport = useMemo<CostReport>(
     () =>
-      estimateMonthlyCost(design, simResult, costSnapshot, costAssumptions, {
-        defaultRegion: primaryRegion,
-        customServices: availableCustomServices,
-      }),
-    [design, simResult, costSnapshot, costAssumptions, primaryRegion, availableCustomServices],
+      costEngineMod
+        ? costEngineMod.estimateMonthlyCost(design, simResult, costSnapshot, costAssumptions, {
+            defaultRegion: primaryRegion,
+            customServices: availableCustomServices,
+          })
+        : {
+            currency: design.settings.currency ?? 'USD',
+            asOf: 'none',
+            monthlyTotal: 0,
+            perNode: {},
+            transfer: [],
+            byCategory: {},
+            costPerMillionRequests: 0,
+            warnings: [],
+            assumptions: costAssumptions,
+          },
+    [
+      costEngineMod,
+      design,
+      simResult,
+      costSnapshot,
+      costAssumptions,
+      primaryRegion,
+      availableCustomServices,
+    ],
   );
 
-  const costBreakdownMeta = useMemo(
+  const costBreakdownMeta = useMemo<CostBreakdownMeta>(
     () =>
-      summarizeCostBreakdown(design, costReport, simResult, {
-        customServices: availableCustomServices,
-      }),
-    [costReport, design, simResult, availableCustomServices],
+      costEngineMod
+        ? costEngineMod.summarizeCostBreakdown(design, costReport, simResult, {
+            customServices: availableCustomServices,
+          })
+        : {
+            byProvider: {},
+            transferTotal: 0,
+            usdMonthlyTotal: 0,
+            monthlyRequests: 0,
+            unavailableCount: 0,
+          },
+    [costEngineMod, costReport, design, simResult, availableCustomServices],
   );
 
   const nodeCosts = useMemo<Record<string, NodeCostChipInfo>>(() => {
@@ -1269,7 +1324,9 @@ export function EditorShell() {
             onChange={(e) => {
               const nextProv = e.target.value as Provider;
               updateDesignMeta({ settings: { primaryProvider: nextProv } });
-              const regionsForNext = listRegionsForProvider(nextProv);
+              const regionsForNext = costEngineMod
+                ? costEngineMod.listRegionsForProvider(nextProv)
+                : [];
               if (
                 regionsForNext.length > 0 &&
                 !regionsForNext.some((r) => r.code === primaryRegion)

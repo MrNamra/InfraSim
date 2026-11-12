@@ -86,4 +86,36 @@ describe('useDesignStore', () => {
     useDesignStore.getState().undo();
     expect(useDesignStore.getState().design.nodes[0]?.config.instances).toBe(1);
   });
+
+  it('auto-creates VPC/subnet/IGW/firewalls and node attachments when placing nodes in groups', () => {
+    const store = useDesignStore.getState();
+    const vpcId = store.addGroup('vpc', { x: 0, y: 0 }, 'Main VPC');
+    const subId = store.addGroup('subnet', { x: 32, y: 48 }, 'Public Subnet');
+    expect(
+      useDesignStore.getState().design.network.networks?.some((n) => n.id === `net-${vpcId}`),
+    ).toBe(true);
+    expect(
+      useDesignStore.getState().design.network.subnets?.some((s) => s.id === `sub-${subId}`),
+    ).toBe(true);
+
+    const nodeId = store.addServiceNode('aws.ec2', { x: 48, y: 64 })!;
+    const designAfterPlace = useDesignStore.getState().design;
+    const att = designAfterPlace.network.attachments?.find((a) => a.nodeId === nodeId);
+    expect(att?.subnetId).toBe(`sub-${subId}`);
+    expect(att?.privateIp).toMatch(/^10\.0\.1\./);
+    expect(att?.publicIp).toBeDefined();
+    expect(att?.firewallIds).toContain(`sg-${nodeId}`);
+
+    useDesignStore.getState().updateGroup(subId, { public: false });
+    const designPrivate = useDesignStore.getState().design;
+    expect(
+      designPrivate.network.attachments?.find((a) => a.nodeId === nodeId)?.publicIp,
+    ).toBeUndefined();
+
+    useDesignStore.getState().deleteElements({ nodeIds: [nodeId], groupIds: [subId, vpcId] });
+    const designClean = useDesignStore.getState().design;
+    expect(designClean.network.attachments).toHaveLength(0);
+    expect(designClean.network.subnets).toHaveLength(0);
+    expect(designClean.network.networks).toHaveLength(0);
+  });
 });

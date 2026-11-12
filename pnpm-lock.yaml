@@ -220,6 +220,9 @@ importers:
       '@infrasim/diagnosis':
         specifier: workspace:*
         version: link:../../packages/diagnosis
+      '@infrasim/network-analyzer':
+        specifier: workspace:*
+        version: link:../../packages/network-analyzer
       '@infrasim/sandbox':
         specifier: workspace:*
         version: link:../../packages/sandbox

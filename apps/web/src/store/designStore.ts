@@ -17,6 +17,13 @@ import type {
 import { createEmptyDesign } from '@infrasim/shared-types';
 import { getService } from '@infrasim/catalog';
 import {
+  cleanupGroupNetworkReferences,
+  cleanupNodeNetworkReferences,
+  ensureGroupNetworkDefaults,
+  syncGroupDescendantsNetwork,
+  syncNodeNetworkAttachment,
+} from '@infrasim/network-analyzer/defaults';
+import {
   DEFAULT_GROUP_SIZE,
   findDeepestContainingGroup,
   getGroupRect,
@@ -283,6 +290,7 @@ export const useDesignStore = create<DesignStoreState>()(
           };
 
           draft.nodes.push(node);
+          syncNodeNetworkAttachment(draft, nodeId, customList);
 
           // Auto-wire scenario entryNodeId if this is the first Client/Users or first entry node
           const primaryScenario = draft.scenarios[0];
@@ -353,6 +361,9 @@ export const useDesignStore = create<DesignStoreState>()(
             size,
           };
           draft.groups.push(group);
+          if (kind === 'vpc' || kind === 'subnet') {
+            ensureGroupNetworkDefaults(draft, groupId);
+          }
         });
 
         set((state) => {
@@ -365,6 +376,10 @@ export const useDesignStore = create<DesignStoreState>()(
 
       moveNodeWorldPosition: (nodeId, worldPos) => {
         const snapped = get().snapEnabled ? snapPoint(worldPos) : worldPos;
+        const customList = mergeCustomServices(
+          get().design.customServices,
+          get().userCustomServices,
+        );
         commit((draft) => {
           const node = draft.nodes.find((n) => n.id === nodeId);
           if (!node) {
@@ -388,11 +403,16 @@ export const useDesignStore = create<DesignStoreState>()(
           } else {
             delete node.parentGroupId;
           }
+          syncNodeNetworkAttachment(draft, nodeId, customList);
         });
       },
 
       moveGroupWorldPosition: (groupId, worldPos) => {
         const snapped = get().snapEnabled ? snapPoint(worldPos) : worldPos;
+        const customList = mergeCustomServices(
+          get().design.customServices,
+          get().userCustomServices,
+        );
         commit((draft) => {
           const group = draft.groups.find((g) => g.id === groupId);
           if (!group) {
@@ -443,6 +463,7 @@ export const useDesignStore = create<DesignStoreState>()(
           } else {
             delete group.parentGroupId;
           }
+          syncGroupDescendantsNetwork(draft, groupId, customList);
         });
       },
 
@@ -560,12 +581,17 @@ export const useDesignStore = create<DesignStoreState>()(
       },
 
       updateGroup: (groupId, partial) => {
+        const customList = mergeCustomServices(
+          get().design.customServices,
+          get().userCustomServices,
+        );
         commit((draft) => {
           const group = draft.groups.find((g) => g.id === groupId);
           if (!group) {
             return;
           }
           Object.assign(group, partial);
+          syncGroupDescendantsNetwork(draft, groupId, customList);
         });
       },
 
@@ -646,6 +672,19 @@ export const useDesignStore = create<DesignStoreState>()(
           draft.edges = draft.edges.filter(
             (e) => !edgeSet.has(e.id) && !nodeSet.has(e.from) && !nodeSet.has(e.to),
           );
+          for (const nid of nodeIds) {
+            cleanupNodeNetworkReferences(draft, nid);
+          }
+          for (const gid of groupIds) {
+            cleanupGroupNetworkReferences(draft, gid);
+          }
+          if (groupIds.length > 0) {
+            for (const g of draft.groups) {
+              if (g.kind === 'subnet' && !groupSet.has(g.id)) {
+                ensureGroupNetworkDefaults(draft, g.id);
+              }
+            }
+          }
           for (const scenario of draft.scenarios) {
             if (nodeSet.has(scenario.entryNodeId)) {
               scenario.entryNodeId = draft.nodes[0]?.id ?? '';

@@ -15,6 +15,7 @@ export default function createNextConfig(phase: string): NextConfig {
       '@infrasim/cost-engine',
       '@infrasim/sim-engine',
       '@infrasim/diagnosis',
+      '@infrasim/network-analyzer',
       '@infrasim/sandbox',
     ],
   };

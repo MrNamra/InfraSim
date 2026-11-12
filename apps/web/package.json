@@ -17,6 +17,7 @@
     "@infrasim/catalog": "workspace:*",
     "@infrasim/cost-engine": "workspace:*",
     "@infrasim/diagnosis": "workspace:*",
+    "@infrasim/network-analyzer": "workspace:*",
     "@infrasim/sandbox": "workspace:*",
     "@infrasim/shared-types": "workspace:*",
     "@infrasim/sim-engine": "workspace:*",
