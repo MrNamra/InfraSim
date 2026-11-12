@@ -526,6 +526,7 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
         ...reqParsed,
         startVirtualMs: virtualNowMs,
         parallelGroup: turnGroupId,
+        ...(input.discoveryMode ? { discoveryMode: true } : {}),
         ...(site ? { site } : {}),
       };
 
@@ -602,12 +603,15 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
             });
             return;
           }
+          const settlePayload = input.discoveryMode
+            ? { __discoveryProxyTarget: { serviceId: outcome.serviceId, op: outcome.op } }
+            : (resolvePayload ?? null);
           pushEvent({
             atMs: virtualNowMs + latencyMs,
             kind: 'mock',
             callId,
             callOk: true,
-            payloadJson: JSON.stringify(resolvePayload ?? null),
+            payloadJson: JSON.stringify(settlePayload),
           });
         } else {
           const err = outcome.error ?? {

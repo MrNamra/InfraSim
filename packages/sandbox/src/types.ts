@@ -113,6 +113,7 @@ export interface MockCallInvocation {
   body?: unknown;
   sdkStyle?: 'universal' | 'aws-v3' | 'aws-ddb-doc' | 'bedrock' | 'gcp' | 'azure' | 'oci' | 'http';
   stream?: boolean;
+  discoveryMode?: boolean;
   startVirtualMs: number;
   parallelGroup?: string;
   site?: SourceLocation;
@@ -224,13 +225,16 @@ export interface PayloadDoctorRule {
   errorPattern?: string;
   stackPattern?: string;
   sourcePattern?: string;
+  excludeSourcePattern?: string;
   requiresTemplate?: string[];
+  eventCheck?: string;
   checkMissingMockField?: boolean;
   checkMissingEnv?: boolean;
   actionLabel?: string;
   actionKind?: 'auto-fill-mock' | 'patch-source' | 'increase-timeout' | 'add-env' | 'add-edge';
   patchTemplate?: {
     find: string;
+    findIsRegex?: boolean;
     replace: string;
   };
 }

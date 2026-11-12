@@ -10,4 +10,6 @@ export * from './bundler.js';
 export * from './mockResolver.js';
 export * from './fixtures.js';
 export * from './fixtureRunner.js';
+export * from './autoFill.js';
+export * from './doctor.js';
 export * from './runtime.js';

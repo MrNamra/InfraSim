@@ -144,6 +144,9 @@ export function buildGuestPrelude(opts: GuestPreludeOptions): string {
   // Safe JSON serialization for logs and return values
   function __safeJson(val, seen = new WeakSet()) {
     if (val === undefined) return undefined;
+    if (val && (typeof val === 'object' || typeof val === 'function') && val.__isDiscoveryProxy) {
+      return 'sample';
+    }
     if (val === null || typeof val === 'number' || typeof val === 'boolean' || typeof val === 'string') {
       return val;
     }
@@ -468,8 +471,24 @@ export function buildGuestPrelude(opts: GuestPreludeOptions): string {
   function __makeDiscoveryProxy(serviceId, op, pathParts = []) {
     const target = Object.assign(() => undefined, {
       __isDiscoveryProxy: true,
-      toJSON: () => undefined,
+      toJSON: () => 'sample',
     });
+    const __strHelpers = new Set([
+      'toUpperCase',
+      'toLowerCase',
+      'trim',
+      'trimStart',
+      'trimEnd',
+      'split',
+      'includes',
+      'startsWith',
+      'endsWith',
+      'replace',
+      'replaceAll',
+      'slice',
+      'substring',
+      'match',
+    ]);
     return new Proxy(target, {
       get(_t, prop) {
         if (prop === Symbol.toPrimitive) {
@@ -491,8 +510,14 @@ export function buildGuestPrelude(opts: GuestPreludeOptions): string {
         if (prop === '__isDiscoveryProxy') {
           return true;
         }
+        if (prop === '__discoveryMeta') {
+          return { serviceId, op };
+        }
         if (prop === 'then') {
           return undefined;
+        }
+        if (prop === 'toJSON') {
+          return () => 'sample';
         }
         if (prop === 'toString' || prop === 'valueOf') {
           return () => {
@@ -501,6 +526,9 @@ export function buildGuestPrelude(opts: GuestPreludeOptions): string {
             }
             return 'sample';
           };
+        }
+        if (typeof prop === 'string' && __strHelpers.has(prop) && pathParts.length > 0) {
+          return (...args) => String.prototype[prop].apply('sample', args);
         }
         if (prop === 'length') {
           return 1;
@@ -532,7 +560,15 @@ export function buildGuestPrelude(opts: GuestPreludeOptions): string {
       const callId = __hostMockCall(reqStr);
       __pendingMocks.set(callId, {
         resolve: (val) => {
-          if (__discoveryMode && req.kind === 'cloud') {
+          if (__discoveryMode && val && typeof val === 'object' && val.__discoveryProxyTarget) {
+            resolve(
+              __makeDiscoveryProxy(
+                val.__discoveryProxyTarget.serviceId,
+                val.__discoveryProxyTarget.op,
+                [],
+              ),
+            );
+          } else if (__discoveryMode && req.kind === 'cloud') {
             resolve(__makeDiscoveryProxy(req.serviceId, req.op, []));
           } else {
             resolve(val);
@@ -596,6 +632,17 @@ export function buildGuestPrelude(opts: GuestPreludeOptions): string {
       headers: init?.headers instanceof SimHeaders ? init.headers.toJSON() : (init?.headers || {}),
       body: __safeJson(init?.body),
     });
+    if (__discoveryMode && res && res.__isDiscoveryProxy) {
+      const meta = res.__discoveryMeta || { serviceId: 'http', op: 'GET' };
+      return {
+        status: 200,
+        ok: true,
+        statusText: 'OK',
+        headers: new SimHeaders({ 'content-type': 'application/json' }),
+        async text() { return '{}'; },
+        async json() { return __makeDiscoveryProxy(meta.serviceId, meta.op, []); },
+      };
+    }
     const status = typeof res?.statusCode === 'number' ? res.statusCode : 200;
     const hdrs = new SimHeaders(res?.headers || {});
     const bodyText = typeof res?.body === 'string' ? res.body : JSON.stringify(res?.body ?? res ?? {});

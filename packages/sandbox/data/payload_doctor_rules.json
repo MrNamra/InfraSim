@@ -1,0 +1,149 @@
+[
+  {
+    "id": "apigw-body-string",
+    "title": "API Gateway event.body is a JSON string",
+    "message": "In API Gateway proxy events, event.body is a JSON string. Parse it with JSON.parse(event.body).",
+    "severity": "warn",
+    "eventCheck": "body-is-string",
+    "sourcePattern": "\\bevent\\.body\\.[a-zA-Z_$]",
+    "excludeSourcePattern": "JSON\\.parse\\s*\\([^)]*event\\.body",
+    "actionLabel": "Parse event.body",
+    "actionKind": "patch-source",
+    "patchTemplate": {
+      "find": "\\bevent\\.body\\.([a-zA-Z_$][a-zA-Z0-9_$]*)",
+      "findIsRegex": true,
+      "replace": "(typeof event.body === 'string' ? JSON.parse(event.body || '{}') : event.body).$1"
+    }
+  },
+  {
+    "id": "null-query-params",
+    "title": "queryStringParameters may be null",
+    "message": "queryStringParameters is null when no query string is sent. Use (event.queryStringParameters ?? {}).",
+    "severity": "error",
+    "matchCategories": ["UserCodeError", "UnhandledRejection"],
+    "eventCheck": "query-params-null",
+    "sourcePattern": "\\bevent\\.queryStringParameters\\b",
+    "excludeSourcePattern": "queryStringParameters\\s*\\?\\?",
+    "actionLabel": "Guard queryStringParameters",
+    "actionKind": "patch-source",
+    "patchTemplate": {
+      "find": "\\bevent\\.queryStringParameters\\b(?!\\s*\\?\\?)",
+      "findIsRegex": true,
+      "replace": "(event.queryStringParameters ?? {})"
+    }
+  },
+  {
+    "id": "v2-http-method",
+    "title": "HTTP API v2 uses requestContext.http.method",
+    "message": "HTTP API v2 events use event.requestContext.http.method instead of event.httpMethod.",
+    "severity": "warn",
+    "eventCheck": "apigw-v2-payload",
+    "sourcePattern": "\\bevent\\.httpMethod\\b",
+    "excludeSourcePattern": "requestContext\\?\\.http\\?\\.method",
+    "actionLabel": "Read v2 http.method",
+    "actionKind": "patch-source",
+    "patchTemplate": {
+      "find": "\\bevent\\.httpMethod\\b",
+      "findIsRegex": true,
+      "replace": "(event.httpMethod ?? event.requestContext?.http?.method)"
+    }
+  },
+  {
+    "id": "sqs-body-string",
+    "title": "SQS record.body is a JSON string",
+    "message": "SQS record.body is a string; parse it with JSON.parse(record.body).",
+    "severity": "warn",
+    "eventCheck": "sqs-records-body-string",
+    "sourcePattern": "Records\\[\\s*0\\s*\\]\\.body\\.[a-zA-Z_$]|record\\.body\\.[a-zA-Z_$]",
+    "excludeSourcePattern": "JSON\\.parse",
+    "actionLabel": "Parse record.body",
+    "actionKind": "patch-source",
+    "patchTemplate": {
+      "find": "event\\.Records\\[0\\]\\.body\\.([a-zA-Z_$][a-zA-Z0-9_$]*)",
+      "findIsRegex": true,
+      "replace": "JSON.parse(event.Records[0].body || '{}').$1"
+    }
+  },
+  {
+    "id": "s3-key-encoded",
+    "title": "S3 notification keys are URL-encoded",
+    "message": "S3 event object keys are URL-encoded (spaces become '+'). Decode with decodeURIComponent(key.replace(/\\+/g, ' ')).",
+    "severity": "info",
+    "eventCheck": "s3-notification-payload",
+    "sourcePattern": "s3\\.object\\.key",
+    "excludeSourcePattern": "decodeURIComponent",
+    "actionLabel": "Decode S3 key",
+    "actionKind": "patch-source",
+    "patchTemplate": {
+      "find": "event\\.Records\\[0\\]\\.s3\\.object\\.key",
+      "findIsRegex": true,
+      "replace": "decodeURIComponent(String(event.Records[0].s3.object.key).replace(/\\+/g, ' '))"
+    }
+  },
+  {
+    "id": "base64-body",
+    "title": "Base64-encoded request body",
+    "message": "This event sets isBase64Encoded: true. Decode event.body with Buffer.from(event.body, 'base64').toString('utf8').",
+    "severity": "warn",
+    "eventCheck": "is-base64-encoded",
+    "sourcePattern": "\\bevent\\.body\\b",
+    "excludeSourcePattern": "Buffer\\.from\\s*\\(|atob\\s*\\(",
+    "actionLabel": "Decode base64 body",
+    "actionKind": "patch-source",
+    "patchTemplate": {
+      "find": "\\bevent\\.body\\b",
+      "findIsRegex": true,
+      "replace": "(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body)"
+    }
+  },
+  {
+    "id": "headers-case",
+    "title": "Headers may be lowercased",
+    "message": "HTTP API v2 and ALB normalize header names to lowercase. Read headers case-insensitively.",
+    "severity": "warn",
+    "eventCheck": "lowercase-headers",
+    "sourcePattern": "event\\.headers\\s*(?:\\.|\\[['\"])[A-Z]"
+  },
+  {
+    "id": "missing-mock-field",
+    "title": "Mock response may be missing expected fields",
+    "message": "The mock for {{service}} lacks a field accessed by your handler. Run Auto-fill mocks to generate missing fields.",
+    "severity": "error",
+    "matchCategories": ["UserCodeError", "UnhandledRejection"],
+    "checkMissingMockField": true,
+    "actionLabel": "Auto-fill mock",
+    "actionKind": "auto-fill-mock"
+  },
+  {
+    "id": "missing-env",
+    "title": "Environment variable is undefined",
+    "message": "Set {{envKey}} in Node environment settings (process.env.{{envKey}} was undefined).",
+    "severity": "warn",
+    "checkMissingEnv": true,
+    "actionLabel": "Set env variable",
+    "actionKind": "add-env"
+  },
+  {
+    "id": "timeout-short",
+    "title": "Function timeout exceeded",
+    "message": "Task timed out after {{timeoutSec}} s{{slowServiceNote}}. Increase timeout or reduce downstream latency.",
+    "severity": "error",
+    "matchCategories": ["Timeout"],
+    "actionLabel": "Increase timeout",
+    "actionKind": "increase-timeout"
+  },
+  {
+    "id": "unhandled-rejection",
+    "title": "Unhandled Promise rejection",
+    "message": "Async call rejected without a catch handler. Wrap awaits in try/catch or return an error response.",
+    "severity": "error",
+    "matchCategories": ["UnhandledRejection"]
+  },
+  {
+    "id": "module-unavailable",
+    "title": "Module not available in sandbox",
+    "message": "{{errorMessage}} Use an allow-listed package (uuid, lodash, dayjs, zod, ajv) or a supported cloud SDK shim.",
+    "severity": "error",
+    "matchCategories": ["UnsupportedModule"]
+  }
+]

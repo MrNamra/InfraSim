@@ -2,6 +2,7 @@
 
 import * as Comlink from 'comlink';
 import type {
+  AutoFillDiscoveryReport,
   DryRunInput,
   DryRunResult,
   FixtureSuiteReport,
@@ -17,6 +18,9 @@ export interface SandboxClientOptions {
     ping: () => Promise<number>;
     dryRun: (input: Omit<DryRunInput, 'mockResolver'>) => Promise<DryRunResult>;
     runSuite?: (input: Omit<RunFixtureSuiteInput, 'mockResolver'>) => Promise<FixtureSuiteReport>;
+    autoFill?: (
+      input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
+    ) => Promise<AutoFillDiscoveryReport>;
     terminate: () => void;
   };
 }
@@ -24,6 +28,9 @@ export interface SandboxClientOptions {
 export interface SandboxClientHandle {
   dryRun: (input: Omit<DryRunInput, 'mockResolver'>) => Promise<DryRunResult>;
   runSuite: (input: Omit<RunFixtureSuiteInput, 'mockResolver'>) => Promise<FixtureSuiteReport>;
+  autoFill: (
+    input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
+  ) => Promise<AutoFillDiscoveryReport>;
   terminate: () => void;
 }
 
@@ -31,6 +38,9 @@ interface WorkerInstance {
   ping: () => Promise<number>;
   dryRun: (input: Omit<DryRunInput, 'mockResolver'>) => Promise<DryRunResult>;
   runSuite?: (input: Omit<RunFixtureSuiteInput, 'mockResolver'>) => Promise<FixtureSuiteReport>;
+  autoFill?: (
+    input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
+  ) => Promise<AutoFillDiscoveryReport>;
   terminate: () => void;
 }
 
@@ -86,6 +96,7 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
       ping: () => remote.ping(),
       dryRun: (input) => remote.dryRun(input),
       runSuite: (input) => remote.runSuite(input),
+      autoFill: (input) => remote.autoFill(input),
       terminate: () => {
         remote[Comlink.releaseProxy]();
         rawWorker.terminate();
@@ -255,6 +266,58 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
               calls: [],
             },
           })),
+        }),
+      );
+    },
+
+    async autoFill(input) {
+      const worker = spawnWorker();
+      if (!worker || !worker.autoFill) {
+        const mod = await import('@infrasim/sandbox');
+        return mod.generateAutoFillPatches(input);
+      }
+      return runWithWatchdog(
+        worker,
+        () => worker.autoFill!(input),
+        (message) => ({
+          ok: false,
+          discoveredPaths: {},
+          patches: [],
+          discoveryResult: {
+            ok: false,
+            seed: input.seed ?? input.design?.settings.seed ?? 42,
+            virtualDurationMs: 0,
+            billedDurationMs: 1,
+            guestCpuMs: watchdogTimeoutMs,
+            memoryPeakBytes: 0,
+            logs: [],
+            calls: [],
+            error: {
+              category: 'CpuBudgetExceeded',
+              name: 'WorkerWatchdogTimeout',
+              message,
+            },
+          },
+        }),
+        (msg) => ({
+          ok: false,
+          discoveredPaths: {},
+          patches: [],
+          discoveryResult: {
+            ok: false,
+            seed: input.seed ?? input.design?.settings.seed ?? 42,
+            virtualDurationMs: 0,
+            billedDurationMs: 1,
+            guestCpuMs: 0,
+            memoryPeakBytes: 0,
+            logs: [],
+            calls: [],
+            error: {
+              category: 'UserCodeError',
+              name: 'WorkerCrashError',
+              message: `Auto-fill discovery crashed (${msg})`,
+            },
+          },
         }),
       );
     },

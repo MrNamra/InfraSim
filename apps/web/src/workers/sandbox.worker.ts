@@ -2,7 +2,9 @@ import * as Comlink from 'comlink';
 import {
   bundleUserScript,
   executeInSandbox,
+  generateAutoFillPatches,
   runFixtureSuite,
+  type AutoFillDiscoveryReport,
   type BundleResult,
   type BundleScriptInput,
   type DryRunInput,
@@ -17,6 +19,9 @@ export interface SandboxWorkerApi {
   bundle: (input: Omit<BundleScriptInput, 'sdkGenerator'>) => Promise<BundleResult>;
   dryRun: (input: Omit<DryRunInput, 'mockResolver'>) => Promise<DryRunResult>;
   runSuite: (input: Omit<RunFixtureSuiteInput, 'mockResolver'>) => Promise<FixtureSuiteReport>;
+  autoFill: (
+    input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
+  ) => Promise<AutoFillDiscoveryReport>;
 }
 
 function getOrigin(): string {
@@ -49,6 +54,16 @@ const workerApi: SandboxWorkerApi = {
   async runSuite(input) {
     const origin = getOrigin();
     return runFixtureSuite({
+      ...input,
+      quickJsWasmUrl:
+        input.quickJsWasmUrl ?? (origin ? `${origin}/wasm/quickjs-release-sync.wasm` : undefined),
+      esbuildWasmUrl: input.esbuildWasmUrl ?? (origin ? `${origin}/wasm/esbuild.wasm` : undefined),
+    });
+  },
+
+  async autoFill(input) {
+    const origin = getOrigin();
+    return generateAutoFillPatches({
       ...input,
       quickJsWasmUrl:
         input.quickJsWasmUrl ?? (origin ? `${origin}/wasm/quickjs-release-sync.wasm` : undefined),

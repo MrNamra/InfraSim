@@ -488,6 +488,22 @@ export function createMockCallResolver(options: CreateMockResolverOptions = {}):
     const override: OperationOverride | undefined =
       targetNode?.config.operations?.[opName] ?? targetNode?.config.operations?.[rawOp];
 
+    // In discovery mode, skip validation/rate-limit/fault noise once target reachability succeeds
+    if (invocation.discoveryMode) {
+      const latModel =
+        override?.latency ?? targetNode?.config.latency ?? matchedOpDef.latency ?? service.latency;
+      return {
+        ok: true,
+        latencyMs: sampleDeterministicLatency(latModel, rng),
+        serviceId: service.id,
+        op: opName,
+        ...(targetNode ? { targetNodeId: targetNode.id } : {}),
+        statusCode: 200,
+        headers: { 'content-type': 'application/json' },
+        output: {},
+      };
+    }
+
     // Step 1: Validate input against operation inputSchema
     const effectiveSchema = override?.inputSchema ?? matchedOpDef.inputSchema;
     const payloadInput = invocation.input ?? invocation.body ?? {};

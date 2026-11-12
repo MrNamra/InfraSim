@@ -6,6 +6,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 const packageAliases: Record<string, string> = {
   '@infrasim/sandbox/fixtures': path.resolve(rootDir, 'packages/sandbox/src/fixtures.ts'),
+  '@infrasim/sandbox/doctor': path.resolve(rootDir, 'packages/sandbox/src/doctor.ts'),
   ...[
     'shared-types',
     'catalog',

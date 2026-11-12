@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Editor, { loader, type OnMount } from '@monaco-editor/react';
 import type * as MonacoNs from 'monaco-editor';
 import {
+  AlertTriangle,
   Ban,
   BookmarkPlus,
   CheckCircle2,
@@ -11,6 +12,7 @@ import {
   ChevronRight,
   Clock,
   Code2,
+  Info,
   ListChecks,
   Maximize2,
   Minimize2,
@@ -21,6 +23,7 @@ import {
   Sliders,
   Terminal,
   Trash2,
+  Wrench,
   XCircle,
 } from 'lucide-react';
 import type {
@@ -38,7 +41,13 @@ import {
   generateValueFromSchema,
   validateFixtureEvent,
 } from '@infrasim/sandbox/fixtures';
-import type { DryRunResult, FixtureSuiteReport } from '@infrasim/sandbox';
+import { analyzeDryRunDiagnostics } from '@infrasim/sandbox/doctor';
+import type {
+  AutoFillPatchPreview,
+  DryRunResult,
+  FixtureSuiteReport,
+  PayloadDoctorHint,
+} from '@infrasim/sandbox';
 import { Button } from '@infrasim/ui-kit';
 import { createFixtureApi } from '../../lib/api';
 import { saveFixtureToIndexedDb } from '../../lib/autosave';
@@ -62,6 +71,7 @@ export interface CodeTabProps {
   onUpsertDesignFixture: (fixture: PayloadFixture) => void;
   onUpsertLibraryFixture: (fixture: PayloadFixture) => void;
   onEditCallMock: (targetNodeId: string | undefined, serviceId: string, opName: string) => void;
+  onApplyMockPatches: (patches: readonly AutoFillPatchPreview[]) => Design;
   onOpenNetworkTab?: () => void;
 }
 
@@ -171,6 +181,7 @@ export function CodeTab({
   onUpsertDesignFixture,
   onUpsertLibraryFixture,
   onEditCallMock,
+  onApplyMockPatches,
   onOpenNetworkTab,
 }: CodeTabProps) {
   const isClientNode = node.serviceId === 'generic.client';
@@ -218,6 +229,8 @@ export function CodeTab({
 
   const [runSeed, setRunSeed] = useState<number>(design.settings.seed ?? 42);
   const [running, setRunning] = useState(false);
+  const [autoFillRunning, setAutoFillRunning] = useState(false);
+  const [autoFillPatches, setAutoFillPatches] = useState<AutoFillPatchPreview[] | null>(null);
   const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
   const [suiteReport, setSuiteReport] = useState<FixtureSuiteReport | null>(null);
   const [expandedCalls, setExpandedCalls] = useState<Record<number, boolean>>({});
@@ -234,6 +247,7 @@ export function CodeTab({
   useEffect(() => {
     setDryRunResult(null);
     setSuiteReport(null);
+    setAutoFillPatches(null);
     setExpandedCalls({});
   }, [node.id]);
 
@@ -413,8 +427,15 @@ export function CodeTab({
   ]);
 
   const handleRunDryRun = useCallback(
-    async (seedToUse: number) => {
-      if (!attachedScript) return;
+    async (
+      seedToUse: number,
+      overrides?: { design?: Design; node?: NodeInstance; script?: ScriptAsset },
+    ) => {
+      const targetDesign = overrides?.design ?? design;
+      const targetNode =
+        overrides?.node ?? targetDesign.nodes.find((n) => n.id === node.id) ?? node;
+      const targetScript = overrides?.script ?? attachedScript;
+      if (!targetScript) return;
       if (!parsedEventState.valid) {
         setFixtureNotice('Fix JSON syntax error in event payload before running');
         return;
@@ -425,12 +446,12 @@ export function CodeTab({
         const client = getSharedSandboxClient();
         const activeFixture = buildActiveFixture();
         const result = await client.dryRun({
-          script: attachedScript,
-          designScripts: design.scripts,
+          script: targetScript,
+          designScripts: targetDesign.scripts,
           fixture: activeFixture,
           event: activeFixture.event,
-          design,
-          node,
+          design: targetDesign,
+          node: targetNode,
           customServices,
           seed: seedToUse,
           seq: seedToUse,
@@ -442,6 +463,138 @@ export function CodeTab({
       }
     },
     [attachedScript, parsedEventState.valid, buildActiveFixture, design, node, customServices],
+  );
+
+  const handleRunAutoFill = useCallback(async () => {
+    if (!attachedScript) return;
+    if (!parsedEventState.valid) {
+      setFixtureNotice('Fix JSON syntax error in event payload before scanning mocks');
+      return;
+    }
+    setAutoFillRunning(true);
+    setFixtureNotice(null);
+    try {
+      const client = getSharedSandboxClient();
+      const activeFixture = buildActiveFixture();
+      const report = await client.autoFill({
+        script: attachedScript,
+        designScripts: design.scripts,
+        fixture: activeFixture,
+        event: activeFixture.event,
+        design,
+        node,
+        customServices,
+        seed: runSeed,
+        seq: runSeed,
+      });
+      if (report.patches.length === 0) {
+        setAutoFillPatches(null);
+        const totalCalls = report.discoveryResult.calls.length;
+        setFixtureNotice(
+          totalCalls === 0
+            ? 'No downstream mock calls executed during discovery.'
+            : 'All accessed mock fields already exist in your configured mocks.',
+        );
+      } else {
+        setAutoFillPatches(report.patches);
+      }
+    } finally {
+      setAutoFillRunning(false);
+    }
+  }, [
+    attachedScript,
+    parsedEventState.valid,
+    buildActiveFixture,
+    design,
+    node,
+    customServices,
+    runSeed,
+  ]);
+
+  const handleApplyAutoFillAndRerun = useCallback(async () => {
+    if (!autoFillPatches || autoFillPatches.length === 0) return;
+    const nextDesign = onApplyMockPatches(autoFillPatches);
+    setAutoFillPatches(null);
+    await handleRunDryRun(runSeed, { design: nextDesign });
+  }, [autoFillPatches, onApplyMockPatches, handleRunDryRun, runSeed]);
+
+  const diagnostics = useMemo(() => {
+    if (!dryRunResult || !attachedScript) return [];
+    return analyzeDryRunDiagnostics({
+      result: dryRunResult,
+      script: attachedScript,
+      event: parsedEventState.valid ? parsedEventState.value : {},
+      templateId: fixtureTemplateId,
+      node,
+    });
+  }, [dryRunResult, attachedScript, parsedEventState, fixtureTemplateId, node]);
+
+  const handleApplyDoctorFix = useCallback(
+    async (hint: PayloadDoctorHint) => {
+      if (!attachedScript) return;
+      if (hint.actionKind === 'auto-fill-mock') {
+        await handleRunAutoFill();
+        return;
+      }
+      if (hint.actionKind === 'add-edge') {
+        onOpenNetworkTab?.();
+        return;
+      }
+      if (hint.actionKind === 'patch-source' && hint.patchedSource) {
+        const nextScript: ScriptAsset = {
+          ...attachedScript,
+          source: hint.patchedSource,
+        };
+        onUpsertScript(nextScript);
+        await handleRunDryRun(runSeed, { script: nextScript });
+        return;
+      }
+      if (hint.actionKind === 'increase-timeout') {
+        const nextTimeout = Math.min(
+          900_000,
+          Math.max(attachedScript.timeoutMs * 2, attachedScript.timeoutMs + 3000),
+        );
+        const nextScript: ScriptAsset = {
+          ...attachedScript,
+          timeoutMs: nextTimeout,
+        };
+        onUpsertScript(nextScript);
+        await handleRunDryRun(runSeed, { script: nextScript });
+        return;
+      }
+      if (hint.actionKind === 'add-env' && hint.envKey) {
+        const key = hint.envKey;
+        const nextNode: NodeInstance = {
+          ...node,
+          config: {
+            ...node.config,
+            mockEnv: {
+              ...(node.config.mockEnv ?? {}),
+              [key]: node.config.mockEnv?.[key] || 'mock-value',
+            },
+          },
+        };
+        onUpdateNodeConfig((cfg) => {
+          cfg.mockEnv = {
+            ...(cfg.mockEnv ?? {}),
+            [key]: cfg.mockEnv?.[key] || 'mock-value',
+          };
+        });
+        setShowSettings(true);
+        setFixtureNotice(`Added ${key} in node environment settings`);
+        await handleRunDryRun(runSeed, { node: nextNode });
+      }
+    },
+    [
+      attachedScript,
+      handleRunAutoFill,
+      onOpenNetworkTab,
+      onUpsertScript,
+      handleRunDryRun,
+      runSeed,
+      node,
+      onUpdateNodeConfig,
+    ],
   );
 
   const handleRunAllFixtures = useCallback(async () => {
@@ -1114,6 +1267,17 @@ export function CodeTab({
               <Button
                 variant="secondary"
                 size="sm"
+                data-testid="auto-fill-mocks-btn"
+                disabled={running || autoFillRunning}
+                onClick={() => void handleRunAutoFill()}
+                className="h-8 px-2.5 text-[11px]"
+              >
+                <Wrench className="h-3 w-3" strokeWidth={1.5} />
+                <span>{autoFillRunning ? 'Scanning mocks' : 'Auto-fill mocks'}</span>
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 data-testid="save-fixture-btn"
                 onClick={() => void handleSaveAsFixture()}
                 className="h-8 px-2.5 text-[11px]"
@@ -1125,6 +1289,102 @@ export function CodeTab({
 
             {fixtureNotice ? (
               <p className="text-[11px] text-[var(--text-secondary)]">{fixtureNotice}</p>
+            ) : null}
+
+            {/* Auto-fill diff preview card */}
+            {autoFillPatches && autoFillPatches.length > 0 ? (
+              <div
+                data-testid="autofill-preview"
+                className="space-y-3 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[12px] font-medium text-[var(--text-primary)]">
+                      Auto-fill mock updates ({autoFillPatches.length})
+                    </div>
+                    <p className="text-[11px] text-[var(--text-secondary)]">
+                      Review discovered response fields before updating downstream mock templates.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAutoFillPatches(null)}
+                    className="rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {autoFillPatches.map((patch) => {
+                    const targetNode = patch.targetNodeId
+                      ? design.nodes.find((n) => n.id === patch.targetNodeId)
+                      : design.nodes.find((n) => n.serviceId === patch.serviceId);
+                    return (
+                      <div
+                        key={`${patch.serviceId}:${patch.op}:${patch.targetNodeId ?? 'default'}`}
+                        className="space-y-2 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-2.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[11px] font-medium text-[var(--text-primary)]">
+                            {targetNode ? `${targetNode.label} · ` : ''}
+                            {patch.serviceId}.{patch.op}
+                          </span>
+                          <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                            {patch.accessedPaths.length} fields
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {patch.accessedPaths.map((pathItem) => (
+                            <span
+                              key={pathItem}
+                              className="rounded-[4px] bg-[var(--bg-raised)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
+                            >
+                              {pathItem}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                          <div>
+                            <div className="text-[10px] text-[var(--text-muted)]">Before</div>
+                            <pre className="mt-0.5 max-h-24 overflow-auto rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-1.5 font-mono text-[10px] text-[var(--text-secondary)]">
+                              {patch.beforeTemplate}
+                            </pre>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-[var(--status-ok)]">After</div>
+                            <pre className="mt-0.5 max-h-32 overflow-auto rounded-[5px] border border-[rgba(76,195,138,0.35)] bg-[var(--bg-sunken)] p-1.5 font-mono text-[10px] text-[var(--text-primary)]">
+                              {patch.afterTemplate}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setAutoFillPatches(null)}
+                    className="h-7 px-2.5 text-[11px]"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    data-testid="autofill-apply-rerun-btn"
+                    disabled={running}
+                    onClick={() => void handleApplyAutoFillAndRerun()}
+                    className="h-7 px-3 text-[11px]"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                    <span>Apply & re-run</span>
+                  </Button>
+                </div>
+              </div>
             ) : null}
           </div>
 
@@ -1189,6 +1449,72 @@ export function CodeTab({
                   </div>
                 ) : null}
               </div>
+
+              {/* Payload Doctor Diagnostics */}
+              {diagnostics.length > 0 ? (
+                <div className="space-y-1.5" data-testid="payload-doctor-diagnostics">
+                  <div className="text-[11px] font-medium text-[var(--text-secondary)]">
+                    Diagnostics ({diagnostics.length})
+                  </div>
+                  <div className="space-y-1.5">
+                    {diagnostics.map((hint) => {
+                      const HintIcon =
+                        hint.severity === 'error'
+                          ? XCircle
+                          : hint.severity === 'warn'
+                            ? AlertTriangle
+                            : Info;
+                      const hintTone =
+                        hint.severity === 'error'
+                          ? 'border-[rgba(229,72,77,0.35)] bg-[rgba(229,72,77,0.06)]'
+                          : hint.severity === 'warn'
+                            ? 'border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.06)]'
+                            : 'border-[var(--border-hairline)] bg-[var(--bg-sunken)]';
+                      const iconColor =
+                        hint.severity === 'error'
+                          ? 'text-[var(--status-overloaded)]'
+                          : hint.severity === 'warn'
+                            ? 'text-[var(--status-warm)]'
+                            : 'text-[var(--text-secondary)]';
+                      return (
+                        <div
+                          key={hint.ruleId}
+                          data-testid={`doctor-hint-${hint.ruleId}`}
+                          className={`rounded-[6px] border p-2.5 ${hintTone}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <HintIcon
+                              className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${iconColor}`}
+                              strokeWidth={1.5}
+                            />
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="text-[11px] font-medium text-[var(--text-primary)]">
+                                {hint.title}
+                              </div>
+                              <p className="text-[11px] leading-4 text-[var(--text-secondary)]">
+                                {hint.message}
+                              </p>
+                              {hint.actionLabel ? (
+                                <div className="pt-0.5">
+                                  <button
+                                    type="button"
+                                    data-testid={`doctor-fix-${hint.ruleId}`}
+                                    disabled={running || autoFillRunning}
+                                    onClick={() => void handleApplyDoctorFix(hint)}
+                                    className="rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] font-medium text-[var(--accent)] hover:border-[var(--border-strong)]"
+                                  >
+                                    {hint.actionLabel}
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               {/* Result JSON */}
               {dryRunResult.ok ? (

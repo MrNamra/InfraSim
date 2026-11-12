@@ -35,11 +35,13 @@ import {
 import type {
   CostAssumptions,
   CustomServiceDefinition,
+  Design,
   GroupInstance,
   PayloadFixture,
   Provider,
   ServiceDefinition,
 } from '@infrasim/shared-types';
+import type { AutoFillPatchPreview } from '@infrasim/sandbox';
 import { getService, type CloudTargetProvider } from '@infrasim/catalog';
 import {
   CURATED_REGION_MAP,
@@ -546,6 +548,34 @@ export function EditorShell() {
       );
     },
     [design.nodes, selectNode],
+  );
+
+  const handleApplyMockPatches = useCallback(
+    (patches: readonly AutoFillPatchPreview[]): Design => {
+      const currentDesign = useDesignStore.getState().design;
+      const nextDesign = structuredClone(currentDesign);
+      for (const patch of patches) {
+        const targetNode =
+          (patch.targetNodeId
+            ? nextDesign.nodes.find((n) => n.id === patch.targetNodeId)
+            : undefined) ?? nextDesign.nodes.find((n) => n.serviceId === patch.serviceId);
+        if (!targetNode) continue;
+        if (!targetNode.config.operations) {
+          targetNode.config.operations = {};
+        }
+        const existingOp = targetNode.config.operations[patch.op];
+        targetNode.config.operations[patch.op] = {
+          ...(existingOp ?? {}),
+          responseTemplate: patch.afterTemplate,
+        };
+      }
+      applyPatchedDesign(nextDesign);
+      setStatusNotice(
+        `Applied mock schema updates for ${patches.map((p) => `${p.serviceId}.${p.op}`).join(', ')}.`,
+      );
+      return nextDesign;
+    },
+    [applyPatchedDesign],
   );
 
   // Map top diagnostic short reason onto each node card / tooltip
@@ -2025,6 +2055,7 @@ export function EditorShell() {
                   onUpsertDesignFixture={upsertDesignFixture}
                   onUpsertLibraryFixture={upsertLibraryFixture}
                   onEditCallMock={handleEditCallMock}
+                  onApplyMockPatches={handleApplyMockPatches}
                   onOpenNetworkTab={() => setInspectorTab('network')}
                 />
               ) : inspectorTab === 'cost' ? (
