@@ -12,6 +12,9 @@ import {
 } from './hcl/ast.js';
 import { printHclFile } from './hcl/printer.js';
 import { mapAwsToTerraform } from './mappings/aws.js';
+import { mapAzureToTerraform } from './mappings/azure.js';
+import { mapGcpToTerraform } from './mappings/gcp.js';
+import { mapOciToTerraform } from './mappings/oci.js';
 import {
   type CloudProviderId,
   GENERATED_FILE_HEADER_COMMENTS,
@@ -202,34 +205,163 @@ export function exportDesignToTerraform(
     description: 'Prefix applied to all generated resource names and Name tags.',
   });
 
-  if (providersIncluded.includes('aws')) {
-    mapAwsToTerraform(ctx);
-  }
-
-  // Handle custom / unmapped non-generic nodes across the canvas deterministically
-  for (const node of [...design.nodes].sort((a, b) => a.id.localeCompare(b.id))) {
-    const p = inferCloudProviderForServiceId(node.serviceId);
-    if (p === 'generic') continue;
-    if (p === 'custom') {
-      const msg = `InfraSim: no Terraform mapping for ${node.serviceId} (${node.label})`;
-      ctx.buckets.compute.push(hclCommentStmt(msg));
-      ctx.addUnsupported(node, 'Custom user service cannot be mapped automatically to Terraform');
-      continue;
-    }
-    if (!providersIncluded.includes(p)) {
-      continue;
-    }
-    if (p !== 'aws') {
-      const msg = `InfraSim: no Terraform mapping for ${node.serviceId} (${node.label}) in current provider subset`;
-      ctx.buckets.compute.push(hclCommentStmt(msg));
-      ctx.addUnsupported(
-        node,
-        `Provider ${p.toUpperCase()} export mapping is pending implementation`,
-      );
-    }
-  }
-
   const header = GENERATED_FILE_HEADER_COMMENTS;
+  const providerMappers: Record<CloudProviderId, (c: TerraformExportContext) => void> = {
+    aws: mapAwsToTerraform,
+    gcp: mapGcpToTerraform,
+    azure: mapAzureToTerraform,
+    oci: mapOciToTerraform,
+  };
+
+  const perProviderFiles: TerraformGeneratedFile[] = [];
+  let resourceCount = 0;
+
+  if (providersIncluded.length <= 1) {
+    for (const prov of providersIncluded) {
+      providerMappers[prov](ctx);
+    }
+
+    // Handle custom / unmapped non-generic nodes across the canvas deterministically
+    for (const node of [...design.nodes].sort((a, b) => a.id.localeCompare(b.id))) {
+      const p = inferCloudProviderForServiceId(node.serviceId);
+      if (p === 'generic') continue;
+      if (p === 'custom') {
+        const msg = `InfraSim: no Terraform mapping for ${node.serviceId} (${node.label})`;
+        ctx.buckets.compute.push(hclCommentStmt(msg));
+        ctx.addUnsupported(node, 'Custom user service cannot be mapped automatically to Terraform');
+      }
+    }
+
+    perProviderFiles.push(
+      {
+        filename: 'network.tf',
+        language: 'hcl',
+        content: printHclFile(
+          hclFile(
+            'network.tf',
+            ctx.buckets.network.length > 0
+              ? ctx.buckets.network
+              : [hclCommentStmt('No virtual network resources defined in this design.')],
+            header,
+          ),
+        ),
+      },
+      {
+        filename: 'compute.tf',
+        language: 'hcl',
+        content: printHclFile(
+          hclFile(
+            'compute.tf',
+            ctx.buckets.compute.length > 0
+              ? ctx.buckets.compute
+              : [hclCommentStmt('No compute resources defined in this design.')],
+            header,
+          ),
+        ),
+      },
+      {
+        filename: 'data.tf',
+        language: 'hcl',
+        content: printHclFile(
+          hclFile(
+            'data.tf',
+            ctx.buckets.data.length > 0
+              ? ctx.buckets.data
+              : [
+                  hclCommentStmt(
+                    'No database, cache, queue, or storage resources defined in this design.',
+                  ),
+                ],
+            header,
+          ),
+        ),
+      },
+    );
+
+    if (ctx.buckets.ai.length > 0) {
+      perProviderFiles.push({
+        filename: 'ai.tf',
+        language: 'hcl',
+        content: printHclFile(hclFile('ai.tf', ctx.buckets.ai, header)),
+      });
+    }
+
+    resourceCount =
+      countResourceBlocks(ctx.buckets.network) +
+      countResourceBlocks(ctx.buckets.compute) +
+      countResourceBlocks(ctx.buckets.data) +
+      countResourceBlocks(ctx.buckets.ai);
+  } else {
+    for (const prov of providersIncluded) {
+      const scopedCtx: TerraformExportContext = {
+        ...ctx,
+        buckets: {
+          providers: ctx.buckets.providers,
+          network: [],
+          compute: [],
+          data: [],
+          ai: [],
+          outputs: ctx.buckets.outputs,
+        },
+      };
+      providerMappers[prov](scopedCtx);
+
+      const pPrefix = `${prov}_`;
+      const provCount =
+        countResourceBlocks(scopedCtx.buckets.network) +
+        countResourceBlocks(scopedCtx.buckets.compute) +
+        countResourceBlocks(scopedCtx.buckets.data) +
+        countResourceBlocks(scopedCtx.buckets.ai);
+      resourceCount += provCount;
+
+      if (scopedCtx.buckets.network.length > 0) {
+        perProviderFiles.push({
+          filename: `${pPrefix}network.tf`,
+          language: 'hcl',
+          content: printHclFile(hclFile(`${pPrefix}network.tf`, scopedCtx.buckets.network, header)),
+        });
+      }
+      if (scopedCtx.buckets.compute.length > 0) {
+        perProviderFiles.push({
+          filename: `${pPrefix}compute.tf`,
+          language: 'hcl',
+          content: printHclFile(hclFile(`${pPrefix}compute.tf`, scopedCtx.buckets.compute, header)),
+        });
+      }
+      if (scopedCtx.buckets.data.length > 0) {
+        perProviderFiles.push({
+          filename: `${pPrefix}data.tf`,
+          language: 'hcl',
+          content: printHclFile(hclFile(`${pPrefix}data.tf`, scopedCtx.buckets.data, header)),
+        });
+      }
+      if (scopedCtx.buckets.ai.length > 0) {
+        perProviderFiles.push({
+          filename: `${pPrefix}ai.tf`,
+          language: 'hcl',
+          content: printHclFile(hclFile(`${pPrefix}ai.tf`, scopedCtx.buckets.ai, header)),
+        });
+      }
+    }
+
+    // Handle custom nodes across multi-cloud designs
+    const customComments: HclStatement[] = [];
+    for (const node of [...design.nodes].sort((a, b) => a.id.localeCompare(b.id))) {
+      if (inferCloudProviderForServiceId(node.serviceId) === 'custom') {
+        customComments.push(
+          hclCommentStmt(`InfraSim: no Terraform mapping for ${node.serviceId} (${node.label})`),
+        );
+        ctx.addUnsupported(node, 'Custom user service cannot be mapped automatically to Terraform');
+      }
+    }
+    if (customComments.length > 0) {
+      perProviderFiles.push({
+        filename: 'custom_stubs.tf',
+        language: 'hcl',
+        content: printHclFile(hclFile('custom_stubs.tf', customComments, header)),
+      });
+    }
+  }
 
   const providersStatements: HclStatement[] = [
     hclBlockStmt(buildTerraformSettingsBlock(providersIncluded)),
@@ -268,76 +400,18 @@ export function exportDesignToTerraform(
       language: 'hcl',
       content: printHclFile(hclFile('variables.tf', variablesStatements, header)),
     },
+    ...perProviderFiles,
     {
-      filename: 'network.tf',
+      filename: 'outputs.tf',
       language: 'hcl',
-      content: printHclFile(
-        hclFile(
-          'network.tf',
-          ctx.buckets.network.length > 0
-            ? ctx.buckets.network
-            : [hclCommentStmt('No virtual network resources defined in this design.')],
-          header,
-        ),
-      ),
+      content: printHclFile(hclFile('outputs.tf', outputsStatements, header)),
     },
     {
-      filename: 'compute.tf',
-      language: 'hcl',
-      content: printHclFile(
-        hclFile(
-          'compute.tf',
-          ctx.buckets.compute.length > 0
-            ? ctx.buckets.compute
-            : [hclCommentStmt('No compute resources defined in this design.')],
-          header,
-        ),
-      ),
-    },
-    {
-      filename: 'data.tf',
-      language: 'hcl',
-      content: printHclFile(
-        hclFile(
-          'data.tf',
-          ctx.buckets.data.length > 0
-            ? ctx.buckets.data
-            : [
-                hclCommentStmt(
-                  'No database, cache, queue, or storage resources defined in this design.',
-                ),
-              ],
-          header,
-        ),
-      ),
+      filename: 'README.md',
+      language: 'markdown',
+      content: buildReadme(ctx, resourceCount),
     },
   ];
-
-  if (ctx.buckets.ai.length > 0) {
-    files.push({
-      filename: 'ai.tf',
-      language: 'hcl',
-      content: printHclFile(hclFile('ai.tf', ctx.buckets.ai, header)),
-    });
-  }
-
-  files.push({
-    filename: 'outputs.tf',
-    language: 'hcl',
-    content: printHclFile(hclFile('outputs.tf', outputsStatements, header)),
-  });
-
-  const resourceCount =
-    countResourceBlocks(ctx.buckets.network) +
-    countResourceBlocks(ctx.buckets.compute) +
-    countResourceBlocks(ctx.buckets.data) +
-    countResourceBlocks(ctx.buckets.ai);
-
-  files.push({
-    filename: 'README.md',
-    language: 'markdown',
-    content: buildReadme(ctx, resourceCount),
-  });
 
   if (ctx.unsupportedNodes.length > 0) {
     ctx.warnings.push(
