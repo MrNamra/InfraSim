@@ -123,6 +123,14 @@ export function EdgePopover({
                 ? reachability.explanation.short
                 : (reachability.riskyReason ?? reachability.explanation.short)}
             </p>
+            {!reachability.reachable && reachability.fixes[0] ? (
+              <p
+                data-testid="edge-popover-fix-hint"
+                className="mt-1 font-mono text-[10px] leading-4 text-[var(--text-primary)]"
+              >
+                Fix: {reachability.fixes[0].label}
+              </p>
+            ) : null}
             {reachability.viaNat || reachability.viaEndpoint || reachability.extraLatencyMs ? (
               <div className="mt-1.5 flex flex-wrap gap-1 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
                 {reachability.viaNat ? (

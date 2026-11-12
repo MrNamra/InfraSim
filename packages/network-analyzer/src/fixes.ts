@@ -137,7 +137,7 @@ export interface PatchDiffLine {
 export function formatPatchDiffLines(ops: readonly PatchOpLike[]): PatchDiffLine[] {
   return ops.map((op) => {
     const valStr = op.value !== undefined ? JSON.stringify(op.value) : '';
-    const clipped = valStr.length > 140 ? `${valStr.slice(0, 137)}...` : valStr;
+    const clipped = valStr.length > 320 ? `${valStr.slice(0, 317)}...` : valStr;
     if (op.op === 'add') {
       return { kind: 'add', path: op.path, summary: `+ ${op.path} = ${clipped}` };
     }
