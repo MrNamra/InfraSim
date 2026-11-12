@@ -30,6 +30,11 @@
       "types": "./dist/scenarioThresholds.d.ts",
       "import": "./dist/scenarioThresholds.js",
       "default": "./dist/scenarioThresholds.js"
+    },
+    "./ai-profiles": {
+      "types": "./dist/aiProfiles.d.ts",
+      "import": "./dist/aiProfiles.js",
+      "default": "./dist/aiProfiles.js"
     }
   },
   "dependencies": {

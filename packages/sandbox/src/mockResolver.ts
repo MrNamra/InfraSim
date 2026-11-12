@@ -22,7 +22,20 @@ export type AiMockHook = (ctx: {
   seed: number;
   env: Record<string, string>;
   rng: SeededPrng;
+  stateMap: Map<string, unknown>;
 }) => MockCallOutcome | null;
+
+const AI_MOCK_KINDS = new Set([
+  'llm',
+  'ml',
+  'vision',
+  'speech',
+  'text-ai',
+  'doc-ai',
+  'bot',
+  'async',
+  'search',
+]);
 
 let activeAiMockHook: AiMockHook | null = null;
 
@@ -342,6 +355,7 @@ export function createMockCallResolver(options: CreateMockResolverOptions = {}):
 
   // Per-node token buckets for stateful virtual-time RPS/RPM throttling
   const bucketState = new Map<string, { tokens: number; lastMs: number }>();
+  const resolverAiState = new Map<string, unknown>();
 
   const checkRateBucket = (node: NodeInstance, nowMs: number): number | null => {
     const rps =
@@ -530,26 +544,8 @@ export function createMockCallResolver(options: CreateMockResolverOptions = {}):
       }
     }
 
-    // Step 2: Check virtual-time rate limit bucket on target node
-    if (targetNode) {
-      const retryAfterMs = checkRateBucket(targetNode, ctx.nowMs);
-      if (retryAfterMs !== null) {
-        return {
-          ok: false,
-          latencyMs: 1,
-          serviceId: service.id,
-          op: opName,
-          targetNodeId: targetNode.id,
-          error: buildProviderError('throttle', service, opName, reqUuid, retryAfterMs),
-        };
-      }
-    }
-
-    // Step 3: Delegate to AI service mock evaluator if registered and service is AI kind
-    if (
-      activeAiMockHook &&
-      ['llm', 'ml', 'vision', 'speech', 'text-ai', 'doc-ai', 'bot'].includes(service.kind)
-    ) {
+    // Step 2: Delegate to AI / RAG / Async mock evaluator if registered for AI/Search/Async kinds
+    if (activeAiMockHook && AI_MOCK_KINDS.has(service.kind)) {
       const aiOutcome = activeAiMockHook({
         invocation,
         service,
@@ -562,9 +558,25 @@ export function createMockCallResolver(options: CreateMockResolverOptions = {}):
         seed,
         env: ctx.env,
         rng,
+        stateMap: resolverAiState,
       });
       if (aiOutcome) {
         return aiOutcome;
+      }
+    }
+
+    // Step 3: Check virtual-time rate limit bucket on target node (RPS / RPM fallback)
+    if (targetNode) {
+      const retryAfterMs = checkRateBucket(targetNode, ctx.nowMs);
+      if (retryAfterMs !== null) {
+        return {
+          ok: false,
+          latencyMs: 1,
+          serviceId: service.id,
+          op: opName,
+          targetNodeId: targetNode.id,
+          error: buildProviderError('throttle', service, opName, reqUuid, retryAfterMs),
+        };
       }
     }
 

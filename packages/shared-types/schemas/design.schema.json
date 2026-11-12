@@ -357,6 +357,9 @@
         "ai": {
           "type": "object",
           "properties": {
+            "modelLabel": {
+              "type": "string"
+            },
             "profile": {
               "type": "string",
               "enum": [
@@ -385,6 +388,12 @@
             },
             "contentFilterRate": {
               "type": "number"
+            },
+            "countMaxTokensUpfront": {
+              "type": "boolean"
+            },
+            "outputTokens": {
+              "$ref": "#/definitions/LatencyModel"
             },
             "responseShape": {
               "type": "string",
@@ -420,6 +429,9 @@
               "type": "number"
             },
             "dimensions": {
+              "type": "number"
+            },
+            "topK": {
               "type": "number"
             },
             "passages": {
@@ -483,6 +495,12 @@
             },
             "manualUnit": {
               "type": "string"
+            },
+            "manualInputPricePer1M": {
+              "type": "number"
+            },
+            "manualOutputPricePer1M": {
+              "type": "number"
             }
           },
           "additionalProperties": false

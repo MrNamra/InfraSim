@@ -265,7 +265,215 @@ function buildAddCacheTemplateDesign(): Design {
   return d;
 }
 
-/** Built-in Phase 1 starter architectures (Spec 16 §8: Templates 1–2). */
+function buildRagChatbotTemplateDesign(): Design {
+  const d = createEmptyDesign('tpl-rag-chatbot', 'RAG chatbot');
+  d.description =
+    'Client → API → Embeddings → Vector Search → LLM pipeline demonstrating TTFT + decode dominance vs retrieval latency.';
+  d.settings.primaryProvider = 'aws';
+  d.nodes = [
+    {
+      id: 'client',
+      serviceId: 'generic.client',
+      label: 'Client',
+      position: { x: 48, y: 176 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'alb',
+      serviceId: 'aws.alb',
+      label: 'ALB',
+      position: { x: 352, y: 176 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 8 },
+        lb: {
+          algorithm: 'round-robin',
+          idleTimeoutMs: 60_000,
+        },
+        operations: {},
+      },
+    },
+    {
+      id: 'api',
+      serviceId: 'aws.ec2',
+      label: 'Chat API',
+      position: { x: 656, y: 176 },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 6,
+        maxInFlightPerInstance: 200,
+        timeoutMs: 30_000,
+        scriptId: 'scr-rag-handler',
+        operations: {},
+      },
+    },
+    {
+      id: 'embed',
+      serviceId: 'aws.bedrock',
+      label: 'Embed Model',
+      position: { x: 960, y: 80 },
+      config: {
+        instances: 1,
+        ai: { profile: 'embedding', dimensions: 1024 },
+        operations: {},
+      },
+    },
+    {
+      id: 'vec',
+      serviceId: 'aws.bedrock_kb',
+      label: 'Vector Search',
+      position: { x: 960, y: 272 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 90, p95: 240 },
+        ai: {
+          topK: 3,
+          passages: [
+            {
+              id: 'rag-1',
+              text: 'Use streaming responses so callers see the first token at TTFT rather than waiting full decode time.',
+              score: 0.96,
+            },
+            {
+              id: 'rag-2',
+              text: 'Cache repeated semantic queries and embeddings to bypass LLM token cost on FAQ traffic.',
+              score: 0.91,
+            },
+            {
+              id: 'rag-3',
+              text: 'Protect TPM quotas with a queue or model fallback chain when bursts hit HTTP 429.',
+              score: 0.86,
+            },
+          ],
+        },
+        operations: {},
+      },
+    },
+    {
+      id: 'llm',
+      serviceId: 'aws.bedrock',
+      label: 'LLM Generation',
+      position: { x: 1264, y: 176 },
+      config: {
+        instances: 1,
+        rateLimit: { tpm: 120_000, rpm: 120, maxContextTokens: 200_000, maxOutputTokens: 512 },
+        ai: {
+          profile: 'balanced',
+          capacityMode: 'on-demand',
+          responseMode: 'template',
+          responseShape: 'provider',
+          chunkTokens: 4,
+        },
+        operations: {},
+      },
+    },
+  ];
+  d.edges = [
+    {
+      id: 'e-rag-client-alb',
+      from: 'client',
+      to: 'alb',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-rag-alb-api',
+      from: 'alb',
+      to: 'api',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-rag-api-embed',
+      from: 'api',
+      to: 'embed',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-rag-api-vec',
+      from: 'api',
+      to: 'vec',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-rag-api-llm',
+      from: 'api',
+      to: 'llm',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+  ];
+  d.scripts = [
+    {
+      id: 'scr-rag-handler',
+      name: 'rag-chat.ts',
+      kind: 'handler',
+      language: 'typescript',
+      entry: 'handler',
+      memoryMb: 256,
+      timeoutMs: 15_000,
+      env: {},
+      source: `import { BedrockRuntimeClient, ConverseStreamCommand, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+
+const client = new BedrockRuntimeClient({ region: 'us-east-1' });
+
+export async function handler(event: any) {
+  const question = event?.body ? JSON.parse(event.body)?.q || 'Explain caching' : 'Explain caching';
+  await client.send(new InvokeModelCommand({
+    modelId: 'embed-mock-v1',
+    body: JSON.stringify({ inputText: question }),
+  }));
+  const ctx = await cloud.call('aws.bedrock_kb', 'Search', { query: question, topK: 3 });
+  const streamRes = await client.send(new ConverseStreamCommand({
+    modelId: 'llm-balanced-mock',
+    messages: [{ role: 'user', content: [{ text: question + ' ' + JSON.stringify(ctx.passages) }] }],
+  }));
+  let reply = '';
+  for await (const chunk of streamRes.stream) {
+    if (chunk.contentBlockDelta?.delta?.text) reply += chunk.contentBlockDelta.delta.text;
+  }
+  return { statusCode: 200, body: JSON.stringify({ reply }) };
+}
+`,
+    },
+  ];
+  d.scenarios = [
+    {
+      id: 'scenario-rag-chat',
+      name: 'RAG steady load',
+      durationS: 30,
+      entryNodeId: 'client',
+      profile: { kind: 'constant', rps: 10 },
+      flows: [
+        {
+          id: 'flow-ask',
+          name: 'POST /chat',
+          weight: 1,
+          steps: [{ method: 'POST', path: '/chat', bodyBytes: 1024 }],
+        },
+      ],
+      chaos: [],
+    },
+  ];
+  return d;
+}
+
+/** Built-in Phase 1 starter architectures (Spec 16 §8: Templates 1–2) plus Phase 3 RAG template. */
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     id: 'tpl-3tier',
@@ -286,6 +494,17 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     topologySummary: 'Client → ALB → API (4×) → Redis (85% hit) → PostgreSQL (12 conn)',
     scenarioSummary: 'Constant 400 req/s · 30 s',
     design: buildAddCacheTemplateDesign(),
+  },
+  {
+    id: 'tpl-rag-chatbot',
+    title: 'RAG chatbot',
+    summary:
+      'Embeddings + vector search + streaming LLM pipeline with TPM quota and idle timeout modeling.',
+    lesson:
+      'Compare sub-second embedding + retrieval hops against multi-second LLM TTFT + decode spans, and watch TPM quota 429s appear as RPS grows.',
+    topologySummary: 'Client → ALB → Chat API → Embed + Vector Search → LLM (120k TPM)',
+    scenarioSummary: 'Constant 10 req/s · 30 s',
+    design: buildRagChatbotTemplateDesign(),
   },
 ];
 

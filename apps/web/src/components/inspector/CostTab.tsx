@@ -57,6 +57,8 @@ export function CostTab({
     priceModel === 'mix';
   const isQueryTbRelevant = priceModel === 'query-tb' || kind === 'olap';
 
+  const isTokenPriced = kind === 'llm' || priceModel === 'tok';
+
   const [skuDraft, setSkuDraft] = useState(node.config.pricing?.skuKey ?? '');
   const [priceDraft, setPriceDraft] = useState(
     node.config.pricing?.manualUnitPrice !== undefined
@@ -64,6 +66,16 @@ export function CostTab({
       : '',
   );
   const [unitDraft, setUnitDraft] = useState(node.config.pricing?.manualUnit ?? 'Hrs');
+  const [inTokPriceDraft, setInTokPriceDraft] = useState(
+    node.config.pricing?.manualInputPricePer1M !== undefined
+      ? String(node.config.pricing.manualInputPricePer1M)
+      : '',
+  );
+  const [outTokPriceDraft, setOutTokPriceDraft] = useState(
+    node.config.pricing?.manualOutputPricePer1M !== undefined
+      ? String(node.config.pricing.manualOutputPricePer1M)
+      : '',
+  );
   const [storageDraft, setStorageDraft] = useState(
     node.config.storageGb !== undefined ? String(node.config.storageGb) : '',
   );
@@ -81,6 +93,16 @@ export function CostTab({
         : '',
     );
     setUnitDraft(node.config.pricing?.manualUnit ?? 'Hrs');
+    setInTokPriceDraft(
+      node.config.pricing?.manualInputPricePer1M !== undefined
+        ? String(node.config.pricing.manualInputPricePer1M)
+        : '',
+    );
+    setOutTokPriceDraft(
+      node.config.pricing?.manualOutputPricePer1M !== undefined
+        ? String(node.config.pricing.manualOutputPricePer1M)
+        : '',
+    );
     setStorageDraft(node.config.storageGb !== undefined ? String(node.config.storageGb) : '');
     setScannedGbDraft(
       node.config.scannedBytes !== undefined
@@ -96,17 +118,39 @@ export function CostTab({
     node.config.scannedBytes,
   ]);
 
-  const applyManualPricing = (nextSku: string, nextPriceRaw: string, nextUnit: string) => {
+  const applyManualPricing = (
+    nextSku: string,
+    nextPriceRaw: string,
+    nextUnit: string,
+    nextInTokRaw = inTokPriceDraft,
+    nextOutTokRaw = outTokPriceDraft,
+  ) => {
     const cleanSku = nextSku.trim();
     const parsedPrice = nextPriceRaw.trim() === '' ? undefined : Number(nextPriceRaw);
     const validPrice =
       parsedPrice !== undefined && Number.isFinite(parsedPrice) && parsedPrice >= 0
         ? parsedPrice
         : undefined;
+    const parsedInTok = nextInTokRaw.trim() === '' ? undefined : Number(nextInTokRaw);
+    const validInTok =
+      parsedInTok !== undefined && Number.isFinite(parsedInTok) && parsedInTok >= 0
+        ? parsedInTok
+        : undefined;
+    const parsedOutTok = nextOutTokRaw.trim() === '' ? undefined : Number(nextOutTokRaw);
+    const validOutTok =
+      parsedOutTok !== undefined && Number.isFinite(parsedOutTok) && parsedOutTok >= 0
+        ? parsedOutTok
+        : undefined;
     const cleanUnit = nextUnit.trim();
 
     onUpdateConfig((cfg) => {
-      if (!cleanSku && validPrice === undefined && (!cleanUnit || cleanUnit === 'Hrs')) {
+      if (
+        !cleanSku &&
+        validPrice === undefined &&
+        validInTok === undefined &&
+        validOutTok === undefined &&
+        (!cleanUnit || cleanUnit === 'Hrs')
+      ) {
         delete cfg.pricing;
         return;
       }
@@ -114,6 +158,8 @@ export function CostTab({
         ...(cleanSku ? { skuKey: cleanSku } : {}),
         ...(validPrice !== undefined ? { manualUnitPrice: validPrice } : {}),
         ...(validPrice !== undefined && cleanUnit ? { manualUnit: cleanUnit } : {}),
+        ...(validInTok !== undefined ? { manualInputPricePer1M: validInTok } : {}),
+        ...(validOutTok !== undefined ? { manualOutputPricePer1M: validOutTok } : {}),
       };
     });
   };
@@ -122,13 +168,18 @@ export function CostTab({
     setSkuDraft('');
     setPriceDraft('');
     setUnitDraft('Hrs');
+    setInTokPriceDraft('');
+    setOutTokPriceDraft('');
     onUpdateConfig((cfg) => {
       delete cfg.pricing;
     });
   };
 
   const hasOverrides = Boolean(
-    node.config.pricing?.skuKey || node.config.pricing?.manualUnitPrice !== undefined,
+    node.config.pricing?.skuKey ||
+    node.config.pricing?.manualUnitPrice !== undefined ||
+    node.config.pricing?.manualInputPricePer1M !== undefined ||
+    node.config.pricing?.manualOutputPricePer1M !== undefined,
   );
 
   return (
@@ -392,6 +443,43 @@ export function CostTab({
             </select>
           </label>
         </div>
+
+        {isTokenPriced ? (
+          <div className="grid grid-cols-2 gap-2" data-testid="cost-manual-token-pricing">
+            <label className="block">
+              <span className="text-[11px] text-[var(--text-muted)]">Input $/1M tokens</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="e.g. 3.00"
+                value={inTokPriceDraft}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setInTokPriceDraft(next);
+                  applyManualPricing(skuDraft, priceDraft, unitDraft, next, outTokPriceDraft);
+                }}
+                className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 font-mono text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-[var(--text-muted)]">Output $/1M tokens</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="e.g. 15.00"
+                value={outTokPriceDraft}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setOutTokPriceDraft(next);
+                  applyManualPricing(skuDraft, priceDraft, unitDraft, inTokPriceDraft, next);
+                }}
+                className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 font-mono text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+              />
+            </label>
+          </div>
+        ) : null}
 
         {hasUnavailable && !node.config.pricing?.manualUnitPrice ? (
           <div className="flex items-start gap-1.5 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 py-2 text-[11px] text-[var(--text-secondary)]">

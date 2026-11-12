@@ -60,6 +60,15 @@ export function resolveNodeCapacities(
     cfg.runtimePreset ?? (kind === 'compute' || kind === 'fn' ? 'node' : 'custom');
   const presetSpec = SIM_RUNTIME_PRESETS[presetKey];
 
+  const isAiKind =
+    kind === 'llm' ||
+    kind === 'ml' ||
+    kind === 'vision' ||
+    kind === 'speech' ||
+    kind === 'text-ai' ||
+    kind === 'doc-ai' ||
+    kind === 'bot';
+
   let slotsPerInstance = cfg.maxInFlightPerInstance;
   if (slotsPerInstance === undefined) {
     if (kind === 'fn') {
@@ -68,6 +77,12 @@ export function resolveNodeCapacities(
         (service?.capacity.type === 'conc'
           ? service.capacity.limit
           : presetSpec.maxInFlightPerInstance);
+    } else if (
+      isAiKind &&
+      cfg.rateLimit?.concurrency !== undefined &&
+      cfg.rateLimit.concurrency > 0
+    ) {
+      slotsPerInstance = cfg.rateLimit.concurrency;
     } else if (service?.capacity.type === 'conc') {
       slotsPerInstance = service.capacity.limit;
     } else if (kind === 'compute') {

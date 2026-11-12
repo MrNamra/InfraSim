@@ -502,6 +502,8 @@ function computeRawQuantityForRole(params: {
   scaledReadUnits: number;
   scaledWriteUnits: number;
   scaledGbSeconds: number;
+  scaledTokensIn: number;
+  scaledTokensOut: number;
   matchedAttrs?: Record<string, unknown>;
 }): { quantity: number; note?: string } {
   const {
@@ -518,6 +520,8 @@ function computeRawQuantityForRole(params: {
     scaledReadUnits,
     scaledWriteUnits,
     scaledGbSeconds,
+    scaledTokensIn,
+    scaledTokensOut,
     matchedAttrs,
   } = params;
 
@@ -692,6 +696,9 @@ function computeRawQuantityForRole(params: {
     }
 
     case 'tokens_1m_in': {
+      if (scaledTokensIn > 0) {
+        return { quantity: scaledTokensIn / scaleDiv };
+      }
       const avgIn = Math.max(
         100,
         Math.round((node.config.rateLimit?.maxContextTokens ?? 1000) * 0.5),
@@ -703,6 +710,9 @@ function computeRawQuantityForRole(params: {
     }
 
     case 'tokens_1m_out': {
+      if (scaledTokensOut > 0) {
+        return { quantity: scaledTokensOut / scaleDiv };
+      }
       const avgOut = Math.max(50, node.config.rateLimit?.maxOutputTokens ?? 250);
       return {
         quantity: (scaledRequests * avgOut) / 1_000_000,
@@ -1110,6 +1120,8 @@ export function estimateMonthlyCost(
     const scaledReadUnits = (counter?.readUnits ?? 0) * requestScaleFactor;
     const scaledWriteUnits = (counter?.writeUnits ?? 0) * requestScaleFactor;
     const scaledGbSeconds = (counter?.gbSeconds ?? 0) * requestScaleFactor;
+    const scaledTokensIn = (counter?.tokensIn ?? 0) * requestScaleFactor;
+    const scaledTokensOut = (counter?.tokensOut ?? 0) * requestScaleFactor;
     const activeInstances = resolveActiveInstances(
       node,
       simResult,
@@ -1230,6 +1242,99 @@ export function estimateMonthlyCost(
       continue;
     }
 
+    // Provisioned AI capacity (hourly units, not per-token)
+    if (service.kind === 'llm' && node.config.ai?.capacityMode === 'provisioned') {
+      const units = Math.max(1, node.config.ai.provisionedUnits ?? activeInstances);
+      const qtyHrs = assumptions.hoursPerMonth * units;
+      const manualPrice = node.config.pricing?.manualUnitPrice;
+      if (manualPrice !== undefined && Number.isFinite(manualPrice)) {
+        const amount = qtyHrs * manualPrice;
+        perNodeUsd[node.id] = {
+          lines: [
+            {
+              dimension: 'provisioned throughput',
+              quantity: qtyHrs,
+              unit: node.config.pricing?.manualUnit ?? 'Unit-Hours',
+              unitPrice: manualPrice,
+              amount,
+              ...(node.config.pricing?.skuKey ? { skuKey: node.config.pricing.skuKey } : {}),
+              source: 'manual',
+            },
+          ],
+          subtotal: amount,
+          category,
+        };
+      } else {
+        addWarning(
+          `Price unavailable for provisioned throughput on ${node.label} — enter hourly rate manually.`,
+        );
+        perNodeUsd[node.id] = {
+          lines: [
+            {
+              dimension: 'provisioned throughput',
+              quantity: qtyHrs,
+              unit: 'Unit-Hours',
+              unitPrice: null,
+              amount: null,
+              source: 'unavailable',
+              note: 'price unavailable — enter manual hourly unit price',
+            },
+          ],
+          subtotal: 0,
+          category,
+        };
+      }
+      continue;
+    }
+
+    // Explicit manual input/output token prices on AI nodes
+    if (
+      node.config.pricing?.manualInputPricePer1M !== undefined ||
+      node.config.pricing?.manualOutputPricePer1M !== undefined
+    ) {
+      const tokenLines: CostLine[] = [];
+      let tokenSub = 0;
+      const inM =
+        (scaledTokensIn > 0
+          ? scaledTokensIn
+          : scaledRequests *
+            Math.max(100, Math.round((node.config.rateLimit?.maxContextTokens ?? 1000) * 0.5))) /
+        1_000_000;
+      const outM =
+        (scaledTokensOut > 0
+          ? scaledTokensOut
+          : scaledRequests * Math.max(50, node.config.rateLimit?.maxOutputTokens ?? 250)) /
+        1_000_000;
+      if (node.config.pricing?.manualInputPricePer1M !== undefined) {
+        const amt = inM * node.config.pricing.manualInputPricePer1M;
+        tokenSub += amt;
+        tokenLines.push({
+          dimension: 'input tokens',
+          quantity: inM,
+          unit: '1M Tokens',
+          unitPrice: node.config.pricing.manualInputPricePer1M,
+          amount: amt,
+          source: 'manual',
+          note: 'manual price',
+        });
+      }
+      if (node.config.pricing?.manualOutputPricePer1M !== undefined) {
+        const amt = outM * node.config.pricing.manualOutputPricePer1M;
+        tokenSub += amt;
+        tokenLines.push({
+          dimension: 'output tokens',
+          quantity: outM,
+          unit: '1M Tokens',
+          unitPrice: node.config.pricing.manualOutputPricePer1M,
+          amount: amt,
+          source: 'manual',
+          note: 'manual price',
+        });
+      }
+      perNodeUsd[node.id] = { lines: tokenLines, subtotal: tokenSub, category };
+      continue;
+    }
+
     // Explicit manual price override on a cloud node
     if (node.config.pricing?.manualUnitPrice !== undefined) {
       const unit =
@@ -1327,6 +1432,8 @@ export function estimateMonthlyCost(
           scaledReadUnits,
           scaledWriteUnits,
           scaledGbSeconds,
+          scaledTokensIn,
+          scaledTokensOut,
         });
 
         lines.push({
@@ -1357,6 +1464,8 @@ export function estimateMonthlyCost(
         scaledReadUnits,
         scaledWriteUnits,
         scaledGbSeconds,
+        scaledTokensIn,
+        scaledTokensOut,
         matchedAttrs: sampleRow.attrs,
       });
 

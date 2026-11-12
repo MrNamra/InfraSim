@@ -18,3 +18,5 @@ export * from './profileKey.js';
 export * from './profiler.js';
 export * from './scenarioScript.js';
 export * from './scenarioThresholds.js';
+export * from './aiProfiles.js';
+export * from './aiMocks.js';

@@ -358,6 +358,9 @@ export const designJsonSchema = {
         "ai": {
           "type": "object",
           "properties": {
+            "modelLabel": {
+              "type": "string"
+            },
             "profile": {
               "type": "string",
               "enum": [
@@ -386,6 +389,12 @@ export const designJsonSchema = {
             },
             "contentFilterRate": {
               "type": "number"
+            },
+            "countMaxTokensUpfront": {
+              "type": "boolean"
+            },
+            "outputTokens": {
+              "$ref": "#/definitions/LatencyModel"
             },
             "responseShape": {
               "type": "string",
@@ -421,6 +430,9 @@ export const designJsonSchema = {
               "type": "number"
             },
             "dimensions": {
+              "type": "number"
+            },
+            "topK": {
               "type": "number"
             },
             "passages": {
@@ -484,6 +496,12 @@ export const designJsonSchema = {
             },
             "manualUnit": {
               "type": "string"
+            },
+            "manualInputPricePer1M": {
+              "type": "number"
+            },
+            "manualOutputPricePer1M": {
+              "type": "number"
             }
           },
           "additionalProperties": false

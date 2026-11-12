@@ -13,6 +13,11 @@ import type {
 import { resolveNodePlacement } from '@infrasim/sim-engine';
 import { getInstanceSpec, listInstanceSpecs, listRegionsForProvider } from '@infrasim/cost-engine';
 import {
+  AI_MODEL_PROFILES,
+  type AiProfileId,
+  estimateTypicalFullResponseMs,
+} from '@infrasim/sandbox/ai-profiles';
+import {
   RUNTIME_PRESET_SPECS,
   computeTheoreticalMaxRps,
   getEffectiveServiceDefaults,
@@ -66,6 +71,19 @@ export function ConfigTab({
   const isCacheLike = kind === 'cache' || kind === 'cdn';
   const isLb = kind === 'lb';
   const isQueueLike = kind === 'queue' || kind === 'topic' || kind === 'stream' || kind === 'bus';
+  const isLlm = kind === 'llm';
+  const isRagSearch = kind === 'search';
+  const isAsyncJobKind = kind === 'async' || kind === 'speech';
+  const isAiSectionKind =
+    isLlm ||
+    kind === 'ml' ||
+    kind === 'vision' ||
+    kind === 'speech' ||
+    kind === 'text-ai' ||
+    kind === 'doc-ai' ||
+    kind === 'bot' ||
+    isAsyncJobKind ||
+    isRagSearch;
 
   const runtimePreset = cfg.runtimePreset ?? defaults.runtimePreset;
   const maxInFlight = cfg.maxInFlightPerInstance ?? defaults.maxInFlightPerInstance;
@@ -1037,6 +1055,286 @@ export function ConfigTab({
                 <span>Send failed messages to dead-letter queue (DLQ)</span>
               </label>
             </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* AI, RAG & async mock settings */}
+      {isAiSectionKind ? (
+        <section
+          data-testid="ai-config-section"
+          className="space-y-2.5 border-t border-[var(--border-hairline)] pt-3"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+              {isRagSearch
+                ? 'Vector search & RAG'
+                : isLlm
+                  ? 'AI model & quotas'
+                  : 'AI & batch behavior'}
+            </span>
+          </div>
+
+          {isLlm ? (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="text-[11px] text-[var(--text-muted)]">Model profile</span>
+                  <select
+                    aria-label="AI model profile"
+                    value={cfg.ai?.profile ?? 'balanced'}
+                    onChange={(e) => {
+                      const nextProf = e.target.value as AiProfileId;
+                      onUpdateConfig((d) => {
+                        d.ai = { ...(d.ai ?? {}), profile: nextProf };
+                      });
+                    }}
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+                  >
+                    {Object.values(AI_MODEL_PROFILES).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label} ({p.ttftP50Ms}ms TTFT)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-[11px] text-[var(--text-muted)]">Capacity mode</span>
+                  <select
+                    aria-label="AI capacity mode"
+                    value={cfg.ai?.capacityMode ?? 'on-demand'}
+                    onChange={(e) => {
+                      const mode = e.target.value as 'on-demand' | 'provisioned';
+                      onUpdateConfig((d) => {
+                        d.ai = { ...(d.ai ?? {}), capacityMode: mode };
+                      });
+                    }}
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+                  >
+                    <option value="on-demand">on-demand</option>
+                    <option value="provisioned">provisioned</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 py-1.5 font-mono text-[11px] tabular-nums text-[var(--text-secondary)]">
+                Typical full response: ~
+                {(
+                  estimateTypicalFullResponseMs(cfg.ai?.profile ?? 'balanced', 500, 250) / 1000
+                ).toFixed(1)}{' '}
+                s
+              </div>
+
+              {cfg.ai?.capacityMode === 'provisioned' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-[11px] text-[var(--text-muted)]">Provisioned units</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={cfg.ai?.provisionedUnits ?? 1}
+                      onChange={(e) => {
+                        const n = Math.max(1, Math.round(Number(e.target.value)));
+                        if (Number.isFinite(n)) {
+                          onUpdateConfig((d) => {
+                            d.ai = { ...(d.ai ?? {}), provisionedUnits: n };
+                          });
+                        }
+                      }}
+                      className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] text-[var(--text-muted)]">Tokens/s per unit</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={cfg.ai?.tokensPerSecPerUnit ?? 70}
+                      onChange={(e) => {
+                        const n = Math.max(1, Math.round(Number(e.target.value)));
+                        if (Number.isFinite(n)) {
+                          onUpdateConfig((d) => {
+                            d.ai = { ...(d.ai ?? {}), tokensPerSecPerUnit: n };
+                          });
+                        }
+                      }}
+                      className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                    />
+                  </label>
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="text-[11px] text-[var(--text-muted)]">TPM quota</span>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Unlimited"
+                    value={cfg.rateLimit?.tpm ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      onUpdateConfig((d) => {
+                        d.rateLimit = { ...(d.rateLimit ?? {}) };
+                        if (!raw) delete d.rateLimit.tpm;
+                        else {
+                          const n = Number(raw);
+                          if (Number.isFinite(n) && n >= 0) d.rateLimit.tpm = Math.round(n);
+                        }
+                      });
+                    }}
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-[var(--text-muted)]">RPM quota</span>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Unlimited"
+                    value={cfg.rateLimit?.rpm ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      onUpdateConfig((d) => {
+                        d.rateLimit = { ...(d.rateLimit ?? {}) };
+                        if (!raw) delete d.rateLimit.rpm;
+                        else {
+                          const n = Number(raw);
+                          if (Number.isFinite(n) && n >= 0) d.rateLimit.rpm = Math.round(n);
+                        }
+                      });
+                    }}
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-[var(--text-muted)]">Max context tokens</span>
+                  <input
+                    type="number"
+                    min={128}
+                    value={
+                      cfg.rateLimit?.maxContextTokens ??
+                      AI_MODEL_PROFILES[cfg.ai?.profile ?? 'balanced'].contextWindow
+                    }
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (Number.isFinite(n) && n >= 1) {
+                        onUpdateConfig((d) => {
+                          d.rateLimit = { ...(d.rateLimit ?? {}), maxContextTokens: Math.round(n) };
+                        });
+                      }
+                    }}
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-[var(--text-muted)]">Response mode</span>
+                  <select
+                    aria-label="AI response mode"
+                    value={cfg.ai?.responseMode ?? 'template'}
+                    onChange={(e) =>
+                      onUpdateConfig((d) => {
+                        d.ai = {
+                          ...(d.ai ?? {}),
+                          responseMode: e.target.value as NonNullable<
+                            NodeConfig['ai']
+                          >['responseMode'],
+                        };
+                      })
+                    }
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)]"
+                  >
+                    <option value="template">template</option>
+                    <option value="fixed">fixed</option>
+                    <option value="echo">echo</option>
+                    <option value="json-fill">json-fill</option>
+                    <option value="tool-call">tool-call</option>
+                    <option value="sequence">sequence</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="text-[11px] text-[var(--text-muted)]">Response shape</span>
+                  <select
+                    aria-label="AI response shape"
+                    value={cfg.ai?.responseShape ?? 'provider'}
+                    onChange={(e) =>
+                      onUpdateConfig((d) => {
+                        d.ai = {
+                          ...(d.ai ?? {}),
+                          responseShape: e.target.value as 'provider' | 'normalized',
+                        };
+                      })
+                    }
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)]"
+                  >
+                    <option value="provider">provider</option>
+                    <option value="normalized">normalized</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-[var(--text-muted)]">Stream chunk tokens</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={cfg.ai?.chunkTokens ?? 4}
+                    onChange={(e) => {
+                      const n = Math.max(1, Math.round(Number(e.target.value)));
+                      if (Number.isFinite(n)) {
+                        onUpdateConfig((d) => {
+                          d.ai = { ...(d.ai ?? {}), chunkTokens: n };
+                        });
+                      }
+                    }}
+                    className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+                  />
+                </label>
+              </div>
+            </>
+          ) : null}
+
+          {isRagSearch ? (
+            <label className="block">
+              <span className="text-[11px] text-[var(--text-muted)]">Vector search topK</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={cfg.ai?.topK ?? 3}
+                onChange={(e) => {
+                  const n = Math.max(1, Math.min(20, Math.round(Number(e.target.value))));
+                  if (Number.isFinite(n)) {
+                    onUpdateConfig((d) => {
+                      d.ai = { ...(d.ai ?? {}), topK: n };
+                    });
+                  }
+                }}
+                className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+              />
+            </label>
+          ) : null}
+
+          {isAsyncJobKind ? (
+            <label className="block">
+              <span className="text-[11px] text-[var(--text-muted)]">Async job duration (ms)</span>
+              <input
+                type="number"
+                min={100}
+                value={cfg.ai?.jobDurationMs ?? 5000}
+                onChange={(e) => {
+                  const n = Math.max(100, Math.round(Number(e.target.value)));
+                  if (Number.isFinite(n)) {
+                    onUpdateConfig((d) => {
+                      d.ai = { ...(d.ai ?? {}), jobDurationMs: n };
+                    });
+                  }
+                }}
+                className="mt-1 h-8 w-full rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[12px] tabular-nums text-[var(--text-primary)]"
+              />
+            </label>
           ) : null}
         </section>
       ) : null}

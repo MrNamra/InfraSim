@@ -9,6 +9,7 @@ import type { LogEntry, NodeInstance } from '@infrasim/shared-types';
 import { bundleUserScript } from './bundler.js';
 import { buildGuestPrelude } from './guestPrelude.js';
 import { createMockCallResolver } from './mockResolver.js';
+import './aiMocks.js';
 import { attachProviderPlatformLogs } from './platformLogs.js';
 import { createSeededPrng, hashSeedParts } from './prng.js';
 import { SourceMapTranslator } from './sourceMap.js';

@@ -216,6 +216,13 @@ interface CallCtx {
   livePlan?: CallPlan;
   liveUserFailed?: boolean;
   liveCpuMs?: number;
+  aiExec?: {
+    ttftMs: number;
+    decodeMs: number;
+    tokensIn: number;
+    tokensOut: number;
+    isStream: boolean;
+  };
   onFinish?: (outcome: CallOutcome) => void;
 }
 
@@ -304,6 +311,10 @@ interface RuntimeNode {
   totalReadUnits: number;
   totalWriteUnits: number;
   totalGbSeconds: number;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  aiRpmBucket: TokenBucket | null;
+  aiTpmBucket: TokenBucket | null;
   totalInstanceSeconds: number;
   sumUtil: number;
   sumCpuUtil: number;
@@ -343,6 +354,55 @@ interface RuntimeNode {
 }
 
 const DEFAULT_EDGE_BASE_RETRY_MAX = 0;
+
+interface AiSimProfileSpec {
+  ttftP50: number;
+  ttftP95: number;
+  tokensPerSec: number;
+  prefillMsPerToken: number;
+  contextWindow: number;
+}
+
+const AI_SIM_PROFILES: Record<
+  'small-fast' | 'balanced' | 'large' | 'reasoning' | 'embedding',
+  AiSimProfileSpec
+> = {
+  'small-fast': {
+    ttftP50: 300,
+    ttftP95: 900,
+    tokensPerSec: 120,
+    prefillMsPerToken: 0.02,
+    contextWindow: 128_000,
+  },
+  balanced: {
+    ttftP50: 500,
+    ttftP95: 1800,
+    tokensPerSec: 70,
+    prefillMsPerToken: 0.03,
+    contextWindow: 200_000,
+  },
+  large: {
+    ttftP50: 800,
+    ttftP95: 3000,
+    tokensPerSec: 45,
+    prefillMsPerToken: 0.04,
+    contextWindow: 200_000,
+  },
+  reasoning: {
+    ttftP50: 3000,
+    ttftP95: 15000,
+    tokensPerSec: 40,
+    prefillMsPerToken: 0.04,
+    contextWindow: 200_000,
+  },
+  embedding: {
+    ttftP50: 60,
+    ttftP95: 200,
+    tokensPerSec: 0,
+    prefillMsPerToken: 0.005,
+    contextWindow: 8_000,
+  },
+};
 
 function nowWallMs(): number {
   return typeof performance !== 'undefined' ? performance.now() : 0;
@@ -602,6 +662,24 @@ export async function runSimulation(
       totalReadUnits: 0,
       totalWriteUnits: 0,
       totalGbSeconds: 0,
+      totalTokensIn: 0,
+      totalTokensOut: 0,
+      aiRpmBucket:
+        n.config.rateLimit?.rpm !== undefined && n.config.rateLimit.rpm > 0
+          ? createTokenBucket(
+              n.config.rateLimit.rpm / (60 * scaleFactor),
+              Math.max(1, n.config.rateLimit.rpm / scaleFactor),
+              0,
+            )
+          : null,
+      aiTpmBucket:
+        n.config.rateLimit?.tpm !== undefined && n.config.rateLimit.tpm > 0
+          ? createTokenBucket(
+              n.config.rateLimit.tpm / (60 * scaleFactor),
+              Math.max(1, n.config.rateLimit.tpm / scaleFactor),
+              0,
+            )
+          : null,
       totalInstanceSeconds: 0,
       sumUtil: 0,
       sumCpuUtil: 0,
@@ -1114,6 +1192,36 @@ export async function runSimulation(
           zombie: 1,
         };
       }
+      if (ok && call.aiExec && call.aiExec.isStream && call.parentTraceSpans) {
+        call.parentTraceSpans.push(
+          {
+            spanId: `${call.span.spanId}-ttft`,
+            parentId: call.span.spanId,
+            nodeId: rn.node.id,
+            operation: `${call.opName ?? 'InvokeStream'} (ttft)`,
+            startMs: Number(call.serviceStartMs.toFixed(2)),
+            waitMs: call.span.waitMs,
+            serviceMs: Number(call.aiExec.ttftMs.toFixed(2)),
+            status: 'ok',
+            attrs: { phase: 'ttft' },
+          },
+          {
+            spanId: `${call.span.spanId}-decode`,
+            parentId: call.span.spanId,
+            nodeId: rn.node.id,
+            operation: `${call.opName ?? 'InvokeStream'} (decode)`,
+            startMs: Number((call.serviceStartMs + call.aiExec.ttftMs).toFixed(2)),
+            waitMs: 0,
+            serviceMs: Number(call.aiExec.decodeMs.toFixed(2)),
+            status: 'ok',
+            attrs: { phase: 'decode' },
+          },
+        );
+      }
+    }
+    if (ok && call.aiExec) {
+      rn.totalTokensIn += call.aiExec.tokensIn;
+      rn.totalTokensOut += call.aiExec.tokensOut;
     }
   };
 
@@ -1930,10 +2038,10 @@ export async function runSimulation(
       return;
     }
 
-    // Serverless cold-start overhead if no warm container available
+    // Serverless or scale-to-zero ML cold-start overhead if no warm container available
     let coldExtraMs = 0;
-    const coldCfg = rn.kind === 'fn' ? rn.resolvedColdStart : undefined;
-    if (rn.kind === 'fn' && coldCfg?.enabled) {
+    const coldCfg = rn.kind === 'fn' || rn.kind === 'ml' ? rn.resolvedColdStart : undefined;
+    if ((rn.kind === 'fn' || rn.kind === 'ml') && coldCfg?.enabled) {
       while (rn.warmExpiryMs.length > 0 && rn.warmExpiryMs[0]! <= now) {
         rn.warmExpiryMs.shift();
       }
@@ -1975,9 +2083,32 @@ export async function runSimulation(
       return;
     }
 
-    // Cache / CDN / GW / LB / KV / DNS / Net local overhead
-    const serviceMs = sampleNodeServiceLatency(rn, false, call.opName) + coldExtraMs;
-    schedule(now + serviceMs, { kind: 'END_LOCAL_WAIT', call });
+    // AI / LLM token-profiled timing & two-span streaming
+    if (rn.kind === 'llm' && call.aiExec) {
+      const totalAiMs = clampLatencyMs(
+        call.aiExec.ttftMs + call.aiExec.decodeMs + rn.chaosExtraLatencyMs,
+      );
+      schedule(now + totalAiMs, { kind: 'END_LOCAL_WAIT', call });
+      return;
+    }
+
+    // Cache / CDN / GW / LB / KV / DNS / Net / other AI local overhead
+    let serviceMs = sampleNodeServiceLatency(rn, false, call.opName) + coldExtraMs;
+    if (rn.kind === 'ml') {
+      serviceMs += (call.payloadBytes / (10 * 1024 * 1024)) * 1000;
+    } else if (rn.kind === 'vision') {
+      const imageMb = Math.max(0.1, call.payloadBytes / (1024 * 1024));
+      serviceMs += 40 * imageMb;
+    } else if (rn.kind === 'doc-ai') {
+      serviceMs += 400;
+    } else if (rn.kind === 'text-ai') {
+      serviceMs += 0.02 * Math.max(64, call.payloadBytes);
+    } else if (rn.kind === 'speech' && call.opName !== 'Start' && call.opName !== 'GetStatus') {
+      serviceMs = Math.max(serviceMs, 0.3 * 5 * 1000);
+    } else if (rn.kind === 'async' && call.opName !== 'Start' && call.opName !== 'GetStatus') {
+      serviceMs = Math.max(serviceMs, 25);
+    }
+    schedule(now + clampLatencyMs(serviceMs), { kind: 'END_LOCAL_WAIT', call });
   }
 
   function resumeComputeAfterLiveCode(call: CallCtx, coldExtraMs: number) {
@@ -2092,6 +2223,13 @@ export async function runSimulation(
       svcCounts.set(e.toNode.node.serviceId, (svcCounts.get(e.toNode.node.serviceId) ?? 0) + 1);
     }
     const steps: PlanStep[] = out.calls.map((c) => {
+      if (c.tokens && c.targetNodeId) {
+        const tgt = runtimeNodes.get(c.targetNodeId);
+        if (tgt) {
+          tgt.totalTokensIn += c.tokens.in;
+          tgt.totalTokensOut += c.tokens.out;
+        }
+      }
       const sameCount = svcCounts.get(c.serviceId) ?? 0;
       const pinAlias = c.alias ?? (sameCount > 1 && c.targetNodeId ? c.targetNodeId : undefined);
       return {
@@ -2159,6 +2297,103 @@ export async function runSimulation(
       call.settledWithCaller = true;
       call.onFinish?.({ ok: false, errorKind: 'throttled', bytesOut: 0 });
       return;
+    }
+
+    // AI RPM / TPM / context-window quotas & LLM timing pre-calculation
+    if (rn.aiRpmBucket && !tryConsumeToken(rn.aiRpmBucket, now, 1)) {
+      recordNodeOutcome(call, false, 'throttled');
+      call.settledWithCaller = true;
+      call.onFinish?.({ ok: false, errorKind: 'throttled', bytesOut: 0 });
+      return;
+    }
+    if (rn.kind === 'llm' || rn.aiTpmBucket) {
+      const isEmbed =
+        call.opName === 'Embed' ||
+        rn.node.serviceId === 'oci.genai_embed' ||
+        rn.node.config.ai?.profile === 'embedding';
+      const profKey = isEmbed ? 'embedding' : (rn.node.config.ai?.profile ?? 'balanced');
+      const prof = AI_SIM_PROFILES[profKey] ?? AI_SIM_PROFILES.balanced;
+      const tokensIn = Math.max(1, Math.ceil(call.payloadBytes / 4));
+      let tokensOut = 0;
+      let thinkingToks = 0;
+      if (!isEmbed) {
+        const outModel = rn.node.config.ai?.outputTokens ?? {
+          distribution: 'lognormal',
+          p50: 180,
+          p95: 420,
+        };
+        tokensOut = Math.max(1, Math.round(sampleLatency(outModel, rn.latencyRng)));
+        const maxOutCap = rn.node.config.rateLimit?.maxOutputTokens;
+        if (maxOutCap !== undefined && maxOutCap > 0) {
+          tokensOut = Math.min(tokensOut, maxOutCap);
+        }
+        if (profKey === 'reasoning') {
+          thinkingToks = Math.max(
+            32,
+            Math.round(
+              sampleLatency({ distribution: 'lognormal', p50: 400, p95: 1400 }, rn.latencyRng),
+            ),
+          );
+        }
+      }
+
+      const maxContext = rn.node.config.rateLimit?.maxContextTokens ?? prof.contextWindow;
+      const reserveOut = isEmbed ? 0 : (rn.node.config.rateLimit?.maxOutputTokens ?? tokensOut);
+      if (tokensIn + reserveOut > maxContext) {
+        if (call.span) {
+          call.span.attrs = { ...(call.span.attrs ?? {}), errorCode: 'context_length_exceeded' };
+        }
+        recordNodeOutcome(call, false, 'server');
+        call.settledWithCaller = true;
+        call.onFinish?.({ ok: false, errorKind: 'server', bytesOut: 0 });
+        return;
+      }
+
+      const countUpfront = Boolean(
+        rn.node.config.rateLimit?.countMaxTokensUpfront ?? rn.node.config.ai?.countMaxTokensUpfront,
+      );
+      const tpmNeeded =
+        (countUpfront ? tokensIn + reserveOut : tokensIn + tokensOut + thinkingToks) / scaleFactor;
+      if (rn.aiTpmBucket && !tryConsumeToken(rn.aiTpmBucket, now, Math.max(1, tpmNeeded))) {
+        recordNodeOutcome(call, false, 'throttled');
+        call.settledWithCaller = true;
+        call.onFinish?.({ ok: false, errorKind: 'throttled', bytesOut: 0 });
+        return;
+      }
+
+      if (rn.kind === 'llm') {
+        const customLat = rn.node.config.ai?.profile ? undefined : rn.node.config.latency;
+        const ttftModel = customLat ?? {
+          distribution: 'lognormal' as const,
+          p50: prof.ttftP50,
+          p95: prof.ttftP95,
+        };
+        let ttftMs = sampleLatency(ttftModel, rn.latencyRng) + tokensIn * prof.prefillMsPerToken;
+        let effectiveTps = prof.tokensPerSec > 0 ? prof.tokensPerSec : 70;
+        if (rn.node.config.ai?.capacityMode === 'provisioned') {
+          const units = Math.max(1, rn.node.config.ai.provisionedUnits ?? 1);
+          const tpsPerUnit = Math.max(1, rn.node.config.ai.tokensPerSecPerUnit ?? effectiveTps);
+          const activeStreams = rn.station.inFlight + 1;
+          effectiveTps = activeStreams > units ? (units * tpsPerUnit) / activeStreams : tpsPerUnit;
+        } else {
+          const slowdownProb = Math.max(0, Math.min(1, rn.node.config.ai?.slowdownProb ?? 0.02));
+          if (slowdownProb > 0 && rn.latencyRng.chance(slowdownProb)) {
+            const mult = 2 + rn.latencyRng.next() * 2;
+            ttftMs *= mult;
+            effectiveTps /= mult;
+          }
+        }
+        const decodeMs = isEmbed
+          ? 0.5
+          : ((tokensOut + thinkingToks) / Math.max(1, effectiveTps)) * 1000;
+        call.aiExec = {
+          ttftMs,
+          decodeMs,
+          tokensIn,
+          tokensOut: tokensOut + thinkingToks,
+          isStream: call.opName === 'InvokeStream',
+        };
+      }
     }
 
     const slotRes = tryAcquireOrEnqueueSlot(rn.station, call, now);
@@ -3163,6 +3398,8 @@ export async function runSimulation(
       instanceSeconds: Number(rn.totalInstanceSeconds.toFixed(2)),
       bytesIn: rn.totalBytesIn * scaleFactor,
       bytesOut: rn.totalBytesOut * scaleFactor,
+      ...(rn.totalTokensIn > 0 ? { tokensIn: Math.round(rn.totalTokensIn * scaleFactor) } : {}),
+      ...(rn.totalTokensOut > 0 ? { tokensOut: Math.round(rn.totalTokensOut * scaleFactor) } : {}),
       ...(rn.totalReadUnits > 0 ? { readUnits: rn.totalReadUnits * scaleFactor } : {}),
       ...(rn.totalWriteUnits > 0 ? { writeUnits: rn.totalWriteUnits * scaleFactor } : {}),
       ...(rn.totalGbSeconds > 0

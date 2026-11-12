@@ -111,12 +111,15 @@ export interface NodeConfig {
     dlq: boolean;
   };
   ai?: {
+    modelLabel?: string;
     profile?: 'small-fast' | 'balanced' | 'large' | 'reasoning' | 'embedding';
     capacityMode?: 'on-demand' | 'provisioned';
     provisionedUnits?: number;
     tokensPerSecPerUnit?: number;
     slowdownProb?: number;
     contentFilterRate?: number;
+    countMaxTokensUpfront?: boolean;
+    outputTokens?: LatencyModel;
     responseShape?: 'provider' | 'normalized';
     responseMode?: 'fixed' | 'template' | 'echo' | 'json-fill' | 'tool-call' | 'sequence';
     sequenceResponses?: string[];
@@ -124,6 +127,7 @@ export interface NodeConfig {
     jobDurationMs?: number;
     chunkTokens?: number;
     dimensions?: number;
+    topK?: number;
     passages?: { id: string; text: string; score: number }[];
   };
   httpAliases?: Record<string, string>;
@@ -139,6 +143,8 @@ export interface NodeConfig {
     skuKey?: string;
     manualUnitPrice?: number;
     manualUnit?: string;
+    manualInputPricePer1M?: number;
+    manualOutputPricePer1M?: number;
   };
   notes?: string;
 }

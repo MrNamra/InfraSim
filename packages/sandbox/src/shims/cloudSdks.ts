@@ -291,7 +291,7 @@ export class BedrockRuntimeClient {
       const wrappedStream = {
         async *[Symbol.asyncIterator]() {
           for await (const chunk of rawStream) {
-            if (chunk && typeof chunk === 'object' && (chunk.contentBlockDelta || chunk.chunk || chunk.messageStop)) {
+            if (chunk && typeof chunk === 'object' && (chunk.contentBlockDelta || chunk.chunk || chunk.messageStop || chunk.messageStart || chunk.metadata)) {
               yield chunk;
             } else {
               const text = typeof chunk === 'string'
