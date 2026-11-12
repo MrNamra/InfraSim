@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChallengeController;
 use App\Http\Controllers\CustomServiceController;
 use App\Http\Controllers\DesignController;
+use App\Http\Controllers\ExplainController;
 use App\Http\Controllers\FixtureController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PriceController;
@@ -59,5 +60,7 @@ Route::middleware('throttle:api')->group(function (): void {
         Route::post('/fixtures', [FixtureController::class, 'store']);
         Route::put('/fixtures/{fixture}', [FixtureController::class, 'update']);
         Route::delete('/fixtures/{fixture}', [FixtureController::class, 'destroy']);
+
+        Route::post('/explain', [ExplainController::class, 'explain'])->middleware('throttle:explain');
     });
 });

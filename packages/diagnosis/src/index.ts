@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './patch.js';
 export * from './causalDag.js';
 export * from './engine.js';
+export * from './explainer.js';
 export * from './rules/capacity.js';
 export * from './rules/cost.js';
 export * from './rules/database.js';

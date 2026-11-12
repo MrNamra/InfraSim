@@ -2728,6 +2728,7 @@ export function EditorShell() {
                   previousMonthlyCost={previousMonthlyCost}
                   appliedFixLabel={appliedFixLabel}
                   isRunning={simStatus === 'running'}
+                  token={token}
                   onApplyPatchedDesign={handleApplyPatchedDesign}
                   onRerunVerify={handleRerunVerify}
                   onSelectNodeWhy={(nodeId) => handleInspectNode(nodeId, 'why')}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AlertOctagon,
   AlertTriangle,
@@ -10,10 +10,12 @@ import {
   ChevronUp,
   Crosshair,
   Info,
+  MessageSquare,
   Play,
+  Send,
   Wrench,
 } from 'lucide-react';
-import { applyJsonPatch } from '@infrasim/diagnosis';
+import { applyJsonPatch, buildExplainSummaryPayload } from '@infrasim/diagnosis';
 import type {
   Design,
   FixSuggestion,
@@ -24,6 +26,7 @@ import type {
   SimulationResult,
 } from '@infrasim/shared-types';
 import { Button } from '@infrasim/ui-kit';
+import { explainInsightsApi, type ExplainApiResponse } from '../../lib/api';
 import { formatMoney } from '../../lib/costFormat';
 import { computeTheoreticalMaxRps } from '../../lib/nodeDefaults';
 
@@ -37,6 +40,7 @@ export interface WhyTabProps {
   previousMonthlyCost?: { total: number; currency: string } | null;
   appliedFixLabel: string | null;
   isRunning: boolean;
+  token?: string | null;
   onApplyPatchedDesign: (nextDesign: Design, fixLabel: string) => void;
   onRerunVerify: () => void;
   onSelectNodeWhy?: (nodeId: string) => void;
@@ -104,14 +108,54 @@ export function WhyTab({
   previousMonthlyCost,
   appliedFixLabel,
   isRunning,
+  token,
   onApplyPatchedDesign,
   onRerunVerify,
   onSelectNodeWhy,
 }: WhyTabProps) {
   const [expandedRuleIds, setExpandedRuleIds] = useState<Record<string, boolean>>({});
   const [expandedDiffKey, setExpandedDiffKey] = useState<string | null>(null);
+  const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiResponse, setAiResponse] = useState<ExplainApiResponse | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const theoretical = computeTheoreticalMaxRps(node.config, service);
+
+  const explainPayload = useMemo(() => {
+    if (!result) return null;
+    return buildExplainSummaryPayload({
+      design,
+      result,
+      insights: result.insights,
+      monthlyCostUsd: currentMonthlyCost ? currentMonthlyCost.total : null,
+      focusNodeId: node.id,
+      maxInsights: 5,
+    });
+  }, [design, result, currentMonthlyCost, node.id]);
+
+  const handleSendExplain = async () => {
+    if (!explainPayload) return;
+    if (!token) {
+      setAiError('Sign in first to call /api/explain (EXPLAIN_ENABLED=false by default).');
+      return;
+    }
+    setAiBusy(true);
+    setAiError(null);
+    try {
+      const res = await explainInsightsApi(token, explainPayload);
+      setAiResponse(res);
+      if (!res.enabled) {
+        setAiError(
+          res.message ?? 'AI explainer is disabled on this server (EXPLAIN_ENABLED=false).',
+        );
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Unable to fetch explanation.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   if (!result) {
     return (
@@ -430,6 +474,93 @@ export function WhyTab({
           })}
         </div>
       )}
+
+      {explainPayload ? (
+        <div
+          data-testid="why-rephrase-panel"
+          className="rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-3"
+        >
+          <button
+            type="button"
+            data-testid="why-rephrase-toggle"
+            onClick={() => setAiPreviewOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between gap-2 text-left text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+              <span>Rephrase with AI (optional)</span>
+            </span>
+            {aiPreviewOpen ? (
+              <ChevronUp className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+            )}
+          </button>
+
+          {aiPreviewOpen ? (
+            <div className="mt-2.5 space-y-2 border-t border-[var(--border-hairline)] pt-2.5">
+              <p className="text-[11px] leading-4 text-[var(--text-muted)]">
+                Exact JSON summary that will be sent (no code, environment variables, secrets, or
+                fixtures):
+              </p>
+              <pre
+                data-testid="explain-payload-preview"
+                className="max-h-40 overflow-auto rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-2 font-mono text-[10px] leading-4 text-[var(--text-secondary)]"
+              >
+                {JSON.stringify(explainPayload, null, 2)}
+              </pre>
+
+              <div className="flex items-center justify-between gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  data-testid="why-rephrase-send"
+                  disabled={aiBusy}
+                  onClick={() => void handleSendExplain()}
+                  className="h-7 px-2.5 text-[11px]"
+                >
+                  <Send className="h-3 w-3" strokeWidth={1.5} />
+                  <span>{aiBusy ? 'Sending...' : 'Send summary'}</span>
+                </Button>
+                <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                  POST /api/explain
+                </span>
+              </div>
+
+              {aiError ? (
+                <div
+                  data-testid="why-rephrase-error"
+                  className="rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2.5 py-2 text-[11px] text-[var(--text-secondary)]"
+                >
+                  {aiError}
+                </div>
+              ) : null}
+
+              {aiResponse?.enabled && aiResponse.explanation ? (
+                <div
+                  data-testid="why-rephrase-result"
+                  className="space-y-2 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-2.5"
+                >
+                  <div className="text-[10px] font-medium text-[var(--text-muted)]">
+                    {aiResponse.label ??
+                      'AI-written explanation — rules above are the source of truth'}
+                  </div>
+                  <p className="text-[11px] leading-4 text-[var(--text-primary)]">
+                    {aiResponse.explanation}
+                  </p>
+                  {aiResponse.nextSteps && aiResponse.nextSteps.length > 0 ? (
+                    <ul className="list-disc space-y-1 pl-4 text-[11px] text-[var(--text-secondary)]">
+                      {aiResponse.nextSteps.map((step, i) => (
+                        <li key={i}>{step}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

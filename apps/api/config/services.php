@@ -39,4 +39,11 @@ return [
         ],
     ],
 
+    'explain' => [
+        'enabled' => filter_var(env('EXPLAIN_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'key' => env('EXPLAIN_PROVIDER_KEY'),
+        'url' => env('EXPLAIN_PROVIDER_URL'),
+        'model' => env('EXPLAIN_MODEL', 'gpt-4o-mini'),
+    ],
+
 ];

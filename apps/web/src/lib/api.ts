@@ -10,6 +10,7 @@ import type {
   FixtureTemplateId,
   PayloadFixture,
 } from '@infrasim/shared-types';
+import type { ExplainSummaryPayload } from '@infrasim/diagnosis';
 
 export interface AuthUser {
   id: number;
@@ -514,4 +515,48 @@ export async function fetchSharedDesignApi(shareToken: string): Promise<{
     design: { id: string; name: string; version: number; doc: Design; updatedAt?: string };
   }>(`/api/shared/${encodeURIComponent(shareToken)}`);
   return res.design;
+}
+
+export interface ExplainApiResponse {
+  enabled: boolean;
+  cached?: boolean;
+  label?: string;
+  explanation?: string;
+  nextSteps?: string[];
+  message?: string;
+}
+
+/** Optional AI rephraser call — disabled on server by default (`EXPLAIN_ENABLED=false`). */
+export async function explainInsightsApi(
+  token: string,
+  summary: ExplainSummaryPayload,
+): Promise<ExplainApiResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/api/explain`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(summary),
+  });
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (response.status === 503 && data.enabled === false) {
+    return {
+      enabled: false,
+      message:
+        typeof data.message === 'string'
+          ? data.message
+          : 'AI explainer is disabled on this server (EXPLAIN_ENABLED=false).',
+    };
+  }
+  if (!response.ok) {
+    throw new Error(
+      typeof data.message === 'string'
+        ? data.message
+        : `Explainer request failed (${response.status})`,
+    );
+  }
+  return data as unknown as ExplainApiResponse;
 }
