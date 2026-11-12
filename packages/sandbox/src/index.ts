@@ -6,4 +6,5 @@ export * from './sourceMap.js';
 export * from './guestPrelude.js';
 export * from './shims/allowlistLibs.js';
 export * from './bundler.js';
+export * from './mockResolver.js';
 export * from './runtime.js';

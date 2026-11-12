@@ -8,6 +8,7 @@ import {
 import type { LogEntry, NodeInstance } from '@infrasim/shared-types';
 import { bundleUserScript } from './bundler.js';
 import { buildGuestPrelude } from './guestPrelude.js';
+import { createMockCallResolver } from './mockResolver.js';
 import { createSeededPrng, hashSeedParts } from './prng.js';
 import { SourceMapTranslator } from './sourceMap.js';
 import {
@@ -106,30 +107,6 @@ function parseFirstSiteFromStack(
   return undefined;
 }
 
-function resolveDefaultFallbackMock(invocation: MockCallInvocation): MockCallOutcome {
-  if (invocation.kind === 'http') {
-    return {
-      ok: false,
-      latencyMs: 5,
-      serviceId: invocation.serviceId ?? 'http',
-      op: invocation.method ?? 'GET',
-      error: {
-        category: 'MockNotConfigured',
-        name: 'MockNotConfigured',
-        message: `No mock for ${invocation.url ?? 'URL'}. Add a service or HTTP alias to enable it.`,
-        statusCode: 502,
-      },
-    };
-  }
-  return {
-    ok: true,
-    latencyMs: 12,
-    serviceId: invocation.serviceId ?? 'unknown',
-    op: invocation.op ?? 'Call',
-    output: {},
-  };
-}
-
 function normalizeQuickJsError(
   errObj: unknown,
   limits: SandboxLimits,
@@ -213,6 +190,11 @@ function normalizeQuickJsError(
   else if (extraCategory === 'ValidationError') category = 'ValidationError';
   else if (extraCategory === 'UnsupportedModule') category = 'UnsupportedModule';
 
+  const details =
+    errObj && typeof errObj === 'object' && 'details' in errObj
+      ? ((errObj as { details?: Record<string, unknown> }).details ?? undefined)
+      : undefined;
+
   return {
     category,
     name: rawName,
@@ -220,6 +202,7 @@ function normalizeQuickJsError(
     ...(stack ? { stack } : {}),
     ...(firstSite ? { site: firstSite } : {}),
     ...(statusCode !== undefined ? { statusCode } : {}),
+    ...(details ? { details } : {}),
   };
 }
 
@@ -451,7 +434,14 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
   };
 
   const resolveMock: MockCallResolver =
-    input.mockResolver ?? ((inv) => resolveDefaultFallbackMock(inv));
+    input.mockResolver ??
+    createMockCallResolver({
+      ...(input.design ? { design: input.design } : {}),
+      ...(input.node ? { node: input.node } : {}),
+      ...(input.customServices ? { customServices: input.customServices } : {}),
+      seed,
+      env: effectiveEnv,
+    });
 
   // Register strict JSON/primitive-only host bindings on globalThis inside QuickJS
   const registerGlobals = () => {
@@ -846,7 +836,7 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
   const __sanitize = globalThis.__infrasimSafeJson || ((x) => x);
   p.then(
     (v) => { globalThis.__infrasimDone = { status: 'fulfilled', value: v === undefined ? null : __sanitize(v) }; },
-    (e) => { globalThis.__infrasimDone = { status: 'rejected', error: { name: e?.name || 'Error', message: e?.message || String(e), stack: e?.stack, category: e?.category, statusCode: e?.statusCode, $metadata: e?.$metadata } }; }
+    (e) => { globalThis.__infrasimDone = { status: 'rejected', error: { name: e?.name || 'Error', message: e?.message || String(e), code: e?.code, stack: e?.stack, category: e?.category, statusCode: e?.statusCode, $metadata: e?.$metadata, details: e?.details } }; }
   );
 })`;
     const watcherFnRes = runTimed(() => ctx.evalCode(settleWatcherCode, 'watcher.js'));

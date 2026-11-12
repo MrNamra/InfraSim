@@ -697,19 +697,39 @@ export function generateVirtualSdkFallbackModule(specifier: string): string | nu
   if (specifier === 'axios') {
     return `
 async function request(cfg) {
-  const res = await globalThis.__infrasimInvokeSdk({
-    kind: 'http',
-    sdkStyle: 'http',
-    method: String(cfg?.method || 'GET').toUpperCase(),
-    url: String(cfg?.url || ''),
-    headers: cfg?.headers || {},
-    body: cfg?.data,
-  });
-  return {
-    data: res?.body !== undefined ? (() => { try { return typeof res.body === 'string' ? JSON.parse(res.body) : res.body; } catch { return res.body; } })() : res,
-    status: typeof res?.statusCode === 'number' ? res.statusCode : 200,
-    headers: res?.headers || {},
-  };
+  try {
+    const res = await globalThis.__infrasimInvokeSdk({
+      kind: 'http',
+      sdkStyle: 'http',
+      method: String(cfg?.method || 'GET').toUpperCase(),
+      url: String(cfg?.url || ''),
+      headers: cfg?.headers || {},
+      body: cfg?.data,
+    });
+    const status = typeof res?.statusCode === 'number' ? res.statusCode : 200;
+    const data = res?.body !== undefined ? (() => { try { return typeof res.body === 'string' ? JSON.parse(res.body) : res.body; } catch { return res.body; } })() : res;
+    if (status >= 400) {
+      const err = new Error('Request failed with status code ' + status);
+      err.isAxiosError = true;
+      err.status = status;
+      err.response = { status, data, headers: res?.headers || {} };
+      throw err;
+    }
+    return {
+      data,
+      status,
+      statusText: status < 300 ? 'OK' : 'Error',
+      headers: res?.headers || {},
+    };
+  } catch (err) {
+    if (err && typeof err === 'object' && !err.isAxiosError) {
+      err.isAxiosError = true;
+      if (!err.response) {
+        err.response = { status: err.statusCode || 500, data: { message: err.message, code: err.code } };
+      }
+    }
+    throw err;
+  }
 }
 const axios = Object.assign(request, {
   request,
