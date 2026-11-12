@@ -5,6 +5,10 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "references": [{ "path": "../shared-types" }, { "path": "../catalog" }],
+  "references": [
+    { "path": "../shared-types" },
+    { "path": "../catalog" },
+    { "path": "../cost-engine" }
+  ],
   "include": ["src/**/*.ts"]
 }
