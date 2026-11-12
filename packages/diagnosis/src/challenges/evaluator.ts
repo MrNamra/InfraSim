@@ -221,8 +221,13 @@ export async function evaluateChallengeAttempt(
 
   const totalRequests = simResult.summary.totalRequests;
   const success = simResult.summary.success;
-  const availability = totalRequests > 0 ? success / totalRequests : 0;
-  const errorRate = totalRequests > 0 ? Math.max(0, 1 - availability) : 1;
+  const errorCount = Object.values(simResult.summary.errors ?? {}).reduce(
+    (sum, n) => sum + (n ?? 0),
+    0,
+  );
+  const resolvedCount = success + errorCount;
+  const availability = resolvedCount > 0 ? success / resolvedCount : 0;
+  const errorRate = resolvedCount > 0 ? errorCount / resolvedCount : 1;
   const p50Ms = round2(simResult.summary.p50);
   const p95Ms = round2(simResult.summary.p95);
   const p99Ms = round2(simResult.summary.p99);

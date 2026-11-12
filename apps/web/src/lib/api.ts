@@ -2,7 +2,11 @@
 
 import type { PriceSnapshot } from '@infrasim/cost-engine';
 import type {
+  CallPlan,
+  Challenge,
+  ChallengeAttemptResult,
   CustomServiceDefinition,
+  Design,
   FixtureTemplateId,
   PayloadFixture,
 } from '@infrasim/shared-types';
@@ -280,4 +284,91 @@ export async function fetchPriceSnapshotApi(
     snapshot: data as unknown as PriceSnapshot,
     etag: nextEtag,
   };
+}
+
+export interface ChallengeProgressSummary {
+  attempts: number;
+  bestScore: number | null;
+  passed: boolean;
+}
+
+export interface ChallengeApiRecord {
+  slug: string;
+  title: string;
+  difficulty: Challenge['difficulty'];
+  definition: Challenge;
+  myProgress: ChallengeProgressSummary | null;
+}
+
+export interface ChallengeAttemptApiResponse {
+  attempt: {
+    id: number;
+    score: number;
+    passed: boolean;
+    seed: number;
+    createdAt?: string;
+  };
+  result: ChallengeAttemptResult;
+  attemptsCount: number;
+  referenceSolutionDesign?: Design;
+  whatThisTeaches?: string;
+}
+
+export interface ChallengeLeaderboardEntry {
+  displayName: string;
+  score: number;
+  monthlyCostUsd: number | null;
+  p95Ms: number | null;
+  createdAt?: string;
+}
+
+/** List published architectural challenges with optional signed-in user progress. */
+export async function fetchChallengesApi(token?: string | null): Promise<ChallengeApiRecord[]> {
+  const res = await apiRequest<{ challenges: ChallengeApiRecord[] }>('/api/challenges', { token });
+  return res.challenges;
+}
+
+/** Submit a design attempt for deterministic server-side Node evaluation. */
+export async function submitChallengeAttemptApi(
+  token: string,
+  slug: string,
+  design: Design,
+  callPlans?: Record<string, CallPlan>,
+): Promise<ChallengeAttemptApiResponse> {
+  return apiRequest<ChallengeAttemptApiResponse>(
+    `/api/challenges/${encodeURIComponent(slug)}/attempts`,
+    {
+      method: 'POST',
+      token,
+      body: JSON.stringify({
+        design,
+        ...(callPlans && Object.keys(callPlans).length > 0 ? { callPlans } : {}),
+      }),
+    },
+  );
+}
+
+/** Reveal the hidden reference solution design for a challenge after user confirmation. */
+export async function revealChallengeSolutionApi(
+  token: string,
+  slug: string,
+): Promise<{ referenceSolutionDesign: Design; whatThisTeaches: string }> {
+  return apiRequest<{ referenceSolutionDesign: Design; whatThisTeaches: string }>(
+    `/api/challenges/${encodeURIComponent(slug)}/reveal`,
+    {
+      method: 'POST',
+      token,
+    },
+  );
+}
+
+/** Fetch public challenge leaderboard ordered by score or monthly cost. */
+export async function fetchChallengeLeaderboardApi(
+  slug: string,
+  sort: 'score' | 'cost' = 'score',
+): Promise<ChallengeLeaderboardEntry[]> {
+  const res = await apiRequest<{ entries: ChallengeLeaderboardEntry[] }>(
+    `/api/challenges/${encodeURIComponent(slug)}/leaderboard?sort=${sort}`,
+  );
+  return res.entries;
 }

@@ -29,11 +29,14 @@ import {
   Square,
   Sun,
   Terminal,
+  Trophy,
   Undo2,
   Upload,
   User,
 } from 'lucide-react';
 import type {
+  CallPlan,
+  Challenge,
   CostAssumptions,
   CostReport,
   CustomServiceDefinition,
@@ -57,7 +60,9 @@ import {
   fetchCustomServicesApi,
   fetchFixturesApi,
   getStoredToken,
+  revealChallengeSolutionApi,
   setStoredToken,
+  submitChallengeAttemptApi,
   updateCustomServiceApi,
   type AuthUser,
 } from '../lib/api';
@@ -76,6 +81,7 @@ import { mergeCustomServices } from '../lib/customServices';
 import { formatVirtualTime } from '../lib/timeFormat';
 import type { StarterTemplate } from '../lib/templates';
 import { useCostStore } from '../store/costStore';
+import { useChallengeStore } from '../store/challengeStore';
 import { useDesignStore } from '../store/designStore';
 import { useNetworkStore } from '../store/networkStore';
 import { type SimSpeed, useSimulationStore } from '../store/simulationStore';
@@ -106,6 +112,12 @@ const CommandPalette = dynamic(() => import('./CommandPalette').then((m) => m.Co
   ssr: false,
 });
 const TemplateModal = dynamic(() => import('./TemplateModal').then((m) => m.TemplateModal), {
+  ssr: false,
+});
+const ChallengesModal = dynamic(() => import('./ChallengesModal').then((m) => m.ChallengesModal), {
+  ssr: false,
+});
+const ChallengeBanner = dynamic(() => import('./ChallengeBanner').then((m) => m.ChallengeBanner), {
   ssr: false,
 });
 const CustomServiceModal = dynamic(
@@ -249,6 +261,7 @@ export function EditorShell() {
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [challengesOpen, setChallengesOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -320,6 +333,22 @@ export function EditorShell() {
     y: 180,
   }));
   const autoLayoutTriggerRef = useRef<() => Promise<void>>(async () => {});
+  const activeChallenge = useChallengeStore((s) => s.activeChallenge);
+  const challengeEvaluation = useChallengeStore((s) => s.lastEvaluation);
+  const challengeEvalSource = useChallengeStore((s) => s.evalSource);
+  const challengeEvalError = useChallengeStore((s) => s.evalError);
+  const challengeEvaluating = useChallengeStore((s) => s.evaluating);
+  const challengeRevealed = useChallengeStore((s) => s.revealedSolution);
+  const challengeProgressBySlug = useChallengeStore((s) => s.progressBySlug);
+  const startChallengeState = useChallengeStore((s) => s.startChallenge);
+  const exitChallengeState = useChallengeStore((s) => s.exitChallenge);
+  const setChallengeEvaluating = useChallengeStore((s) => s.setEvaluating);
+  const recordChallengeEval = useChallengeStore((s) => s.recordEvaluation);
+  const setChallengeEvalError = useChallengeStore((s) => s.setEvalError);
+  const setChallengeRevealed = useChallengeStore((s) => s.setRevealedSolution);
+  const mergeChallengeProgress = useChallengeStore((s) => s.mergeRemoteProgress);
+  const lastEvaluatedChallengeRunRef = useRef<string | null>(null);
+
   const autosaveHydratedRef = useRef(false);
 
   const design = useDesignStore((s) => s.design);
@@ -459,6 +488,7 @@ export function EditorShell() {
   // Hydrate theme, auth session, and autosaved design + custom presets on boot
   useEffect(() => {
     hydrateCostStorage();
+    useChallengeStore.getState().hydrateProgress();
     const saved = window.localStorage.getItem('infrasim.theme');
     if (saved === 'light' || saved === 'dark') {
       setTheme(saved);
@@ -833,13 +863,144 @@ export function EditorShell() {
 
   const handleLoadTemplate = useCallback(
     (template: StarterTemplate) => {
+      exitChallengeState();
       loadDesign(structuredClone(template.design), true);
       resetSimulation(true);
       setAppliedFixLabel(null);
       setStatusNotice(null);
       setScenarioOpen(false);
     },
-    [loadDesign, resetSimulation],
+    [exitChallengeState, loadDesign, resetSimulation],
+  );
+
+  const handleStartChallenge = useCallback(
+    (challenge: Challenge) => {
+      const clonedStarter = structuredClone(challenge.starterDesign);
+      clonedStarter.scenarios = [structuredClone(challenge.fixedScenario)];
+      clonedStarter.settings = {
+        ...clonedStarter.settings,
+        seed: challenge.fixedSeed,
+        currency: 'USD',
+      };
+      lastEvaluatedChallengeRunRef.current = null;
+      startChallengeState(challenge);
+      loadDesign(clonedStarter, true);
+      resetSimulation(true);
+      setAppliedFixLabel(null);
+      setStatusNotice(`Challenge active: ${challenge.title}`);
+      setScenarioOpen(false);
+    },
+    [startChallengeState, loadDesign, resetSimulation],
+  );
+
+  const evaluateActiveChallenge = useCallback(async () => {
+    const ch = useChallengeStore.getState().activeChallenge;
+    if (!ch) return;
+    setChallengeEvaluating(true);
+    const curDesign = useDesignStore.getState().design;
+    const snap = useCostStore.getState().snapshot;
+    const summaries = useSimulationStore.getState().profileSummaries;
+    const callPlans: Record<string, CallPlan> = {};
+    for (const [id, summary] of Object.entries(summaries)) {
+      if (summary?.callPlan) {
+        callPlans[id] = summary.callPlan;
+      }
+    }
+
+    if (token) {
+      try {
+        const res = await submitChallengeAttemptApi(token, ch.slug, curDesign, callPlans);
+        recordChallengeEval(
+          ch.slug,
+          res.result,
+          'server',
+          res.attemptsCount,
+          res.referenceSolutionDesign
+            ? {
+                design: res.referenceSolutionDesign,
+                whatThisTeaches: res.whatThisTeaches ?? ch.whatThisTeaches,
+              }
+            : undefined,
+        );
+        return;
+      } catch (err) {
+        if (!(err instanceof TypeError)) {
+          setChallengeEvalError(
+            err instanceof Error ? err.message : 'Challenge verification rejected design',
+          );
+          return;
+        }
+      }
+    }
+
+    try {
+      const mod = await import('@infrasim/diagnosis/challenges');
+      const localResult = await mod.evaluateChallengeAttempt(ch, curDesign, {
+        priceSnapshot: snap,
+        callPlans,
+      });
+      recordChallengeEval(ch.slug, localResult, 'local');
+    } catch (err) {
+      setChallengeEvalError(
+        err instanceof Error ? err.message : 'Unable to evaluate challenge locally',
+      );
+    }
+  }, [token, setChallengeEvaluating, recordChallengeEval, setChallengeEvalError]);
+
+  useEffect(() => {
+    if (!activeChallenge || simStatus !== 'completed' || !simResult?.runId) {
+      return;
+    }
+    if (lastEvaluatedChallengeRunRef.current === simResult.runId) {
+      return;
+    }
+    lastEvaluatedChallengeRunRef.current = simResult.runId;
+    void evaluateActiveChallenge();
+  }, [activeChallenge, simStatus, simResult?.runId, evaluateActiveChallenge]);
+
+  const handleRevealChallengeSolution = useCallback(async () => {
+    const ch = useChallengeStore.getState().activeChallenge;
+    if (!ch) return;
+
+    if (token) {
+      try {
+        const res = await revealChallengeSolutionApi(token, ch.slug);
+        setChallengeRevealed({
+          design: res.referenceSolutionDesign,
+          whatThisTeaches: res.whatThisTeaches,
+        });
+        return;
+      } catch {
+        // Fallback to local starter catalog definition when backend is offline
+      }
+    }
+
+    const mod = await import('@infrasim/diagnosis/challenges');
+    const full = mod.getStarterChallenge(ch.slug);
+    if (full?.referenceSolutionDesign) {
+      setChallengeRevealed({
+        design: structuredClone(full.referenceSolutionDesign),
+        whatThisTeaches: full.whatThisTeaches,
+      });
+    }
+  }, [token, setChallengeRevealed]);
+
+  const handleApplyRevealedSolution = useCallback(
+    (solutionDesign: Design) => {
+      const cloned = structuredClone(solutionDesign);
+      if (activeChallenge) {
+        cloned.scenarios = [structuredClone(activeChallenge.fixedScenario)];
+        cloned.settings = {
+          ...cloned.settings,
+          seed: activeChallenge.fixedSeed,
+          currency: 'USD',
+        };
+      }
+      loadDesign(cloned, false);
+      resetSimulation(true);
+      setStatusNotice('Loaded reference solution — run simulation to inspect metrics');
+    },
+    [activeChallenge, loadDesign, resetSimulation],
   );
 
   const handlePlaceImportedDesign = useCallback(
@@ -1387,6 +1548,12 @@ export function EditorShell() {
         onSelect: () => setTemplatesOpen(true),
       },
       {
+        id: 'open-challenges',
+        group: 'Challenges',
+        label: 'Open architecture challenges',
+        onSelect: () => setChallengesOpen(true),
+      },
+      {
         id: 'load-template-tpl-3tier',
         group: 'Templates',
         label: 'Load template: Simple 3-tier web app',
@@ -1489,6 +1656,22 @@ export function EditorShell() {
           >
             <LayoutTemplate className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
             <span className="hidden xl:inline">Templates</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="open-challenges-button"
+            aria-label="Challenges"
+            onClick={() => setChallengesOpen(true)}
+            title="Architecture challenges"
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border px-2 text-[12px] font-medium transition-colors ${
+              activeChallenge
+                ? 'border-[var(--accent)] bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                : 'border-[var(--border-hairline)] bg-[var(--bg-raised)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Trophy className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+            <span className="hidden xl:inline">Challenges</span>
           </button>
 
           <select
@@ -2122,108 +2305,130 @@ export function EditorShell() {
           onDeleteCustomService={handleDeleteCustomService}
         />
 
-        <main className="relative flex min-w-0 flex-1">
-          <Canvas
-            theme={theme}
-            currentFrame={currentFrame}
-            nodeReasons={nodeReasons}
-            nodeCosts={nodeCosts}
-            reducedMotion={reducedMotion}
-            onInspectNode={handleInspectNode}
-            onInspectEdgeNetwork={(edgeId) => {
-              setFocusedEdgeId(edgeId);
-              setDockTab('reachability');
-              setDockCollapsed(false);
-            }}
-            onInjectChaosNode={(nodeId, az) => {
-              setCostPopoverOpen(false);
-              setChaosTargetNode({ nodeId, ...(az ? { az } : {}) });
-              setScenarioPopoverTab('chaos');
-              setScenarioOpen(true);
-            }}
-            onLoadTemplateClick={() => setTemplatesOpen(true)}
-            registerViewportCenterGetter={(getter) => {
-              viewportCenterGetterRef.current = getter;
-            }}
-            registerAutoLayoutTrigger={(trigger) => {
-              autoLayoutTriggerRef.current = trigger;
-            }}
-          />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {activeChallenge ? (
+            <ChallengeBanner
+              challenge={activeChallenge}
+              evaluation={challengeEvaluation}
+              evalSource={challengeEvalSource}
+              evalError={challengeEvalError}
+              evaluating={challengeEvaluating}
+              attemptsCount={challengeProgressBySlug[activeChallenge.slug]?.attempts ?? 0}
+              revealedSolution={challengeRevealed}
+              onVerifyRun={() => {
+                lastEvaluatedChallengeRunRef.current = null;
+                void handleRunSimulation();
+              }}
+              onResetStarter={() => handleStartChallenge(activeChallenge)}
+              onRevealSolution={handleRevealChallengeSolution}
+              onApplyRevealedSolution={handleApplyRevealedSolution}
+              onExitChallenge={exitChallengeState}
+            />
+          ) : null}
 
-          {missingClientPromptOpen ? (
-            <div
-              data-testid="missing-client-prompt"
-              role="status"
-              className="absolute left-1/2 top-4 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3.5 py-2.5 text-[12px] shadow-[var(--shadow-floating)]"
-            >
-              <AlertTriangle
-                className="h-4 w-4 shrink-0 text-[var(--status-warm)]"
-                strokeWidth={1.5}
-              />
-              <span className="text-[var(--text-primary)]">
-                {design.nodes.length === 0
-                  ? 'Add services or a Load Generator before running a simulation'
-                  : 'No Load Generator on canvas'}
-              </span>
-              <Button
-                variant="primary"
-                size="sm"
-                data-testid="add-load-generator-btn"
-                onClick={handleAddLoadGeneratorAndRun}
-                className="h-7 px-2.5 text-[11px]"
+          <main className="relative flex min-h-0 min-w-0 flex-1">
+            <Canvas
+              theme={theme}
+              currentFrame={currentFrame}
+              nodeReasons={nodeReasons}
+              nodeCosts={nodeCosts}
+              reducedMotion={reducedMotion}
+              onInspectNode={handleInspectNode}
+              onInspectEdgeNetwork={(edgeId) => {
+                setFocusedEdgeId(edgeId);
+                setDockTab('reachability');
+                setDockCollapsed(false);
+              }}
+              onInjectChaosNode={(nodeId, az) => {
+                setCostPopoverOpen(false);
+                setChaosTargetNode({ nodeId, ...(az ? { az } : {}) });
+                setScenarioPopoverTab('chaos');
+                setScenarioOpen(true);
+              }}
+              onLoadTemplateClick={() => setTemplatesOpen(true)}
+              registerViewportCenterGetter={(getter) => {
+                viewportCenterGetterRef.current = getter;
+              }}
+              registerAutoLayoutTrigger={(trigger) => {
+                autoLayoutTriggerRef.current = trigger;
+              }}
+            />
+
+            {missingClientPromptOpen ? (
+              <div
+                data-testid="missing-client-prompt"
+                role="status"
+                className="absolute left-1/2 top-4 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3.5 py-2.5 text-[12px] shadow-[var(--shadow-floating)]"
               >
-                Add Load Generator
-              </Button>
-              {design.nodes.length > 0 ? (
+                <AlertTriangle
+                  className="h-4 w-4 shrink-0 text-[var(--status-warm)]"
+                  strokeWidth={1.5}
+                />
+                <span className="text-[var(--text-primary)]">
+                  {design.nodes.length === 0
+                    ? 'Add services or a Load Generator before running a simulation'
+                    : 'No Load Generator on canvas'}
+                </span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  data-testid="add-load-generator-btn"
+                  onClick={handleAddLoadGeneratorAndRun}
+                  className="h-7 px-2.5 text-[11px]"
+                >
+                  Add Load Generator
+                </Button>
+                {design.nodes.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void startSimulation(design, activeScenarioId, { allowMissingClient: true })
+                    }
+                    className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  >
+                    Run from first node
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() =>
-                    void startSimulation(design, activeScenarioId, { allowMissingClient: true })
-                  }
-                  className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  onClick={dismissMissingClientPrompt}
+                  className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 >
-                  Run from first node
+                  Dismiss
                 </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={dismissMissingClientPrompt}
-                className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-              >
-                Dismiss
-              </button>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {simError ? (
-            <div
-              role="alert"
-              className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--status-overloaded)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--status-overloaded)] shadow-[var(--shadow-floating)]"
-            >
-              <span>Simulation failed: {simError}</span>
-              <button
-                type="button"
-                onClick={() => resetSimulation(false)}
-                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            {simError ? (
+              <div
+                role="alert"
+                className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--status-overloaded)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--status-overloaded)] shadow-[var(--shadow-floating)]"
               >
-                Clear
-              </button>
-            </div>
-          ) : null}
+                <span>Simulation failed: {simError}</span>
+                <button
+                  type="button"
+                  onClick={() => resetSimulation(false)}
+                  className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                >
+                  Clear
+                </button>
+              </div>
+            ) : null}
 
-          {statusNotice ? (
-            <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--text-secondary)] shadow-[var(--shadow-floating)]">
-              <span>{statusNotice}</span>
-              <button
-                type="button"
-                onClick={() => setStatusNotice(null)}
-                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-              >
-                Dismiss
-              </button>
-            </div>
-          ) : null}
-        </main>
+            {statusNotice ? (
+              <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--text-secondary)] shadow-[var(--shadow-floating)]">
+                <span>{statusNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setStatusNotice(null)}
+                  className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : null}
+          </main>
+        </div>
 
         {/* Right Inspector */}
         <aside
@@ -2770,6 +2975,16 @@ export function EditorShell() {
         open={templatesOpen}
         onClose={() => setTemplatesOpen(false)}
         onSelectTemplate={handleLoadTemplate}
+      />
+
+      <ChallengesModal
+        open={challengesOpen}
+        token={token}
+        activeSlug={activeChallenge?.slug ?? null}
+        progressBySlug={challengeProgressBySlug}
+        onClose={() => setChallengesOpen(false)}
+        onStartChallenge={handleStartChallenge}
+        onMergeRemoteProgress={mergeChallengeProgress}
       />
 
       <AccountModal

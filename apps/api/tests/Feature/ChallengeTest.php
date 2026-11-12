@@ -247,4 +247,14 @@ class ChallengeTest extends TestCase
             ])
             ->assertStatus(422);
     }
+
+    public function test_challenge_seeder_seeds_all_ten_challenges_idempotently(): void
+    {
+        $this->seed(\Database\Seeders\ChallengeSeeder::class);
+        $this->seed(\Database\Seeders\ChallengeSeeder::class);
+
+        $this->assertDatabaseCount('challenges', 10);
+        $res = $this->getJson('/api/challenges')->assertOk();
+        $this->assertCount(10, $res->json('challenges'));
+    }
 }
