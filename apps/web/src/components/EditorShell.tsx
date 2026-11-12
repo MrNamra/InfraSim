@@ -30,6 +30,7 @@ import {
   Sun,
   Terminal,
   Undo2,
+  Upload,
   User,
 } from 'lucide-react';
 import type {
@@ -47,6 +48,7 @@ import { getService, type CloudTargetProvider } from '@infrasim/catalog';
 import type * as CostEngineMod from '@infrasim/cost-engine';
 import type * as NetworkAnalyzerMod from '@infrasim/network-analyzer';
 import type { CostBreakdownMeta } from '@infrasim/cost-engine';
+import type { TerraformImportReport, TerraformUnsupportedResourceInfo } from '@infrasim/terraform';
 import { Button, Keycap, LogoMark } from '@infrasim/ui-kit';
 import {
   createCustomServiceApi,
@@ -196,6 +198,10 @@ const TerraformExportModal = dynamic(
   () => import('./TerraformExportModal').then((m) => m.TerraformExportModal),
   { ssr: false },
 );
+const TerraformImportModal = dynamic(
+  () => import('./TerraformImportModal').then((m) => m.TerraformImportModal),
+  { ssr: false },
+);
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -272,6 +278,7 @@ export function EditorShell() {
     targetProvider?: CloudTargetProvider;
   }>({ open: false });
   const [terraformExportOpen, setTerraformExportOpen] = useState(false);
+  const [terraformImportOpen, setTerraformImportOpen] = useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
   const [focusedOpState, setFocusedOpState] = useState<{
@@ -306,6 +313,7 @@ export function EditorShell() {
     x: 240,
     y: 180,
   }));
+  const autoLayoutTriggerRef = useRef<() => Promise<void>>(async () => {});
   const autosaveHydratedRef = useRef(false);
 
   const design = useDesignStore((s) => s.design);
@@ -819,6 +827,46 @@ export function EditorShell() {
     [loadDesign, resetSimulation],
   );
 
+  const handlePlaceImportedDesign = useCallback(
+    (importedDesign: Design, report: TerraformImportReport) => {
+      loadDesign(structuredClone(importedDesign), true);
+      resetSimulation(true);
+      setAppliedFixLabel(null);
+      setScenarioOpen(false);
+      setTerraformImportOpen(false);
+      const inferredMsg =
+        report.inferredEdges.length > 0
+          ? ` · ${report.inferredEdges.length} inferred connection(s) dashed until confirmed`
+          : '';
+      const runtimeMsg = report.needsRuntimePrompt
+        ? ' · compute nodes default to "custom" runtime preset'
+        : '';
+      setStatusNotice(
+        `Imported ${report.mappedCount} service(s) in ${report.groupCount} group(s)${inferredMsg}${runtimeMsg}`,
+      );
+    },
+    [loadDesign, resetSimulation],
+  );
+
+  const handleCreateCustomFromUnsupported = useCallback(
+    (
+      importedDesign: Design,
+      report: TerraformImportReport,
+      item: TerraformUnsupportedResourceInfo,
+    ) => {
+      handlePlaceImportedDesign(importedDesign, report);
+      selectNode(item.nodeId);
+      setCustomModal({
+        open: true,
+        mode: 'create',
+        source: null,
+        targetNodeId: item.nodeId,
+        targetNodeLabel: item.label,
+      });
+    },
+    [handlePlaceImportedDesign, selectNode],
+  );
+
   const handleSelectComparisonRegion = useCallback(
     (regionCode: string) => {
       const nextDesign = structuredClone(design);
@@ -1238,6 +1286,20 @@ export function EditorShell() {
         group: 'Terraform',
         label: 'Export Terraform (.tf ZIP)...',
         onSelect: () => setTerraformExportOpen(true),
+      },
+      {
+        id: 'import-terraform-modal',
+        group: 'Terraform',
+        label: 'Import Terraform (plan/state JSON)...',
+        onSelect: () => setTerraformImportOpen(true),
+      },
+      {
+        id: 'auto-layout-canvas',
+        group: 'Canvas',
+        label: 'Auto-layout canvas hierarchy (ELK)',
+        onSelect: () => {
+          void autoLayoutTriggerRef.current();
+        },
       },
       {
         id: 'tab-latency',
@@ -1924,6 +1986,18 @@ export function EditorShell() {
 
           <button
             type="button"
+            data-testid="topbar-import-terraform-btn"
+            aria-label="Import Terraform JSON"
+            title="Import Terraform plan/state JSON"
+            onClick={() => setTerraformImportOpen(true)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-raised)] px-2 text-[11px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+          >
+            <Upload className="h-3.5 w-3.5 text-[var(--text-muted)]" strokeWidth={1.5} />
+            <span className="hidden 2xl:inline">Import</span>
+          </button>
+
+          <button
+            type="button"
             data-testid="topbar-export-terraform-btn"
             aria-label="Export Terraform"
             title="Export Terraform HCL (.tf / ZIP)"
@@ -2034,6 +2108,9 @@ export function EditorShell() {
             onLoadTemplateClick={() => setTemplatesOpen(true)}
             registerViewportCenterGetter={(getter) => {
               viewportCenterGetterRef.current = getter;
+            }}
+            registerAutoLayoutTrigger={(trigger) => {
+              autoLayoutTriggerRef.current = trigger;
             }}
           />
 
@@ -2746,6 +2823,13 @@ export function EditorShell() {
         design={design}
         defaultRegion={primaryRegion}
         onClose={() => setTerraformExportOpen(false)}
+      />
+
+      <TerraformImportModal
+        open={terraformImportOpen}
+        onClose={() => setTerraformImportOpen(false)}
+        onPlaceDesign={handlePlaceImportedDesign}
+        onCreateCustomForUnsupported={handleCreateCustomFromUnsupported}
       />
     </div>
   );

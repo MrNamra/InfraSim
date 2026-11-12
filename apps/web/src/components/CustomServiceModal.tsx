@@ -63,7 +63,7 @@ export function CustomServiceModal({
     if (!open) return;
     setDraft(createCustomServiceDraft(initialSource, mode));
     setIdManuallyEdited(mode === 'edit');
-    setSwitchTargetNode(mode === 'duplicate' && Boolean(targetNodeLabel));
+    setSwitchTargetNode(Boolean(targetNodeLabel));
     setErrors({});
     setServerError(null);
     setSubmitting(false);

@@ -52,13 +52,16 @@ function InfraEdgeComponent({
   const blocked = Boolean(data?.blockedReason) || (netEdge ? !netEdge.reachable : false);
   const risky = !blocked && Boolean(netEdge?.riskyReason);
   const reachable = !blocked && !risky && Boolean(netEdge?.reachable);
+  const isInferred = Boolean(edge?.inferred);
   const tooltipText =
     data?.blockedReason ??
     (!netEdge?.reachable && netEdge
       ? `Blocked (${netEdge.reasonCode ?? 'NETWORK'}): ${netEdge.explanation.short}`
       : netEdge?.riskyReason
         ? `Risky: ${netEdge.riskyReason}`
-        : undefined);
+        : isInferred && edge?.reason
+          ? `Inferred (${Math.round((edge.confidence ?? 0.85) * 100)}%): ${edge.reason}`
+          : undefined);
   const isAsync = edge?.callType === 'async';
 
   useEffect(() => {
@@ -103,7 +106,7 @@ function InfraEdgeComponent({
     targetY,
     labelX,
     labelY,
-    labelTextLength: labelText.length,
+    labelTextLength: labelText.length + (isInferred ? 9 : 0),
     hasLeadingIcon: Boolean(netEdge),
   });
 
@@ -115,7 +118,7 @@ function InfraEdgeComponent({
         style={{
           stroke: strokeColor,
           strokeWidth: selected ? 2 : 1.5,
-          strokeDasharray: blocked || isAsync ? '5 4' : risky ? '3 3' : undefined,
+          strokeDasharray: blocked || isAsync || isInferred ? '5 4' : risky ? '3 3' : undefined,
         }}
       />
 
@@ -124,6 +127,7 @@ function InfraEdgeComponent({
           data-testid={`edge-label-${id}`}
           data-offset={placement.isOffset ? 'true' : 'false'}
           data-network-state={netState}
+          data-inferred={isInferred ? 'true' : 'false'}
           title={tooltipText}
           style={{
             transform: `translate(-50%, -50%) translate(${placement.x}px,${placement.y}px)`,
@@ -167,6 +171,14 @@ function InfraEdgeComponent({
             />
           ) : null}
           <span>{labelText}</span>
+          {isInferred ? (
+            <span
+              data-testid={`edge-inferred-badge-${id}`}
+              className="rounded-[3px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-1 text-[9px] font-sans font-medium text-[var(--accent)]"
+            >
+              inferred
+            </span>
+          ) : null}
         </div>
       </EdgeLabelRenderer>
     </>

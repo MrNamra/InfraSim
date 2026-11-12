@@ -27,7 +27,7 @@ import {
   type OnNodeDrag,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import { Grid3x3, Maximize2, Trash2 } from 'lucide-react';
+import { Grid3x3, LayoutGrid, Maximize2, Trash2 } from 'lucide-react';
 import { getService } from '@infrasim/catalog';
 import type { SimFrame } from '@infrasim/shared-types';
 import { inferEdgePlacement } from '@infrasim/sim-engine';
@@ -79,6 +79,7 @@ export interface CanvasProps {
   onInjectChaosNode?: (nodeId: string, az?: string) => void;
   onLoadTemplateClick?: () => void;
   registerViewportCenterGetter?: (getter: () => { x: number; y: number }) => void;
+  registerAutoLayoutTrigger?: (trigger: () => Promise<void>) => void;
 }
 
 interface ContextMenuState {
@@ -98,6 +99,7 @@ function CanvasInner({
   onInjectChaosNode,
   onLoadTemplateClick,
   registerViewportCenterGetter,
+  registerAutoLayoutTrigger,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rfInstanceRef = useRef<ReactFlowInstance<CanvasFlowNode, InfraFlowEdge> | null>(null);
@@ -124,11 +126,13 @@ function CanvasInner({
   const copySelection = useDesignStore((s) => s.copySelection);
   const pasteClipboard = useDesignStore((s) => s.pasteClipboard);
   const resetNodeLatencyDefaults = useDesignStore((s) => s.resetNodeLatencyDefaults);
+  const applyPatchedDesign = useDesignStore((s) => s.applyPatchedDesign);
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
   const setSnapEnabled = useDesignStore((s) => s.setSnapEnabled);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [autoLayoutBusy, setAutoLayoutBusy] = useState(false);
   const [liveNodes, setLiveNodes] = useState<CanvasFlowNode[]>([]);
   const lastFittedDesignIdRef = useRef<string | null>(null);
 
@@ -528,6 +532,28 @@ function CanvasInner({
 
   const hasSelectedElement = Boolean(selectedNodeId || selectedEdgeId || selectedGroupId);
 
+  const handleAutoLayout = useCallback(async () => {
+    const currentDesign = useDesignStore.getState().design;
+    if (currentDesign.nodes.length === 0 && currentDesign.groups.length === 0) {
+      return;
+    }
+    setAutoLayoutBusy(true);
+    try {
+      const { layoutDesignWithElk } = await import('@infrasim/terraform');
+      const laidOut = await layoutDesignWithElk(currentDesign);
+      applyPatchedDesign(laidOut);
+      requestAnimationFrame(() => {
+        rfInstanceRef.current?.fitView({ padding: 0.16, duration: 200 });
+      });
+    } finally {
+      setAutoLayoutBusy(false);
+    }
+  }, [applyPatchedDesign]);
+
+  useEffect(() => {
+    registerAutoLayoutTrigger?.(handleAutoLayout);
+  }, [registerAutoLayoutTrigger, handleAutoLayout]);
+
   const onMoveEnd: OnMoveEnd = useCallback(() => {
     setContextMenu(null);
   }, []);
@@ -609,6 +635,19 @@ function CanvasInner({
         >
           <Grid3x3 className="h-3.5 w-3.5" strokeWidth={1.5} />
           <span>Snap</span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="canvas-auto-layout-btn"
+          title="Auto-layout hierarchy and connections (ELK)"
+          aria-label="Auto-layout canvas"
+          disabled={autoLayoutBusy || (design.nodes.length === 0 && design.groups.length === 0)}
+          onClick={() => void handleAutoLayout()}
+          className="flex h-7 items-center gap-1 rounded-[6px] px-2 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)] disabled:opacity-40"
+        >
+          <LayoutGrid className="h-3.5 w-3.5" strokeWidth={1.5} />
+          <span>{autoLayoutBusy ? 'Laying out…' : 'Auto-layout'}</span>
         </button>
 
         <button

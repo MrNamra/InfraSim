@@ -1513,6 +1513,47 @@ export function ConfigTab({
           </div>
         ) : null}
       </section>
+
+      {/* Read-only imported Terraform attributes when node originated from plan/state JSON */}
+      {node.importedAttrs && Object.keys(node.importedAttrs).length > 0 ? (
+        <details
+          data-testid="imported-attrs-panel"
+          className="rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-2.5"
+        >
+          <summary className="cursor-pointer select-none text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+            Imported Terraform attributes ({Object.keys(node.importedAttrs).length})
+          </summary>
+          <div className="mt-2 max-h-48 overflow-y-auto rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-surface)]">
+            <table className="w-full table-fixed border-collapse text-left text-[11px]">
+              <tbody>
+                {Object.entries(node.importedAttrs)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([key, value]) => {
+                    const formatted =
+                      typeof value === 'string'
+                        ? value
+                        : typeof value === 'number' || typeof value === 'boolean'
+                          ? String(value)
+                          : JSON.stringify(value);
+                    return (
+                      <tr
+                        key={key}
+                        className="border-b border-[var(--border-hairline)] last:border-b-0"
+                      >
+                        <th className="w-2/5 truncate px-2 py-1 font-mono text-[10px] font-normal text-[var(--text-muted)]">
+                          {key}
+                        </th>
+                        <td className="break-all px-2 py-1 font-mono text-[10px] text-[var(--text-primary)]">
+                          {formatted}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

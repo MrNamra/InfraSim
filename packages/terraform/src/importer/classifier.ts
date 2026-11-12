@@ -209,6 +209,10 @@ const EDGE_SOURCE_ROLES = new Map<string, string>([
   ['aws_route53_record', 'dns_record'],
   ['google_pubsub_subscription', 'pubsub_subscription'],
   ['google_dns_record_set', 'dns_record'],
+  ['azurerm_cdn_frontdoor_origin', 'frontdoor_origin'],
+  ['oci_load_balancer_listener', 'oci_lb_listener'],
+  ['oci_load_balancer_backend_set', 'oci_lb_backend_set'],
+  ['oci_load_balancer_backend', 'oci_lb_backend'],
 ]);
 
 const IGNORED_RESOURCE_TYPES = new Map<string, string>([
@@ -217,6 +221,10 @@ const IGNORED_RESOURCE_TYPES = new Map<string, string>([
   ['aws_iam_role_policy_attachment', 'Auxiliary IAM policy attachment'],
   ['aws_iam_policy', 'Auxiliary IAM policy'],
   ['aws_db_subnet_group', 'RDS subnet placement helper'],
+  ['aws_elasticache_subnet_group', 'ElastiCache subnet placement helper'],
+  ['aws_s3_bucket_public_access_block', 'S3 public access block security policy'],
+  ['aws_sagemaker_model', 'SageMaker model definition wrapper'],
+  ['aws_sagemaker_endpoint_configuration', 'SageMaker endpoint config wrapper'],
   ['aws_cloudwatch_log_group', 'Logging configuration'],
   ['aws_launch_template', 'VM template bound to Auto Scaling Group'],
   ['aws_ecs_cluster', 'ECS cluster container (service mapped instead)'],
@@ -246,8 +254,6 @@ const IGNORED_RESOURCE_TYPES = new Map<string, string>([
   ['azurerm_servicebus_namespace', 'Service Bus namespace hosting queue'],
   ['azurerm_eventhub_namespace', 'Event Hubs namespace hosting hub'],
   ['azurerm_cognitive_account', 'Cognitive Services account hosting OpenAI deployment'],
-  ['oci_load_balancer_backend_set', 'OCI load balancer backend set helper'],
-  ['oci_load_balancer_listener', 'OCI load balancer listener helper'],
   ['oci_functions_application', 'OCI Functions application wrapper'],
   ['oci_containerengine_node_pool', 'OKE node pool attached to cluster'],
   ['oci_core_instance_configuration', 'OCI instance configuration consumed by instance pool'],

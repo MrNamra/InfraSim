@@ -69,6 +69,37 @@ export function EdgePopover({
       </div>
 
       <div className="mt-3 space-y-3 text-[12px]">
+        {edge.inferred ? (
+          <div
+            data-testid="edge-inferred-banner"
+            className="rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-2.5 text-[11px]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-[var(--accent)]">
+                Inferred from Terraform
+                {edge.confidence !== undefined ? ` (${Math.round(edge.confidence * 100)}%)` : ''}
+              </span>
+              <button
+                type="button"
+                data-testid="edge-confirm-inferred-btn"
+                onClick={() =>
+                  onUpdate(edge.id, (d) => {
+                    d.inferred = false;
+                    delete d.confidence;
+                    delete d.reason;
+                  })
+                }
+                className="rounded-[5px] bg-[var(--accent-solid)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-solid-text)] hover:opacity-90"
+              >
+                Confirm edge
+              </button>
+            </div>
+            {edge.reason ? (
+              <p className="mt-1 leading-4 text-[var(--text-secondary)]">{edge.reason}</p>
+            ) : null}
+          </div>
+        ) : null}
+
         {reachability ? (
           <div
             data-testid="edge-reachability-banner"

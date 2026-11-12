@@ -197,6 +197,15 @@ function ServiceNodeComponent({ data, selected }: NodeProps<ServiceFlowNode>) {
                 q:{Math.round(frame.queueDepth)}
               </span>
             ) : null}
+            {nodeInstance.serviceId.startsWith('custom.tf_') && !service ? (
+              <span
+                data-testid="node-tf-unmapped-badge"
+                className="rounded-[3px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-1 py-0.5 font-mono text-[9px] text-[var(--text-muted)]"
+                title="Unmapped Terraform resource — convert via Create Custom Service"
+              >
+                TF
+              </span>
+            ) : null}
           </div>
 
           {healthInfo ? (

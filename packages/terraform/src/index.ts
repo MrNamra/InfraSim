@@ -11,6 +11,8 @@ export * from './importer/parser.js';
 export * from './importer/classifier.js';
 export * from './importer/topology.js';
 export * from './importer/layout.js';
+export * from './importer/edgeInference.js';
+export * from './importer/index.js';
 
 /** Package version marker. */
 export const TERRAFORM_PKG_VERSION = '0.1.0';

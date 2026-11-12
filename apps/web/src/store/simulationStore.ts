@@ -193,7 +193,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
 
     const scenario = design.scenarios.find((s) => s.id === scenarioId) ?? design.scenarios[0];
     const hasExplicitNetworkLessonEntry = Boolean(
-      design.id.startsWith('tpl-net-') &&
+      (design.id.startsWith('tpl-net-') || design.id.startsWith('tf-import-')) &&
       scenario?.entryNodeId &&
       design.nodes.some((n) => n.id === scenario.entryNodeId),
     );
