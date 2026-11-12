@@ -169,6 +169,15 @@ export interface DryRunInput {
   node?: NodeInstance;
   service?: ServiceDefinition;
   customServices?: readonly ServiceDefinition[];
+  /** Override provider platform log generation (defaults to true when `node` is passed). */
+  emitPlatformLogs?: boolean;
+  /** True when the simulated platform invocation incurs a cold start. */
+  coldStart?: boolean;
+  /** Optional explicit cold-start init duration in ms for platform reports. */
+  initDurationMs?: number;
+  /** Optional deterministic request/trace identifiers. */
+  requestId?: string;
+  traceId?: string;
   seed?: number;
   seq?: number;
   env?: Record<string, string>;

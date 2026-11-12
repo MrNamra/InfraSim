@@ -315,4 +315,60 @@ describe('T1.9 simulation worker core & Zustand simulationStore', () => {
     expect(useSimulationStore.getState().frames).toHaveLength(3);
     expect(useSimulationStore.getState().playbackIdx).toBe(1);
   });
+
+  it('captures streamed SimFrame.newLogs into the log buffer and clears cleanly', async () => {
+    const fWithLogs: SimFrame = {
+      runId: 'run-logs',
+      tVirtualMs: 120,
+      nodes: {},
+      edges: {},
+      particles: [],
+      newLogs: [
+        {
+          id: 1,
+          tVirtualMs: 100,
+          level: 'warn',
+          source: 'engine',
+          nodeId: 'api',
+          message: 'Queue full drop at api',
+        },
+      ],
+    };
+    const mockResult: SimulationResult = {
+      runId: 'run-logs',
+      seed: 42,
+      durationS: 1,
+      scaled: null,
+      summary: {
+        totalRequests: 1,
+        success: 0,
+        errors: { dropped_queue_full: 1 },
+        p50: 1,
+        p95: 1,
+        p99: 1,
+        throughputRps: 1,
+      },
+      perNode: {},
+      series: { bucketSizeS: 1, buckets: [] },
+      traces: [],
+      counters: { perNode: {}, perEdge: {} },
+      insights: [],
+    };
+    setSimRunnerForTests({
+      run: vi.fn(async (_input, onBatch: (batch: SimFrame[]) => void) => {
+        onBatch([fWithLogs]);
+        return mockResult;
+      }),
+      cancel: vi.fn(),
+      terminate: vi.fn(),
+    });
+
+    const d = makeMinimal3TierDesign(80);
+    await useSimulationStore.getState().runSimulation(d, 's1');
+    expect(useSimulationStore.getState().logs).toHaveLength(1);
+    expect(useSimulationStore.getState().logs[0]?.message).toContain('Queue full');
+
+    useSimulationStore.getState().clearLogs();
+    expect(useSimulationStore.getState().logs).toHaveLength(0);
+  });
 });

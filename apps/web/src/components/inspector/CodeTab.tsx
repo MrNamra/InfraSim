@@ -30,6 +30,7 @@ import type {
   CustomServiceDefinition,
   Design,
   FixtureTemplateId,
+  LogEntry,
   NodeConfig,
   NodeInstance,
   PayloadFixture,
@@ -72,6 +73,7 @@ export interface CodeTabProps {
   onUpsertLibraryFixture: (fixture: PayloadFixture) => void;
   onEditCallMock: (targetNodeId: string | undefined, serviceId: string, opName: string) => void;
   onApplyMockPatches: (patches: readonly AutoFillPatchPreview[]) => Design;
+  onRecordDryRunLogs?: (entries: readonly LogEntry[]) => void;
   onOpenNetworkTab?: () => void;
 }
 
@@ -182,6 +184,7 @@ export function CodeTab({
   onUpsertLibraryFixture,
   onEditCallMock,
   onApplyMockPatches,
+  onRecordDryRunLogs,
   onOpenNetworkTab,
 }: CodeTabProps) {
   const isClientNode = node.serviceId === 'generic.client';
@@ -458,11 +461,22 @@ export function CodeTab({
         });
         setDryRunResult(result);
         setPayloadSubTab('event');
+        if (result.logs.length > 0) {
+          onRecordDryRunLogs?.(result.logs);
+        }
       } finally {
         setRunning(false);
       }
     },
-    [attachedScript, parsedEventState.valid, buildActiveFixture, design, node, customServices],
+    [
+      attachedScript,
+      parsedEventState.valid,
+      buildActiveFixture,
+      design,
+      node,
+      customServices,
+      onRecordDryRunLogs,
+    ],
   );
 
   const handleRunAutoFill = useCallback(async () => {

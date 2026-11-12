@@ -12,4 +12,5 @@ export * from './fixtures.js';
 export * from './fixtureRunner.js';
 export * from './autoFill.js';
 export * from './doctor.js';
+export * from './platformLogs.js';
 export * from './runtime.js';

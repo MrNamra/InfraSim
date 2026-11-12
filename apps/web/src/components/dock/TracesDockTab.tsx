@@ -17,6 +17,7 @@ export interface TracesDockTabProps {
   design: Design;
   result: SimulationResult | null;
   selectedNodeId: string | null;
+  requestedTraceId?: { traceId: string; nonce: number } | null;
   onSelectNode: (nodeId: string, openWhy?: boolean) => void;
 }
 
@@ -69,11 +70,19 @@ export function TracesDockTab({
   design,
   result,
   selectedNodeId,
+  requestedTraceId,
   onSelectNode,
 }: TracesDockTabProps) {
   const [filter, setFilter] = useState<TraceFilter>('all');
   const [query, setQuery] = useState('');
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!requestedTraceId?.traceId) return;
+    setFilter('all');
+    setQuery('');
+    setSelectedTraceId(requestedTraceId.traceId);
+  }, [requestedTraceId]);
 
   const nodeLabelById = useMemo(
     () => new Map(design.nodes.map((n) => [n.id, n.label])),

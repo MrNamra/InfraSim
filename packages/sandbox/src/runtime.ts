@@ -9,6 +9,7 @@ import type { LogEntry, NodeInstance } from '@infrasim/shared-types';
 import { bundleUserScript } from './bundler.js';
 import { buildGuestPrelude } from './guestPrelude.js';
 import { createMockCallResolver } from './mockResolver.js';
+import { attachProviderPlatformLogs } from './platformLogs.js';
 import { createSeededPrng, hashSeedParts } from './prng.js';
 import { SourceMapTranslator } from './sourceMap.js';
 import {
@@ -373,6 +374,55 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
   const discoveredMap = new Map<string, Set<string>>();
   let memoryPeakBytes = 0;
 
+  const eventPayload = input.event ?? input.fixture?.event ?? {};
+  const requestId = input.requestId ?? prng.uuid();
+  const shouldEmitPlatformLogs = input.emitPlatformLogs ?? Boolean(input.node);
+
+  const extractEventMethod = (): string => {
+    if (eventPayload && typeof eventPayload === 'object') {
+      const ev = eventPayload as Record<string, unknown>;
+      const rc = ev.requestContext as Record<string, unknown> | undefined;
+      const rcHttp = rc?.http as Record<string, unknown> | undefined;
+      const m = ev.httpMethod ?? ev.method ?? rcHttp?.method;
+      if (typeof m === 'string' && m.trim()) {
+        return m.trim().toUpperCase();
+      }
+    }
+    return 'POST';
+  };
+
+  const finalizeResult = (partial: Omit<DryRunResult, 'logs'>): DryRunResult => {
+    const finalLogs = shouldEmitPlatformLogs
+      ? attachProviderPlatformLogs(logs, {
+          serviceId: input.service?.id ?? input.node?.serviceId ?? 'aws.lambda',
+          ...(input.node?.id ? { nodeId: input.node.id } : {}),
+          nodeLabel: input.node?.label ?? input.script.name,
+          requestId,
+          ...(input.traceId ? { traceId: input.traceId } : {}),
+          durationMs: partial.virtualDurationMs,
+          billedDurationMs: partial.billedDurationMs,
+          memoryMb: limits.memoryMb,
+          memoryPeakBytes: partial.memoryPeakBytes,
+          coldStart: Boolean(input.coldStart),
+          initDurationMs: input.initDurationMs ?? input.node?.config.coldStart?.p50 ?? 231.5,
+          ...(partial.httpStatus !== undefined
+            ? { statusCode: partial.httpStatus }
+            : partial.error?.statusCode !== undefined
+              ? { statusCode: partial.error.statusCode }
+              : {}),
+          method: extractEventMethod(),
+          ok: partial.ok,
+          ...(partial.error?.message ? { errorMessage: partial.error.message } : {}),
+          startVirtualMs: 0,
+          endVirtualMs: partial.virtualDurationMs,
+        })
+      : logs;
+    return {
+      ...partial,
+      logs: finalLogs,
+    };
+  };
+
   const sampleMem = () => {
     try {
       const h = rt.computeMemoryUsage();
@@ -426,7 +476,8 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
       level,
       source: 'user',
       ...(input.node?.id ? { nodeId: input.node.id } : {}),
-      requestId: `req-${seed}-${seq}`,
+      requestId,
+      ...(input.traceId ? { traceId: input.traceId } : {}),
       message: msg,
       ...(parsedData !== undefined ? { data: parsedData } : {}),
       ...(site ? { site: { file: site.file, line: site.line, col: site.column } } : {}),
@@ -711,9 +762,7 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
     evalBundle.value.dispose();
 
     // Invoke entrypoint (Lambda handler | Web Fetch | Express req,res)
-    const eventPayload = input.event ?? input.fixture?.event ?? {};
     const entryName = input.script.entry || 'handler';
-    const requestId = prng.uuid();
     const invokeScript = `
 ;(function() {
   const __exports = globalThis.__infrasimModuleExports || {};
@@ -897,55 +946,52 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
         const errObj = ctx.dump(jobRes.error);
         jobRes.error.dispose();
         sampleMem();
-        return {
+        return finalizeResult({
           ok: false,
           seed,
           virtualDurationMs: Number(virtualNowMs.toFixed(2)),
           billedDurationMs: Math.max(1, Math.ceil(virtualNowMs)),
           guestCpuMs: Number(guestCpuElapsedMs.toFixed(2)),
           memoryPeakBytes,
-          logs,
           calls,
           error: errToReport(errObj),
-        };
+        });
       }
 
       if (oomInterrupted) {
         sampleMem();
-        return {
+        return finalizeResult({
           ok: false,
           seed,
           virtualDurationMs: Number(virtualNowMs.toFixed(2)),
           billedDurationMs: Math.max(1, Math.ceil(virtualNowMs)),
           guestCpuMs: Number(guestCpuElapsedMs.toFixed(2)),
           memoryPeakBytes,
-          logs,
           calls,
           error: {
             category: 'OutOfMemory',
             name: 'OutOfMemory',
             message: `Memory limit exceeded (${limits.memoryMb} MB)`,
           },
-        };
+        });
       }
 
       if (cpuInterrupted) {
         sampleMem();
-        return {
+        return finalizeResult({
           ok: false,
           seed,
           virtualDurationMs: Number(virtualNowMs.toFixed(2)),
           billedDurationMs: Math.max(1, Math.ceil(virtualNowMs)),
           guestCpuMs: Number(guestCpuElapsedMs.toFixed(2)),
           memoryPeakBytes,
-          logs,
           calls,
           error: {
             category: 'CpuBudgetExceeded',
             name: 'CpuBudgetExceeded',
             message: 'Possible infinite loop — stopped',
           },
-        };
+        });
       }
 
       settledResult = checkDone();
@@ -972,14 +1018,13 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
         virtualNowMs = limits.timeoutMs;
         sampleMem();
         const timeoutSecs = (limits.timeoutMs / 1000).toFixed(2);
-        return {
+        return finalizeResult({
           ok: false,
           seed,
           virtualDurationMs: Number(virtualNowMs.toFixed(2)),
           billedDurationMs: Math.max(1, Math.ceil(virtualNowMs)),
           guestCpuMs: Number(guestCpuElapsedMs.toFixed(2)),
           memoryPeakBytes,
-          logs,
           calls,
           error: {
             category: 'Timeout',
@@ -987,7 +1032,7 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
             message: `Task timed out after ${timeoutSecs} seconds`,
             statusCode: 504,
           },
-        };
+        });
       }
 
       virtualNowMs = Math.max(virtualNowMs, nextEv.atMs);
@@ -1060,14 +1105,13 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
     }
 
     if (!settledResult) {
-      return {
+      return finalizeResult({
         ok: false,
         seed,
         virtualDurationMs: Number(virtualNowMs.toFixed(2)),
         billedDurationMs: Math.max(1, Math.ceil(virtualNowMs)),
         guestCpuMs: Number(guestCpuElapsedMs.toFixed(2)),
         memoryPeakBytes,
-        logs,
         calls,
         ...(input.discoveryMode ? { discoveredPaths } : {}),
         error: {
@@ -1075,22 +1119,21 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
           name: 'UnresolvedPromiseError',
           message: 'Handler returned an unsettled Promise that never resolved',
         },
-      };
+      });
     }
 
     if (settledResult.status === 'rejected') {
-      return {
+      return finalizeResult({
         ok: false,
         seed,
         virtualDurationMs: Number(virtualNowMs.toFixed(2)),
         billedDurationMs: Math.max(1, Math.ceil(virtualNowMs)),
         guestCpuMs: Number(guestCpuElapsedMs.toFixed(2)),
         memoryPeakBytes,
-        logs,
         calls,
         ...(input.discoveryMode ? { discoveredPaths } : {}),
         error: errToReport(settledResult.error, 'UnhandledRejection'),
-      };
+      });
     }
 
     const retVal = settledResult.value;
@@ -1101,7 +1144,7 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
         ? (retVal as { statusCode: number }).statusCode
         : undefined;
 
-    return {
+    return finalizeResult({
       ok: true,
       seed,
       result: retVal,
@@ -1110,10 +1153,9 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
       billedDurationMs: Math.max(1, Math.ceil(virtualNowMs)),
       guestCpuMs: Number(guestCpuElapsedMs.toFixed(2)),
       memoryPeakBytes,
-      logs,
       calls,
       ...(input.discoveryMode ? { discoveredPaths } : {}),
-    };
+    });
   } finally {
     // Lift memory limit before teardown so QuickJS never fails internal cleanup on OOM, then dispose.
     try {

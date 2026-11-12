@@ -179,6 +179,9 @@ const ChaosTimelineEditor = dynamic(
 const TracesDockTab = dynamic(() => import('./dock/TracesDockTab').then((m) => m.TracesDockTab), {
   ssr: false,
 });
+const LogsDockTab = dynamic(() => import('./dock/LogsDockTab').then((m) => m.LogsDockTab), {
+  ssr: false,
+});
 
 type Theme = 'dark' | 'light';
 type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
@@ -249,10 +252,14 @@ export function EditorShell() {
     nodeId: string;
     opName: string;
   } | null>(null);
-  const [codeFocusLocation, _setCodeFocusLocation] = useState<{
+  const [codeFocusLocation, setCodeFocusLocation] = useState<{
     nodeId: string;
     line: number;
     column: number;
+    nonce: number;
+  } | null>(null);
+  const [requestedTraceId, setRequestedTraceId] = useState<{
+    traceId: string;
     nonce: number;
   } | null>(null);
   const [customModal, setCustomModal] = useState<{
@@ -325,10 +332,13 @@ export function EditorShell() {
   const simElapsedWallMs = useSimulationStore((s) => s.elapsedWallMs);
   const simResult = useSimulationStore((s) => s.result);
   const simPreviousResult = useSimulationStore((s) => s.previousResult);
+  const simLogs = useSimulationStore((s) => s.logs);
   const simError = useSimulationStore((s) => s.errorMessage);
   const missingClientPromptOpen = useSimulationStore((s) => s.missingClientPromptOpen);
 
   const startSimulation = useSimulationStore((s) => s.runSimulation);
+  const appendSimLogs = useSimulationStore((s) => s.appendLogs);
+  const clearSimLogs = useSimulationStore((s) => s.clearLogs);
   const stopPlayback = useSimulationStore((s) => s.stopPlayback);
   const togglePausePlayback = useSimulationStore((s) => s.togglePausePlayback);
   const scrubTo = useSimulationStore((s) => s.scrubTo);
@@ -2056,6 +2066,7 @@ export function EditorShell() {
                   onUpsertLibraryFixture={upsertLibraryFixture}
                   onEditCallMock={handleEditCallMock}
                   onApplyMockPatches={handleApplyMockPatches}
+                  onRecordDryRunLogs={appendSimLogs}
                   onOpenNetworkTab={() => setInspectorTab('network')}
                 />
               ) : inspectorTab === 'cost' ? (
@@ -2203,11 +2214,29 @@ export function EditorShell() {
               onSeekToTimeS={seekToTimeS}
               onSelectBottleneck={(nodeId) => handleInspectNode(nodeId, 'why')}
             />
+          ) : dockTab === 'logs' ? (
+            <LogsDockTab
+              design={design}
+              logs={simLogs}
+              onClearLogs={clearSimLogs}
+              onJumpToTrace={(traceId) => {
+                setRequestedTraceId({ traceId, nonce: Date.now() });
+                setDockTab('traces');
+                setDockCollapsed(false);
+              }}
+              onJumpToCode={(nodeId, line, column) => {
+                selectNode(nodeId);
+                setInspectorTab('code');
+                setCodeFocusLocation({ nodeId, line, column, nonce: Date.now() });
+              }}
+              onOpenWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
+            />
           ) : dockTab === 'traces' ? (
             <TracesDockTab
               design={design}
               result={simResult}
               selectedNodeId={selectedNodeId}
+              requestedTraceId={requestedTraceId}
               onSelectNode={(nodeId, openWhy) =>
                 handleInspectNode(nodeId, openWhy ? 'why' : 'latency')
               }

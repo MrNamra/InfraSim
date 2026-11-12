@@ -1,7 +1,31 @@
 import { create } from 'zustand';
-import type { Design, SimFrame, SimulationResult } from '@infrasim/shared-types';
+import type { Design, LogEntry, SimFrame, SimulationResult } from '@infrasim/shared-types';
 import { type SimRunnerHandle, createSimRunner } from '../lib/simRunner';
 import { SimulationAbortedError } from '../lib/simWorkerCore';
+
+export const MAX_LOG_RING_BUFFER = 50_000;
+
+/** Appends new log entries into a bounded FIFO ring buffer preserving the latest `cap` rows. */
+export function appendLogsToRingBuffer(
+  existing: readonly LogEntry[],
+  incoming: readonly LogEntry[],
+  cap = MAX_LOG_RING_BUFFER,
+): LogEntry[] {
+  if (incoming.length === 0) {
+    return existing.length <= cap
+      ? (existing as LogEntry[])
+      : existing.slice(existing.length - cap);
+  }
+  const safeCap = Math.max(1, cap);
+  if (incoming.length >= safeCap) {
+    return incoming.slice(incoming.length - safeCap);
+  }
+  const overflow = existing.length + incoming.length - safeCap;
+  if (overflow <= 0) {
+    return existing.length === 0 ? [...incoming] : [...existing, ...incoming];
+  }
+  return [...existing.slice(overflow), ...incoming];
+}
 
 export type SimSpeed = '1' | '5' | '20' | 'max';
 export type SimRunStatus = 'idle' | 'running' | 'completed' | 'cancelled' | 'error';
@@ -64,8 +88,12 @@ export interface SimulationStoreState {
   elapsedWallMs: number | null;
   result: SimulationResult | null;
   previousResult: SimulationResult | null;
+  logs: LogEntry[];
   missingClientPromptOpen: boolean;
   lastRunDesignId: string | null;
+
+  appendLogs: (entries: readonly LogEntry[]) => void;
+  clearLogs: () => void;
 
   runSimulation: (
     design: Design,
@@ -114,8 +142,18 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
   elapsedWallMs: null,
   result: null,
   previousResult: null,
+  logs: [],
   missingClientPromptOpen: false,
   lastRunDesignId: null,
+
+  appendLogs: (entries) => {
+    if (entries.length === 0) return;
+    set((state) => ({
+      logs: appendLogsToRingBuffer(state.logs, entries),
+    }));
+  },
+
+  clearLogs: () => set({ logs: [] }),
 
   runSimulation: async (design, scenarioId, opts) => {
     if (design.nodes.length === 0) {
@@ -153,6 +191,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       elapsedWallMs: null,
       previousResult: prevResult,
       result: null,
+      logs: [],
       lastRunDesignId: design.id,
     });
 
@@ -168,6 +207,12 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
           if (token !== activeRunToken || batch.length === 0) {
             return;
           }
+          const batchLogs: LogEntry[] = [];
+          for (const frame of batch) {
+            if (frame.newLogs.length > 0) {
+              batchLogs.push(...frame.newLogs);
+            }
+          }
           set((state) => {
             const nextFrames = state.frames.length === 0 ? batch : [...state.frames, ...batch];
             const nextIdx =
@@ -176,6 +221,8 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
               frames: nextFrames,
               playbackIdx: nextIdx,
               virtualPlayheadMs: nextFrames[nextIdx]?.tVirtualMs ?? 0,
+              logs:
+                batchLogs.length > 0 ? appendLogsToRingBuffer(state.logs, batchLogs) : state.logs,
             };
           });
         },
@@ -373,6 +420,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       playing: false,
       elapsedWallMs: null,
       result: null,
+      logs: [],
       missingClientPromptOpen: false,
       previousResult: clearPrevious ? null : state.previousResult,
     }));
