@@ -308,9 +308,18 @@ importers:
       '@infrasim/catalog':
         specifier: workspace:*
         version: link:../catalog
+      '@infrasim/cost-engine':
+        specifier: workspace:*
+        version: link:../cost-engine
+      '@infrasim/network-analyzer':
+        specifier: workspace:*
+        version: link:../network-analyzer
       '@infrasim/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      '@infrasim/sim-engine':
+        specifier: workspace:*
+        version: link:../sim-engine
 
   packages/network-analyzer:
     dependencies:

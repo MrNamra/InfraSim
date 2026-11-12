@@ -1,4 +1,5 @@
 export * from './catalog.js';
+export * from './challenges.js';
 export * from './cost.js';
 export * from './defaults.js';
 export * from './design.js';

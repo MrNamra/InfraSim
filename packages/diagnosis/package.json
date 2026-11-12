@@ -10,11 +10,19 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./challenges": {
+      "types": "./dist/challenges/index.d.ts",
+      "import": "./dist/challenges/index.js",
+      "default": "./dist/challenges/index.js"
     }
   },
   "dependencies": {
     "@infrasim/shared-types": "workspace:*",
-    "@infrasim/catalog": "workspace:*"
+    "@infrasim/catalog": "workspace:*",
+    "@infrasim/cost-engine": "workspace:*",
+    "@infrasim/network-analyzer": "workspace:*",
+    "@infrasim/sim-engine": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
