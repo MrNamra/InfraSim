@@ -1,0 +1,122 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.8.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_virtual_network.main",
+          "mode": "managed",
+          "type": "azurerm_virtual_network",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": {
+            "name": "Synthetic Azure VNet",
+            "location": "eastus",
+            "address_space": ["10.20.0.0/16"]
+          }
+        },
+        {
+          "address": "azurerm_subnet.app",
+          "mode": "managed",
+          "type": "azurerm_subnet",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": {
+            "name": "App Subnet",
+            "address_prefixes": ["10.20.1.0/24"]
+          }
+        },
+        {
+          "address": "azurerm_network_interface.vm_nic",
+          "mode": "managed",
+          "type": "azurerm_network_interface",
+          "name": "vm_nic",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": { "name": "vm-nic", "location": "eastus" }
+        },
+        {
+          "address": "azurerm_linux_virtual_machine.api_vm",
+          "mode": "managed",
+          "type": "azurerm_linux_virtual_machine",
+          "name": "api_vm",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": { "name": "Azure API VM", "location": "eastus", "size": "Standard_B2ms" }
+        },
+        {
+          "address": "azurerm_linux_web_app.portal",
+          "mode": "managed",
+          "type": "azurerm_linux_web_app",
+          "name": "portal",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": {
+            "name": "Azure Portal App",
+            "location": "eastus",
+            "app_settings": {
+              "ENVIRONMENT": "production",
+              "CLIENT_SECRET": "SYNTHETIC_CLIENT_SECRET"
+            }
+          },
+          "sensitive_values": {
+            "app_settings": { "CLIENT_SECRET": true }
+          }
+        },
+        {
+          "address": "azurerm_postgresql_flexible_server.pg",
+          "mode": "managed",
+          "type": "azurerm_postgresql_flexible_server",
+          "name": "pg",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": {
+            "name": "Azure PG Flexible",
+            "location": "eastus",
+            "sku_name": "B_Standard_B2ms",
+            "storage_mb": 32768
+          }
+        },
+        {
+          "address": "azurerm_cognitive_deployment.openai_gpt",
+          "mode": "managed",
+          "type": "azurerm_cognitive_deployment",
+          "name": "openai_gpt",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": { "name": "gpt-4o-mini" }
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_subnet.app",
+          "expressions": {
+            "virtual_network_name": { "references": ["azurerm_virtual_network.main.name"] }
+          }
+        },
+        {
+          "address": "azurerm_network_interface.vm_nic",
+          "expressions": {
+            "ip_configuration": {
+              "subnet_id": { "references": ["azurerm_subnet.app.id"] }
+            }
+          }
+        },
+        {
+          "address": "azurerm_linux_virtual_machine.api_vm",
+          "expressions": {
+            "network_interface_ids": { "references": ["azurerm_network_interface.vm_nic.id"] }
+          }
+        },
+        {
+          "address": "azurerm_linux_web_app.portal",
+          "expressions": {
+            "app_settings": {
+              "references": ["azurerm_postgresql_flexible_server.pg.fqdn"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

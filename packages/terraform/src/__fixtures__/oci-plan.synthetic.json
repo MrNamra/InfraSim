@@ -1,0 +1,144 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.8.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "oci_core_vcn.main",
+          "mode": "managed",
+          "type": "oci_core_vcn",
+          "name": "main",
+          "provider_name": "registry.terraform.io/oracle/oci",
+          "values": {
+            "display_name": "Synthetic OCI VCN",
+            "cidr_blocks": ["10.30.0.0/16"]
+          }
+        },
+        {
+          "address": "oci_core_subnet.app",
+          "mode": "managed",
+          "type": "oci_core_subnet",
+          "name": "app",
+          "provider_name": "registry.terraform.io/oracle/oci",
+          "values": {
+            "display_name": "OCI App Subnet",
+            "cidr_block": "10.30.1.0/24",
+            "prohibit_public_ip_on_vnic": true
+          }
+        },
+        {
+          "address": "oci_core_network_security_group.app_nsg",
+          "mode": "managed",
+          "type": "oci_core_network_security_group",
+          "name": "app_nsg",
+          "provider_name": "registry.terraform.io/oracle/oci",
+          "values": { "display_name": "app-nsg" }
+        },
+        {
+          "address": "oci_core_network_security_group.db_nsg",
+          "mode": "managed",
+          "type": "oci_core_network_security_group",
+          "name": "db_nsg",
+          "provider_name": "registry.terraform.io/oracle/oci",
+          "values": { "display_name": "db-nsg" }
+        },
+        {
+          "address": "oci_core_network_security_group_security_rule.db_in",
+          "mode": "managed",
+          "type": "oci_core_network_security_group_security_rule",
+          "name": "db_in",
+          "provider_name": "registry.terraform.io/oracle/oci",
+          "values": {
+            "direction": "INGRESS",
+            "protocol": "6",
+            "tcp_options": [{ "destination_port_range": [{ "min": 5432, "max": 5432 }] }]
+          }
+        },
+        {
+          "address": "oci_core_instance.app_vm",
+          "mode": "managed",
+          "type": "oci_core_instance",
+          "name": "app_vm",
+          "provider_name": "registry.terraform.io/oracle/oci",
+          "values": {
+            "display_name": "OCI App Compute",
+            "shape": "VM.Standard.E4.Flex",
+            "shape_config": [{ "ocpus": 2, "memory_in_gbs": 16 }]
+          }
+        },
+        {
+          "address": "oci_psql_db_system.pg",
+          "mode": "managed",
+          "type": "oci_psql_db_system",
+          "name": "pg",
+          "provider_name": "registry.terraform.io/oracle/oci",
+          "values": {
+            "display_name": "OCI Postgres",
+            "instance_ocpu_count": 2,
+            "instance_memory_size_in_gbs": 32,
+            "credentials": [
+              {
+                "username": "pgadmin",
+                "password_details": { "secret_id": "ocid1.vaultsecret.synthetic" }
+              }
+            ]
+          }
+        },
+        {
+          "address": "oci_objectstorage_bucket.media",
+          "mode": "managed",
+          "type": "oci_objectstorage_bucket",
+          "name": "media",
+          "provider_name": "registry.terraform.io/oracle/oci",
+          "values": { "name": "OCI Media Bucket" }
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "oci_core_subnet.app",
+          "expressions": { "vcn_id": { "references": ["oci_core_vcn.main.id"] } }
+        },
+        {
+          "address": "oci_core_network_security_group.app_nsg",
+          "expressions": { "vcn_id": { "references": ["oci_core_vcn.main.id"] } }
+        },
+        {
+          "address": "oci_core_network_security_group.db_nsg",
+          "expressions": { "vcn_id": { "references": ["oci_core_vcn.main.id"] } }
+        },
+        {
+          "address": "oci_core_network_security_group_security_rule.db_in",
+          "expressions": {
+            "network_security_group_id": {
+              "references": ["oci_core_network_security_group.db_nsg.id"]
+            },
+            "source": { "references": ["oci_core_network_security_group.app_nsg.id"] }
+          }
+        },
+        {
+          "address": "oci_core_instance.app_vm",
+          "expressions": {
+            "create_vnic_details": {
+              "subnet_id": { "references": ["oci_core_subnet.app.id"] },
+              "nsg_ids": { "references": ["oci_core_network_security_group.app_nsg.id"] }
+            }
+          }
+        },
+        {
+          "address": "oci_psql_db_system.pg",
+          "expressions": {
+            "network_details": {
+              "subnet_id": { "references": ["oci_core_subnet.app.id"] },
+              "nsg_ids": { "references": ["oci_core_network_security_group.db_nsg.id"] }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

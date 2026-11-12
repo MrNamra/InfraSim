@@ -1,0 +1,181 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.8.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_compute_network.main",
+          "mode": "managed",
+          "type": "google_compute_network",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": { "name": "Synthetic GCP Network" }
+        },
+        {
+          "address": "google_compute_subnetwork.app",
+          "mode": "managed",
+          "type": "google_compute_subnetwork",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": {
+            "name": "app-subnetwork",
+            "region": "us-central1",
+            "ip_cidr_range": "10.10.1.0/24"
+          }
+        },
+        {
+          "address": "google_compute_instance_group_manager.api_mig",
+          "mode": "managed",
+          "type": "google_compute_instance_group_manager",
+          "name": "api_mig",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": { "name": "GCP API MIG", "target_size": 2, "zone": "us-central1-a" }
+        },
+        {
+          "address": "google_compute_backend_service.api_bs",
+          "mode": "managed",
+          "type": "google_compute_backend_service",
+          "name": "api_bs",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": { "name": "api-backend" }
+        },
+        {
+          "address": "google_compute_url_map.web_map",
+          "mode": "managed",
+          "type": "google_compute_url_map",
+          "name": "web_map",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": { "name": "web-map" }
+        },
+        {
+          "address": "google_compute_target_https_proxy.web_proxy",
+          "mode": "managed",
+          "type": "google_compute_target_https_proxy",
+          "name": "web_proxy",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": { "name": "web-proxy" }
+        },
+        {
+          "address": "google_compute_global_forwarding_rule.https_lb",
+          "mode": "managed",
+          "type": "google_compute_global_forwarding_rule",
+          "name": "https_lb",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": { "name": "GCP HTTPS LB", "port_range": "443-443" }
+        },
+        {
+          "address": "google_cloud_run_v2_service.gateway",
+          "mode": "managed",
+          "type": "google_cloud_run_v2_service",
+          "name": "gateway",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": {
+            "name": "Cloud Run Gateway",
+            "location": "us-central1",
+            "template": [
+              {
+                "containers": [
+                  {
+                    "env": [
+                      { "name": "LOG_LEVEL", "value": "info" },
+                      { "name": "ACCESS_KEY", "value": "SYNTHETIC_ACCESS_KEY" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "address": "google_sql_database_instance.pg",
+          "mode": "managed",
+          "type": "google_sql_database_instance",
+          "name": "pg",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": {
+            "name": "Cloud SQL Postgres",
+            "region": "us-central1",
+            "database_version": "POSTGRES_16",
+            "settings": { "tier": "db-custom-2-8192" }
+          }
+        },
+        {
+          "address": "google_pubsub_topic.jobs",
+          "mode": "managed",
+          "type": "google_pubsub_topic",
+          "name": "jobs",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": { "name": "Jobs Topic" }
+        },
+        {
+          "address": "google_pubsub_subscription.jobs_push",
+          "mode": "managed",
+          "type": "google_pubsub_subscription",
+          "name": "jobs_push",
+          "provider_name": "registry.terraform.io/hashicorp/google",
+          "values": { "name": "jobs-push" }
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "google_compute_subnetwork.app",
+          "expressions": { "network": { "references": ["google_compute_network.main.id"] } }
+        },
+        {
+          "address": "google_compute_backend_service.api_bs",
+          "expressions": {
+            "backend": {
+              "group": {
+                "references": ["google_compute_instance_group_manager.api_mig.instance_group"]
+              }
+            }
+          }
+        },
+        {
+          "address": "google_compute_url_map.web_map",
+          "expressions": {
+            "default_service": { "references": ["google_compute_backend_service.api_bs.id"] }
+          }
+        },
+        {
+          "address": "google_compute_target_https_proxy.web_proxy",
+          "expressions": {
+            "url_map": { "references": ["google_compute_url_map.web_map.id"] }
+          }
+        },
+        {
+          "address": "google_compute_global_forwarding_rule.https_lb",
+          "expressions": {
+            "target": { "references": ["google_compute_target_https_proxy.web_proxy.id"] }
+          }
+        },
+        {
+          "address": "google_cloud_run_v2_service.gateway",
+          "expressions": {
+            "template": {
+              "containers": {
+                "env": {
+                  "references": ["google_sql_database_instance.pg.connection_name"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "address": "google_pubsub_subscription.jobs_push",
+          "expressions": {
+            "topic": { "references": ["google_pubsub_topic.jobs.id"] },
+            "push_config": {
+              "push_endpoint": { "references": ["google_cloud_run_v2_service.gateway.uri"] }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
