@@ -130,6 +130,7 @@ export interface SimulationStoreState {
   dismissMissingClientPrompt: () => void;
   pinCurrentRunAsA: (monthlyCostUsd?: number | null) => void;
   clearPinnedRun: () => void;
+  restartSimulator: () => void;
   resetSimulation: (clearPrevious?: boolean) => void;
 }
 
@@ -483,6 +484,24 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
     }),
 
   clearPinnedRun: () => set({ pinnedRun: null }),
+
+  restartSimulator: () => {
+    activeRunToken += 1;
+    if (activeAbortController) {
+      activeAbortController.abort();
+      activeAbortController = null;
+    }
+    if (activeRunner) {
+      activeRunner.terminate();
+      activeRunner = null;
+    }
+    set({
+      status: 'idle',
+      errorMessage: null,
+      playing: false,
+      elapsedWallMs: null,
+    });
+  },
 
   resetSimulation: (clearPrevious = false) => {
     activeRunToken += 1;

@@ -89,6 +89,7 @@ import { Canvas } from './canvas/Canvas';
 import type { NodeCostChipInfo } from './canvas/CanvasSimContext';
 import type { CommandItem } from './CommandPalette';
 import { Palette } from './Palette';
+import { PanelErrorBoundary } from './PanelErrorBoundary';
 import { ServiceIcon } from './ServiceIcon';
 import type { WhyTabProps } from './inspector/WhyTab';
 
@@ -432,6 +433,7 @@ export function EditorShell() {
   const dismissMissingClientPrompt = useSimulationStore((s) => s.dismissMissingClientPrompt);
   const pinCurrentRunAsA = useSimulationStore((s) => s.pinCurrentRunAsA);
   const clearPinnedRun = useSimulationStore((s) => s.clearPinnedRun);
+  const restartSimulator = useSimulationStore((s) => s.restartSimulator);
   const resetSimulation = useSimulationStore((s) => s.resetSimulation);
 
   const costSnapshot = useCostStore((s) => s.snapshot);
@@ -2343,32 +2345,34 @@ export function EditorShell() {
           ) : null}
 
           <main className="relative flex min-h-0 min-w-0 flex-1">
-            <Canvas
-              theme={theme}
-              currentFrame={currentFrame}
-              nodeReasons={nodeReasons}
-              nodeCosts={nodeCosts}
-              reducedMotion={reducedMotion}
-              onInspectNode={handleInspectNode}
-              onInspectEdgeNetwork={(edgeId) => {
-                setFocusedEdgeId(edgeId);
-                setDockTab('reachability');
-                setDockCollapsed(false);
-              }}
-              onInjectChaosNode={(nodeId, az) => {
-                setCostPopoverOpen(false);
-                setChaosTargetNode({ nodeId, ...(az ? { az } : {}) });
-                setScenarioPopoverTab('chaos');
-                setScenarioOpen(true);
-              }}
-              onLoadTemplateClick={() => setTemplatesOpen(true)}
-              registerViewportCenterGetter={(getter) => {
-                viewportCenterGetterRef.current = getter;
-              }}
-              registerAutoLayoutTrigger={(trigger) => {
-                autoLayoutTriggerRef.current = trigger;
-              }}
-            />
+            <PanelErrorBoundary panelName="Architecture canvas" resetKey={design.id}>
+              <Canvas
+                theme={theme}
+                currentFrame={currentFrame}
+                nodeReasons={nodeReasons}
+                nodeCosts={nodeCosts}
+                reducedMotion={reducedMotion}
+                onInspectNode={handleInspectNode}
+                onInspectEdgeNetwork={(edgeId) => {
+                  setFocusedEdgeId(edgeId);
+                  setDockTab('reachability');
+                  setDockCollapsed(false);
+                }}
+                onInjectChaosNode={(nodeId, az) => {
+                  setCostPopoverOpen(false);
+                  setChaosTargetNode({ nodeId, ...(az ? { az } : {}) });
+                  setScenarioPopoverTab('chaos');
+                  setScenarioOpen(true);
+                }}
+                onLoadTemplateClick={() => setTemplatesOpen(true)}
+                registerViewportCenterGetter={(getter) => {
+                  viewportCenterGetterRef.current = getter;
+                }}
+                registerAutoLayoutTrigger={(trigger) => {
+                  autoLayoutTriggerRef.current = trigger;
+                }}
+              />
+            </PanelErrorBoundary>
 
             {missingClientPromptOpen ? (
               <div
@@ -2418,9 +2422,21 @@ export function EditorShell() {
             {simError ? (
               <div
                 role="alert"
+                data-testid="sim-error-toast"
                 className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-[8px] border border-[var(--status-overloaded)] bg-[var(--bg-surface)] px-3 py-2 text-[12px] text-[var(--status-overloaded)] shadow-[var(--shadow-floating)]"
               >
-                <span>Simulation failed: {simError}</span>
+                <span>Simulation stopped: {simError}</span>
+                <button
+                  type="button"
+                  data-testid="restart-sim-button"
+                  onClick={() => {
+                    restartSimulator();
+                    setStatusNotice('Simulator worker restarted — design preserved');
+                  }}
+                  className="rounded-[5px] border border-[var(--border-strong)] bg-[var(--bg-raised)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-primary)] hover:border-[var(--accent)]"
+                >
+                  Restart simulator
+                </button>
                 <button
                   type="button"
                   onClick={() => resetSimulation(false)}
@@ -2617,130 +2633,140 @@ export function EditorShell() {
                 </div>
               </div>
 
-              {inspectorTab === 'config' ? (
-                <ConfigTab
-                  node={selectedNode}
-                  service={selectedNodeService}
-                  groups={design.groups}
-                  activeScenario={activeScenario}
-                  seed={design.settings.seed}
-                  onUpdateScenario={updateScenario}
-                  onUpdateSeed={(seed) => updateDesignMeta({ settings: { seed } })}
-                  onRename={(label) => updateNodeLabel(selectedNode.id, label)}
-                  onUpdatePlacement={(placement) => updateNodePlacement(selectedNode.id, placement)}
-                  onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
-                />
-              ) : inspectorTab === 'latency' ? (
-                <LatencyMockTab
-                  node={selectedNode}
-                  service={selectedNodeService}
-                  activeScenario={activeScenario}
-                  seed={design.settings.seed}
-                  presets={presets}
-                  focusedOpName={
-                    focusedOpState?.nodeId === selectedNode.id ? focusedOpState.opName : null
-                  }
-                  onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
-                  onResetNode={() => resetNodeToDefaults(selectedNode.id)}
-                  onSavePreset={addPreset}
-                  onApplyPreset={(preset) => applyPresetToNode(selectedNode.id, preset)}
-                />
-              ) : inspectorTab === 'code' ? (
-                <CodeTab
-                  theme={theme}
-                  design={design}
-                  node={selectedNode}
-                  customServices={availableCustomServices}
-                  libraryFixtures={libraryFixtures}
-                  token={token}
-                  focusLocation={
-                    codeFocusLocation?.nodeId === selectedNode.id ? codeFocusLocation : null
-                  }
-                  profileSummary={
-                    selectedNode.config.scriptId
-                      ? profileSummaries[selectedNode.config.scriptId]
-                      : undefined
-                  }
-                  profileIterations={profileIterations}
-                  onChangeProfileIterations={setProfileIterations}
-                  onSaveProfileSummary={setProfileSummary}
-                  onUpdateNodeConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
-                  onUpsertScript={upsertDesignScript}
-                  onDeleteScript={deleteDesignScript}
-                  onUpsertDesignFixture={upsertDesignFixture}
-                  onUpsertLibraryFixture={upsertLibraryFixture}
-                  onEditCallMock={handleEditCallMock}
-                  onApplyMockPatches={handleApplyMockPatches}
-                  onRecordDryRunLogs={appendSimLogs}
-                  onSyncScenarioScript={(extracted: ExtractedScenarioResult, scriptId: string) => {
-                    const targetScenarioId = activeScenario?.id;
-                    if (!targetScenarioId) return;
-                    void import('@infrasim/sandbox/thresholds').then(
-                      ({ applyExtractedScenarioToScenario }) => {
-                        updateScenario(targetScenarioId, (s) => {
-                          Object.assign(
-                            s,
-                            applyExtractedScenarioToScenario(s, extracted, scriptId),
+              <PanelErrorBoundary
+                panelName={inspectorTab === 'code' ? 'Code & Sandbox' : 'Inspector'}
+                resetKey={`${selectedNode.id}:${inspectorTab}`}
+              >
+                {inspectorTab === 'config' ? (
+                  <ConfigTab
+                    node={selectedNode}
+                    service={selectedNodeService}
+                    groups={design.groups}
+                    activeScenario={activeScenario}
+                    seed={design.settings.seed}
+                    onUpdateScenario={updateScenario}
+                    onUpdateSeed={(seed) => updateDesignMeta({ settings: { seed } })}
+                    onRename={(label) => updateNodeLabel(selectedNode.id, label)}
+                    onUpdatePlacement={(placement) =>
+                      updateNodePlacement(selectedNode.id, placement)
+                    }
+                    onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
+                  />
+                ) : inspectorTab === 'latency' ? (
+                  <LatencyMockTab
+                    node={selectedNode}
+                    service={selectedNodeService}
+                    activeScenario={activeScenario}
+                    seed={design.settings.seed}
+                    presets={presets}
+                    focusedOpName={
+                      focusedOpState?.nodeId === selectedNode.id ? focusedOpState.opName : null
+                    }
+                    onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
+                    onResetNode={() => resetNodeToDefaults(selectedNode.id)}
+                    onSavePreset={addPreset}
+                    onApplyPreset={(preset) => applyPresetToNode(selectedNode.id, preset)}
+                  />
+                ) : inspectorTab === 'code' ? (
+                  <CodeTab
+                    theme={theme}
+                    design={design}
+                    node={selectedNode}
+                    customServices={availableCustomServices}
+                    libraryFixtures={libraryFixtures}
+                    token={token}
+                    focusLocation={
+                      codeFocusLocation?.nodeId === selectedNode.id ? codeFocusLocation : null
+                    }
+                    profileSummary={
+                      selectedNode.config.scriptId
+                        ? profileSummaries[selectedNode.config.scriptId]
+                        : undefined
+                    }
+                    profileIterations={profileIterations}
+                    onChangeProfileIterations={setProfileIterations}
+                    onSaveProfileSummary={setProfileSummary}
+                    onUpdateNodeConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
+                    onUpsertScript={upsertDesignScript}
+                    onDeleteScript={deleteDesignScript}
+                    onUpsertDesignFixture={upsertDesignFixture}
+                    onUpsertLibraryFixture={upsertLibraryFixture}
+                    onEditCallMock={handleEditCallMock}
+                    onApplyMockPatches={handleApplyMockPatches}
+                    onRecordDryRunLogs={appendSimLogs}
+                    onSyncScenarioScript={(
+                      extracted: ExtractedScenarioResult,
+                      scriptId: string,
+                    ) => {
+                      const targetScenarioId = activeScenario?.id;
+                      if (!targetScenarioId) return;
+                      void import('@infrasim/sandbox/thresholds').then(
+                        ({ applyExtractedScenarioToScenario }) => {
+                          updateScenario(targetScenarioId, (s) => {
+                            Object.assign(
+                              s,
+                              applyExtractedScenarioToScenario(s, extracted, scriptId),
+                            );
+                          });
+                          setStatusNotice(
+                            `Synced ${extracted.flows.length} scenario flow(s) from script`,
                           );
-                        });
-                        setStatusNotice(
-                          `Synced ${extracted.flows.length} scenario flow(s) from script`,
-                        );
-                      },
-                    );
-                  }}
-                  onOpenNetworkTab={() => setInspectorTab('network')}
-                />
-              ) : inspectorTab === 'network' ? (
-                <NetworkTab
-                  design={design}
-                  node={selectedNode}
-                  service={selectedNodeService}
-                  group={null}
-                  analysis={networkAnalysis}
-                  onApplyPatchedDesign={(nextDesign, changeLabel) => {
-                    applyPatchedDesign(nextDesign);
-                    if (changeLabel) setStatusNotice(changeLabel);
-                  }}
-                  onOpenReachabilityDock={(edgeId) => {
-                    if (edgeId) setFocusedEdgeId(edgeId);
-                    setDockTab('reachability');
-                    setDockCollapsed(false);
-                  }}
-                />
-              ) : inspectorTab === 'cost' ? (
-                <CostTab
-                  node={selectedNode}
-                  service={selectedNodeService}
-                  costReport={costReport}
-                  assumptions={costAssumptions}
-                  onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
-                  onOpenCostDock={() => {
-                    setDockTab('cost');
-                    setDockCollapsed(false);
-                  }}
-                />
-              ) : inspectorTab === 'why' ? (
-                <WhyTabSlot
-                  design={design}
-                  node={selectedNode}
-                  service={selectedNodeService}
-                  result={simResult}
-                  previousResult={simPreviousResult}
-                  currentMonthlyCost={currentMonthlyCost}
-                  previousMonthlyCost={previousMonthlyCost}
-                  appliedFixLabel={appliedFixLabel}
-                  isRunning={simStatus === 'running'}
-                  token={token}
-                  onApplyPatchedDesign={handleApplyPatchedDesign}
-                  onRerunVerify={handleRerunVerify}
-                  onSelectNodeWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
-                />
-              ) : (
-                <div className="p-4 text-[12px] text-[var(--text-secondary)]">
-                  The {inspectorTab} inspector activates in its upcoming phase.
-                </div>
-              )}
+                        },
+                      );
+                    }}
+                    onOpenNetworkTab={() => setInspectorTab('network')}
+                  />
+                ) : inspectorTab === 'network' ? (
+                  <NetworkTab
+                    design={design}
+                    node={selectedNode}
+                    service={selectedNodeService}
+                    group={null}
+                    analysis={networkAnalysis}
+                    onApplyPatchedDesign={(nextDesign, changeLabel) => {
+                      applyPatchedDesign(nextDesign);
+                      if (changeLabel) setStatusNotice(changeLabel);
+                    }}
+                    onOpenReachabilityDock={(edgeId) => {
+                      if (edgeId) setFocusedEdgeId(edgeId);
+                      setDockTab('reachability');
+                      setDockCollapsed(false);
+                    }}
+                  />
+                ) : inspectorTab === 'cost' ? (
+                  <CostTab
+                    node={selectedNode}
+                    service={selectedNodeService}
+                    costReport={costReport}
+                    assumptions={costAssumptions}
+                    onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
+                    onOpenCostDock={() => {
+                      setDockTab('cost');
+                      setDockCollapsed(false);
+                    }}
+                  />
+                ) : inspectorTab === 'why' ? (
+                  <WhyTabSlot
+                    design={design}
+                    node={selectedNode}
+                    service={selectedNodeService}
+                    result={simResult}
+                    previousResult={simPreviousResult}
+                    currentMonthlyCost={currentMonthlyCost}
+                    previousMonthlyCost={previousMonthlyCost}
+                    appliedFixLabel={appliedFixLabel}
+                    isRunning={simStatus === 'running'}
+                    token={token}
+                    onApplyPatchedDesign={handleApplyPatchedDesign}
+                    onRerunVerify={handleRerunVerify}
+                    onSelectNodeWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
+                  />
+                ) : (
+                  <div className="p-4 text-[12px] text-[var(--text-secondary)]">
+                    The {inspectorTab} inspector activates in its upcoming phase.
+                  </div>
+                )}
+              </PanelErrorBoundary>
             </div>
           ) : inspectorTab === 'network' ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -2870,124 +2896,126 @@ export function EditorShell() {
         </div>
 
         {!dockCollapsed ? (
-          dockTab === 'metrics' ? (
-            <MetricsDockTab
-              design={design}
-              result={simResult}
-              previousResult={simPreviousResult}
-              pinnedRun={simPinnedRun}
-              currentMonthlyCostUsd={currentMonthlyCost?.total ?? null}
-              currency={currentMonthlyCost?.currency ?? costReport.currency}
-              chaos={activeScenario?.chaos ?? []}
-              scenarioThresholds={activeScenario?.thresholds}
-              selectedNodeId={selectedNodeId}
-              currentTimeS={currentFrame ? currentFrame.tVirtualMs / 1000 : null}
-              elapsedWallMs={simElapsedWallMs}
-              onSeekToTimeS={seekToTimeS}
-              onSelectBottleneck={(nodeId) => handleInspectNode(nodeId, 'why')}
-              onPinRunA={() => pinCurrentRunAsA(currentMonthlyCost?.total ?? null)}
-              onUnpinRunA={() => clearPinnedRun()}
-            />
-          ) : dockTab === 'logs' ? (
-            <LogsDockTab
-              design={design}
-              logs={simLogs}
-              onClearLogs={clearSimLogs}
-              onJumpToTrace={(traceId) => {
-                setRequestedTraceId({ traceId, nonce: Date.now() });
-                setDockTab('traces');
-                setDockCollapsed(false);
-              }}
-              onJumpToCode={(nodeId, line, column) => {
-                selectNode(nodeId);
-                setInspectorTab('code');
-                setCodeFocusLocation({ nodeId, line, column, nonce: Date.now() });
-              }}
-              onOpenWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
-            />
-          ) : dockTab === 'traces' ? (
-            <TracesDockTab
-              design={design}
-              result={simResult}
-              selectedNodeId={selectedNodeId}
-              requestedTraceId={requestedTraceId}
-              onSelectNode={(nodeId, openWhy) =>
-                handleInspectNode(nodeId, openWhy ? 'why' : 'latency')
-              }
-            />
-          ) : dockTab === 'reachability' ? (
-            <ReachabilityDockTab
-              design={design}
-              analysis={networkAnalysis}
-              focusedEdgeId={focusedEdgeId}
-              customServices={availableCustomServices}
-              isSimRunning={simStatus === 'running'}
-              onSelectEdge={(edgeId) => {
-                setFocusedEdgeId(edgeId);
-                selectEdge(edgeId);
-              }}
-              onSetAnalysis={setNetworkAnalysis}
-              onApplyPatchedDesign={handleApplyPatchedDesign}
-              onRerunVerify={handleRerunVerify}
-            />
-          ) : dockTab === 'terraform' ? (
-            <TerraformDockTab
-              design={design}
-              defaultRegion={primaryRegion}
-              onOpenExportModal={() => setTerraformExportOpen(true)}
-            />
-          ) : dockTab === 'cost' ? (
-            <CostDockTab
-              design={design}
-              result={simResult}
-              report={costReport}
-              breakdownMeta={costBreakdownMeta}
-              assumptions={costAssumptions}
-              snapshot={costSnapshot}
-              snapshotLoading={costLoading}
-              snapshotError={costError}
-              lastFetchedAt={costLastFetchedAt}
-              isOfflineFallback={costIsOfflineFallback}
-              defaultRegion={primaryRegion}
-              selectedNodeId={selectedNodeId}
-              customServices={availableCustomServices}
-              onRefreshPrices={() =>
-                void syncPriceSnapshot(snapshotProviders, snapshotRegions, { force: true })
-              }
-              onSyncAllCloudsPrices={handleSyncAllComparisonPrices}
-              onSelectNode={(nodeId) => handleInspectNode(nodeId, 'cost')}
-              onSelectRegion={handleSelectComparisonRegion}
-              onOpenAssumptions={() => setCostPopoverOpen(true)}
-              onApplyPatchedDesign={(nextDesign, changeLabel) => {
-                handleApplyPatchedDesign(nextDesign, changeLabel);
-              }}
-              onOpenProviderSwitch={(targetProv) =>
-                setProviderSwitchModal({
-                  open: true,
-                  ...(targetProv ? { targetProvider: targetProv } : {}),
-                })
-              }
-            />
-          ) : dockTab === 'insights' ? (
-            <InsightsDockTab
-              design={design}
-              result={simResult}
-              previousResult={simPreviousResult}
-              currentMonthlyCost={currentMonthlyCost}
-              previousMonthlyCost={previousMonthlyCost}
-              appliedFixLabel={appliedFixLabel}
-              isRunning={simStatus === 'running'}
-              onSelectNodeWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
-              onApplyPatchedDesign={handleApplyPatchedDesign}
-              onRerunVerify={handleRerunVerify}
-            />
-          ) : (
-            <div className="flex flex-1 items-center justify-center p-4 text-center">
-              <p className="text-[12px] text-[var(--text-muted)]">
-                Run a simulation to populate {dockTab} telemetry.
-              </p>
-            </div>
-          )
+          <PanelErrorBoundary panelName={`Dock (${dockTab})`} resetKey={`${dockTab}:${design.id}`}>
+            {dockTab === 'metrics' ? (
+              <MetricsDockTab
+                design={design}
+                result={simResult}
+                previousResult={simPreviousResult}
+                pinnedRun={simPinnedRun}
+                currentMonthlyCostUsd={currentMonthlyCost?.total ?? null}
+                currency={currentMonthlyCost?.currency ?? costReport.currency}
+                chaos={activeScenario?.chaos ?? []}
+                scenarioThresholds={activeScenario?.thresholds}
+                selectedNodeId={selectedNodeId}
+                currentTimeS={currentFrame ? currentFrame.tVirtualMs / 1000 : null}
+                elapsedWallMs={simElapsedWallMs}
+                onSeekToTimeS={seekToTimeS}
+                onSelectBottleneck={(nodeId) => handleInspectNode(nodeId, 'why')}
+                onPinRunA={() => pinCurrentRunAsA(currentMonthlyCost?.total ?? null)}
+                onUnpinRunA={() => clearPinnedRun()}
+              />
+            ) : dockTab === 'logs' ? (
+              <LogsDockTab
+                design={design}
+                logs={simLogs}
+                onClearLogs={clearSimLogs}
+                onJumpToTrace={(traceId) => {
+                  setRequestedTraceId({ traceId, nonce: Date.now() });
+                  setDockTab('traces');
+                  setDockCollapsed(false);
+                }}
+                onJumpToCode={(nodeId, line, column) => {
+                  selectNode(nodeId);
+                  setInspectorTab('code');
+                  setCodeFocusLocation({ nodeId, line, column, nonce: Date.now() });
+                }}
+                onOpenWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
+              />
+            ) : dockTab === 'traces' ? (
+              <TracesDockTab
+                design={design}
+                result={simResult}
+                selectedNodeId={selectedNodeId}
+                requestedTraceId={requestedTraceId}
+                onSelectNode={(nodeId, openWhy) =>
+                  handleInspectNode(nodeId, openWhy ? 'why' : 'latency')
+                }
+              />
+            ) : dockTab === 'reachability' ? (
+              <ReachabilityDockTab
+                design={design}
+                analysis={networkAnalysis}
+                focusedEdgeId={focusedEdgeId}
+                customServices={availableCustomServices}
+                isSimRunning={simStatus === 'running'}
+                onSelectEdge={(edgeId) => {
+                  setFocusedEdgeId(edgeId);
+                  selectEdge(edgeId);
+                }}
+                onSetAnalysis={setNetworkAnalysis}
+                onApplyPatchedDesign={handleApplyPatchedDesign}
+                onRerunVerify={handleRerunVerify}
+              />
+            ) : dockTab === 'terraform' ? (
+              <TerraformDockTab
+                design={design}
+                defaultRegion={primaryRegion}
+                onOpenExportModal={() => setTerraformExportOpen(true)}
+              />
+            ) : dockTab === 'cost' ? (
+              <CostDockTab
+                design={design}
+                result={simResult}
+                report={costReport}
+                breakdownMeta={costBreakdownMeta}
+                assumptions={costAssumptions}
+                snapshot={costSnapshot}
+                snapshotLoading={costLoading}
+                snapshotError={costError}
+                lastFetchedAt={costLastFetchedAt}
+                isOfflineFallback={costIsOfflineFallback}
+                defaultRegion={primaryRegion}
+                selectedNodeId={selectedNodeId}
+                customServices={availableCustomServices}
+                onRefreshPrices={() =>
+                  void syncPriceSnapshot(snapshotProviders, snapshotRegions, { force: true })
+                }
+                onSyncAllCloudsPrices={handleSyncAllComparisonPrices}
+                onSelectNode={(nodeId) => handleInspectNode(nodeId, 'cost')}
+                onSelectRegion={handleSelectComparisonRegion}
+                onOpenAssumptions={() => setCostPopoverOpen(true)}
+                onApplyPatchedDesign={(nextDesign, changeLabel) => {
+                  handleApplyPatchedDesign(nextDesign, changeLabel);
+                }}
+                onOpenProviderSwitch={(targetProv) =>
+                  setProviderSwitchModal({
+                    open: true,
+                    ...(targetProv ? { targetProvider: targetProv } : {}),
+                  })
+                }
+              />
+            ) : dockTab === 'insights' ? (
+              <InsightsDockTab
+                design={design}
+                result={simResult}
+                previousResult={simPreviousResult}
+                currentMonthlyCost={currentMonthlyCost}
+                previousMonthlyCost={previousMonthlyCost}
+                appliedFixLabel={appliedFixLabel}
+                isRunning={simStatus === 'running'}
+                onSelectNodeWhy={(nodeId) => handleInspectNode(nodeId, 'why')}
+                onApplyPatchedDesign={handleApplyPatchedDesign}
+                onRerunVerify={handleRerunVerify}
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center p-4 text-center">
+                <p className="text-[12px] text-[var(--text-muted)]">
+                  Run a simulation to populate {dockTab} telemetry.
+                </p>
+              </div>
+            )}
+          </PanelErrorBoundary>
         ) : null}
       </section>
 
