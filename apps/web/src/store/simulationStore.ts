@@ -191,7 +191,18 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       return { started: false, reason: 'no-nodes' };
     }
 
-    if (!opts?.allowMissingClient && !hasLoadGeneratorNode(design)) {
+    const scenario = design.scenarios.find((s) => s.id === scenarioId) ?? design.scenarios[0];
+    const hasExplicitNetworkLessonEntry = Boolean(
+      design.id.startsWith('tpl-net-') &&
+      scenario?.entryNodeId &&
+      design.nodes.some((n) => n.id === scenario.entryNodeId),
+    );
+
+    if (
+      !opts?.allowMissingClient &&
+      !hasExplicitNetworkLessonEntry &&
+      !hasLoadGeneratorNode(design)
+    ) {
       set({ missingClientPromptOpen: true });
       return { started: false, reason: 'no-client' };
     }
@@ -205,7 +216,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
     const controller = new AbortController();
     activeAbortController = controller;
 
-    const scenario = design.scenarios.find((s) => s.id === scenarioId) ?? design.scenarios[0];
     const durationS = Math.max(1, scenario?.durationS ?? 60);
     const prevResult = get().lastRunDesignId === design.id ? get().result : null;
 

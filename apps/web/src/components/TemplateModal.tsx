@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Layers, X } from 'lucide-react';
 import { Button } from '@infrasim/ui-kit';
 import { STARTER_TEMPLATES, type StarterTemplate } from '../lib/templates';
@@ -11,8 +11,10 @@ export interface TemplateModalProps {
   onSelectTemplate: (template: StarterTemplate) => void;
 }
 
-/** Modal gallery presenting Phase 1 starter infrastructure designs. */
+/** Modal gallery presenting starter architectures and Phase 4 networking lessons. */
 export function TemplateModal({ open, onClose, onSelectTemplate }: TemplateModalProps) {
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'starter' | 'network'>('all');
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -24,6 +26,19 @@ export function TemplateModal({ open, onClose, onSelectTemplate }: TemplateModal
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
+
+  const starterCount = useMemo(
+    () => STARTER_TEMPLATES.filter((t) => (t.category ?? 'starter') === 'starter').length,
+    [],
+  );
+  const networkCount = useMemo(
+    () => STARTER_TEMPLATES.filter((t) => t.category === 'network').length,
+    [],
+  );
+  const filteredTemplates = useMemo(() => {
+    if (categoryFilter === 'all') return STARTER_TEMPLATES;
+    return STARTER_TEMPLATES.filter((t) => (t.category ?? 'starter') === categoryFilter);
+  }, [categoryFilter]);
 
   if (!open) {
     return null;
@@ -42,16 +57,17 @@ export function TemplateModal({ open, onClose, onSelectTemplate }: TemplateModal
         }
       }}
     >
-      <div className="w-full max-w-2xl rounded-[12px] border border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-[var(--shadow-floating)]">
-        <div className="flex items-center justify-between border-b border-[var(--border-hairline)] px-5 py-4">
+      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-[12px] border border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-[var(--shadow-floating)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-hairline)] px-5 py-4">
           <div className="flex items-center gap-2.5">
             <Layers className="h-4 w-4 text-[var(--text-secondary)]" strokeWidth={1.5} />
             <div>
               <h2 className="text-[14px] font-medium text-[var(--text-primary)]">
-                Starter templates
+                Templates & networking lessons
               </h2>
               <p className="text-[12px] text-[var(--text-muted)]">
-                Load a complete simulated topology with traffic scenario and capacity defaults
+                Load a working architecture or troubleshoot an intentionally broken multi-cloud
+                network
               </p>
             </div>
           </div>
@@ -65,8 +81,47 @@ export function TemplateModal({ open, onClose, onSelectTemplate }: TemplateModal
           </button>
         </div>
 
-        <div className="grid gap-3 p-5 sm:grid-cols-2">
-          {STARTER_TEMPLATES.map((tpl) => (
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-5 py-2">
+          <button
+            type="button"
+            data-testid="template-filter-all"
+            onClick={() => setCategoryFilter('all')}
+            className={`rounded-[6px] px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              categoryFilter === 'all'
+                ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+          >
+            All ({STARTER_TEMPLATES.length})
+          </button>
+          <button
+            type="button"
+            data-testid="template-filter-starter"
+            onClick={() => setCategoryFilter('starter')}
+            className={`rounded-[6px] px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              categoryFilter === 'starter'
+                ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+          >
+            Starter ({starterCount})
+          </button>
+          <button
+            type="button"
+            data-testid="template-filter-network"
+            onClick={() => setCategoryFilter('network')}
+            className={`rounded-[6px] px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              categoryFilter === 'network'
+                ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+          >
+            Networking lessons ({networkCount})
+          </button>
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto p-5 sm:grid-cols-2">
+          {filteredTemplates.map((tpl) => (
             <article
               key={tpl.id}
               data-testid={`template-card-${tpl.id}`}
@@ -113,11 +168,8 @@ export function TemplateModal({ open, onClose, onSelectTemplate }: TemplateModal
           ))}
         </div>
 
-        <div className="flex items-center justify-between border-t border-[var(--border-hairline)] px-5 py-3 text-[11px] text-[var(--text-muted)]">
-          <span>
-            Additional templates (Serverless, Queue Pipeline, Retry Storm, RAG, Networking) arrive
-            in Phases 2–7.
-          </span>
+        <div className="flex shrink-0 items-center justify-between border-t border-[var(--border-hairline)] px-5 py-3 text-[11px] text-[var(--text-muted)]">
+          <span>Additional Terraform and Challenge templates arrive in Phases 5–7.</span>
           <button
             type="button"
             onClick={onClose}

@@ -6,6 +6,7 @@ export interface EdgeLabelLayoutInput {
   labelX: number;
   labelY: number;
   labelTextLength: number;
+  hasLeadingIcon?: boolean;
 }
 
 export interface EdgeLabelPlacement {
@@ -22,10 +23,20 @@ export interface EdgeLabelPlacement {
  * letting node cards clip either side.
  */
 export function computeEdgeLabelPlacement(input: EdgeLabelLayoutInput): EdgeLabelPlacement {
-  const { sourceX, sourceY, targetX, targetY, labelX, labelY, labelTextLength } = input;
+  const {
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    labelX,
+    labelY,
+    labelTextLength,
+    hasLeadingIcon = false,
+  } = input;
   const horizontalGap = targetX - sourceX;
   const verticalSpan = Math.abs(targetY - sourceY);
-  const estimatedWidth = Math.max(54, labelTextLength * 6 + 14);
+  const iconExtraWidth = hasLeadingIcon ? 10 : 0;
+  const estimatedWidth = Math.max(54, labelTextLength * 5.5 + 14 + iconExtraWidth);
 
   const inCardVerticalBand = verticalSpan < 104;
   const gapTooTight = horizontalGap < estimatedWidth + 8;

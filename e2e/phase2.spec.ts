@@ -262,7 +262,8 @@ test('Phase 2 E2E: operation mock preview, price unavailability & manual overrid
   await expect(page.getByTestId('unknown-instance-type-hint')).not.toBeVisible();
 
   // 3. Operation-level mock editor: DB node Query template edit + Preview + p50/p95 override
-  await page.getByTestId('canvas-node-db').click({ force: true });
+  await page.getByTestId('canvas-node-db').click();
+  await expect(page.getByTestId('inspector-panel')).toContainText('PostgreSQL');
   await page.getByTestId('inspector-tab-latency').click();
   await expect(page.getByTestId('inspector-latency-tab')).toContainText(
     /Typical default — edit me/i,

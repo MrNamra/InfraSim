@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { getService } from '@infrasim/catalog';
 import { applyJsonPatch, diagnose } from '@infrasim/diagnosis';
+import { analyzeDesignNetwork, applyNetworkPatch } from '@infrasim/network-analyzer';
 import { validateDesign } from '@infrasim/shared-types';
 import { runSimulation } from '@infrasim/sim-engine';
 import { STARTER_TEMPLATES, getStarterTemplate } from './templates';
 
 describe('Phase 1 starter templates', () => {
   it('validates every starter template against Design JSON Schema and catalog services', () => {
-    expect(STARTER_TEMPLATES.length).toBe(3);
+    expect(STARTER_TEMPLATES.length).toBe(11);
 
     for (const tpl of STARTER_TEMPLATES) {
       const res = validateDesign(tpl.design);
@@ -92,5 +93,78 @@ describe('Phase 1 starter templates', () => {
     expect(r1.summary.totalRequests).toBeGreaterThan(200);
     expect(r1.perNode.llm).toBeDefined();
     expect(r1.perNode.llm!.success).toBeGreaterThan(0);
+  });
+});
+
+describe('Phase 4 networking puzzle lessons (Spec 13 §9)', () => {
+  const expectedBrokenReasons: Array<{
+    id: string;
+    edgeReasons: Record<string, string>;
+  }> = [
+    { id: 'tpl-net-db-unreachable', edgeReasons: { 'e-api-db': 'SG_NO_INGRESS' } },
+    { id: 'tpl-net-missing-nat', edgeReasons: { 'e-worker-stripe': 'NO_NAT' } },
+    { id: 'tpl-net-lambda-dynamodb', edgeReasons: { 'e-fn-ddb': 'ENDPOINT_MISSING' } },
+    {
+      id: 'tpl-net-peering-asymmetric',
+      edgeReasons: { 'e-app-analytics': 'MISSING_RETURN_ROUTE' },
+    },
+    {
+      id: 'tpl-net-timeout-vs-refused',
+      edgeReasons: { 'e-timeout': 'SG_NO_INGRESS', 'e-refused': 'PORT_NOT_LISTENING' },
+    },
+    { id: 'tpl-net-gcp-tag-mismatch', edgeReasons: { 'e-lb-gce': 'GCP_FW_DENY' } },
+    { id: 'tpl-net-azure-private-dns', edgeReasons: { 'e-vm-sql': 'PRIVATE_DNS_MISSING' } },
+    { id: 'tpl-net-oci-service-gateway', edgeReasons: { 'e-oci-bucket': 'ENDPOINT_MISSING' } },
+  ];
+
+  it('every networking lesson exhibits its target failure code, fixes cleanly with 1-click patches, and runs after repair', async () => {
+    for (const spec of expectedBrokenReasons) {
+      const tpl = getStarterTemplate(spec.id);
+      expect(tpl, `Missing template ${spec.id}`).toBeDefined();
+
+      let design = structuredClone(tpl!.design);
+      const initialAnalysis = analyzeDesignNetwork(design);
+
+      for (const [edgeId, expectedCode] of Object.entries(spec.edgeReasons)) {
+        const edgeRes = initialAnalysis.edges[edgeId];
+        expect(edgeRes, `Missing edge ${edgeId} in ${spec.id}`).toBeDefined();
+        expect(edgeRes!.reachable).toBe(false);
+        expect(edgeRes!.reasonCode).toBe(expectedCode);
+        expect(edgeRes!.fixes.length).toBeGreaterThan(0);
+
+        // Apply first suggested fix patch for each broken edge
+        design = applyNetworkPatch(design, edgeRes!.fixes[0]!.patch);
+      }
+
+      const repairedAnalysis = analyzeDesignNetwork(design);
+      for (const edge of design.edges) {
+        expect(
+          repairedAnalysis.edges[edge.id]?.reachable,
+          `Edge ${edge.id} in ${spec.id} should be reachable after fix`,
+        ).toBe(true);
+      }
+
+      const simResult = await runSimulation(
+        { design, scenarioId: design.scenarios[0]!.id, network: repairedAnalysis },
+        () => {},
+      );
+      expect(simResult.summary.success).toBeGreaterThan(0);
+    }
+  });
+
+  it('tpl-net-timeout-vs-refused emits both ETIMEDOUT and ECONNREFUSED logs during broken simulation', async () => {
+    const tpl = getStarterTemplate('tpl-net-timeout-vs-refused')!;
+    const logs: string[] = [];
+    const analysis = analyzeDesignNetwork(tpl.design);
+    await runSimulation(
+      { design: tpl.design, scenarioId: tpl.design.scenarios[0]!.id, network: analysis },
+      (frame) => {
+        for (const entry of frame.newLogs) {
+          logs.push(entry.message);
+        }
+      },
+    );
+    expect(logs.some((m) => m.includes('ETIMEDOUT'))).toBe(true);
+    expect(logs.some((m) => m.includes('ECONNREFUSED'))).toBe(true);
   });
 });

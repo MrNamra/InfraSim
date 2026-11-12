@@ -67,6 +67,32 @@ describe('computeEdgeLabelPlacement', () => {
     expect(out.y).toBe(220);
   });
 
+  it('keeps live RPS edge label with status icon inline across 136px gap while still lifting tight gaps', () => {
+    const inline = computeEdgeLabelPlacement({
+      sourceX: 264,
+      sourceY: 220,
+      targetX: 400,
+      targetY: 220,
+      labelX: 332,
+      labelY: 220,
+      labelTextLength: 17, // "https:443 · 160/s"
+      hasLeadingIcon: true,
+    });
+    expect(inline.isOffset).toBe(false);
+
+    const tight = computeEdgeLabelPlacement({
+      sourceX: 264,
+      sourceY: 220,
+      targetX: 374,
+      targetY: 220,
+      labelX: 319,
+      labelY: 220,
+      labelTextLength: 17,
+      hasLeadingIcon: true,
+    });
+    expect(tight.isOffset).toBe(true);
+  });
+
   it('keeps label inline when vertical distance clears the sibling node cards', () => {
     const out = computeEdgeLabelPlacement({
       sourceX: 300,

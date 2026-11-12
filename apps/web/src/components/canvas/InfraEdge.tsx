@@ -103,7 +103,8 @@ function InfraEdgeComponent({
     targetY,
     labelX,
     labelY,
-    labelTextLength: labelText.length + (netEdge ? 3 : 0),
+    labelTextLength: labelText.length,
+    hasLeadingIcon: Boolean(netEdge),
   });
 
   return (

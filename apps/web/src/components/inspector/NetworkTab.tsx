@@ -160,7 +160,10 @@ export function NetworkTab({
   }, [firewalls, node, nodeAttachment]);
 
   const selectedSubnet = useMemo(
-    () => (group?.kind === 'subnet' ? subnets.find((s) => s.id === group.id) : undefined),
+    () =>
+      group?.kind === 'subnet'
+        ? subnets.find((s) => s.id === group.id || s.id === `sub-${group.id}`)
+        : undefined,
     [group, subnets],
   );
   const selectedSubnetRt = useMemo(
