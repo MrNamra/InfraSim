@@ -252,6 +252,7 @@ interface RuntimeEdge {
   crossRegion: boolean;
   viaNat: boolean;
   viaPrivateLink: boolean;
+  extraNetworkLatencyMs: number;
 }
 
 interface RuntimeNode {
@@ -749,10 +750,11 @@ export async function runSimulation(
       winErrors: 0,
       winLatencySum: 0,
       totalBytes: 0,
-      crossAz: resolvedPlacement.crossAz,
-      crossRegion: resolvedPlacement.crossRegion,
-      viaNat: toNode.kind === 'net' || fromNode.kind === 'net',
-      viaPrivateLink: resolvedPlacement.viaPrivateLink,
+      crossAz: resolvedPlacement.crossAz || Boolean(netAnalysis?.crossAz),
+      crossRegion: resolvedPlacement.crossRegion || Boolean(netAnalysis?.crossRegion),
+      viaNat: toNode.kind === 'net' || fromNode.kind === 'net' || Boolean(netAnalysis?.viaNat),
+      viaPrivateLink: resolvedPlacement.viaPrivateLink || Boolean(netAnalysis?.viaEndpoint),
+      extraNetworkLatencyMs: netAnalysis?.extraLatencyMs ?? 0,
     };
     orderedEdges.push(re);
     fromNode.outgoingAll.push(re);
@@ -1303,7 +1305,7 @@ export async function runSimulation(
         emitLog(
           'error',
           'engine',
-          `Connection refused on ${edgeState.edge.id}: ${edgeState.networkBlocked.reasonCode ?? 'refused'}`,
+          `ECONNREFUSED (${edgeState.networkBlocked.reasonCode ?? 'PORT_NOT_LISTENING'}) on ${edgeState.edge.id}: ${edgeState.networkBlocked.explanation.short}`,
           targetNode.node.id,
           attemptState.callerCall?.traceId || undefined,
           { requestId: attemptState.callerCall?.rootRequestId },
@@ -1320,10 +1322,11 @@ export async function runSimulation(
       }
       const timeoutMs = Math.min(3000, Math.max(100, attemptState.overallDeadlineMs - now));
       const failKind: ErrorKind = mode === 'dns' ? 'not_reachable' : 'conn_timeout';
+      const prefix = mode === 'dns' ? 'ENOTFOUND' : 'ETIMEDOUT';
       emitLog(
         'error',
         'engine',
-        `Network blocked on ${edgeState.edge.id}: ${edgeState.networkBlocked.reasonCode ?? mode}`,
+        `${prefix} (${edgeState.networkBlocked.reasonCode ?? mode}) on ${edgeState.edge.id}: ${edgeState.networkBlocked.explanation.short}`,
         targetNode.node.id,
         attemptState.callerCall?.traceId || undefined,
         { requestId: attemptState.callerCall?.rootRequestId },
@@ -1362,14 +1365,15 @@ export async function runSimulation(
       attempt: attemptState,
     };
 
-    // Sample one-way transport delay
-    const { latencyMs: netLatencyMs } = sampleEdgeTransportLatency(
+    // Sample one-way transport delay (+ network hop delay for NAT / peering / TGW / VPN / endpoint)
+    const { latencyMs: sampledNetMs } = sampleEdgeTransportLatency(
       edgeState.edge,
       edgeState.fromNode.node,
       targetNode.node,
       edgeState.rng,
       { resolvedPlacement: edgeState.resolvedPlacement },
     );
+    const netLatencyMs = sampledNetMs + edgeState.extraNetworkLatencyMs;
     edgeState.totalBytes += attemptState.payloadBytes;
 
     // Schedule attempt timeout watchdog in compact active timeout heap

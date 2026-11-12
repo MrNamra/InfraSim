@@ -1,5 +1,6 @@
 import { CATALOG_SERVICES } from '@infrasim/catalog';
 import { diagnose } from '@infrasim/diagnosis';
+import { analyzeDesignNetwork } from '@infrasim/network-analyzer';
 import type { SimFrame, SimulationResult } from '@infrasim/shared-types';
 import { type RunInput, SimulationAbortedError, runSimulation } from '@infrasim/sim-engine';
 
@@ -40,6 +41,17 @@ export async function runSimulationBatchWithDiagnosis(
     };
   }
 
+  const catalog = [...CATALOG_SERVICES, ...(input.design.customServices ?? [])];
+  const network =
+    input.network ??
+    analyzeDesignNetwork(input.design, {
+      customServices: input.design.customServices,
+    });
+  effectiveInput = {
+    ...effectiveInput,
+    network,
+  };
+
   const result = await runSimulation(
     effectiveInput,
     (frame) => {
@@ -53,8 +65,7 @@ export async function runSimulationBatchWithDiagnosis(
 
   flushBatch();
 
-  const catalog = [...CATALOG_SERVICES, ...(input.design.customServices ?? [])];
-  const insights = diagnose({ design: input.design, result, catalog });
+  const insights = diagnose({ design: input.design, result, catalog, network });
   return {
     ...result,
     insights,

@@ -13,9 +13,12 @@ import {
   dbReadHeavyNoCacheRule,
   serverlessThrottledRule,
 } from './rules/database.js';
+import { networkEdgeBlockedRule, networkSecuritySmellRule } from './rules/network.js';
 import type { DiagnosisContext, Rule } from './types.js';
 
 export const PHASE1_RULES: Rule[] = [
+  networkEdgeBlockedRule,
+  networkSecuritySmellRule,
   cpuSaturatedRule,
   dbPoolExhaustedRule,
   dropsQueueFullRule,

@@ -62,11 +62,18 @@ function decodePointer(seg: string): string {
   return seg.replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
+export interface PatchOpLike {
+  op: string;
+  path: string;
+  value?: unknown;
+  from?: string;
+}
+
 /**
  * Pure RFC 6902 patch executor against a cloned Design or document object.
  * Safely creates missing `/network` containers if needed without mutating input.
  */
-export function applyNetworkPatch<T>(doc: T, ops: readonly JsonPatchOp[]): T {
+export function applyNetworkPatch<T>(doc: T, ops: readonly PatchOpLike[]): T {
   const copy = structuredClone(doc);
   for (const op of ops) {
     if (!op.path.startsWith('/')) {
@@ -127,7 +134,7 @@ export interface PatchDiffLine {
 }
 
 /** Converts JSON Patch ops into concise human-readable diff lines for confirmation UIs. */
-export function formatPatchDiffLines(ops: readonly JsonPatchOp[]): PatchDiffLine[] {
+export function formatPatchDiffLines(ops: readonly PatchOpLike[]): PatchDiffLine[] {
   return ops.map((op) => {
     const valStr = op.value !== undefined ? JSON.stringify(op.value) : '';
     const clipped = valStr.length > 140 ? `${valStr.slice(0, 137)}...` : valStr;
