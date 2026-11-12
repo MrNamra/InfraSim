@@ -1,7 +1,11 @@
 /** Lightweight API client for Laravel Sanctum authentication, custom services, and backend sync. */
 
 import type { PriceSnapshot } from '@infrasim/cost-engine';
-import type { CustomServiceDefinition } from '@infrasim/shared-types';
+import type {
+  CustomServiceDefinition,
+  FixtureTemplateId,
+  PayloadFixture,
+} from '@infrasim/shared-types';
 
 export interface AuthUser {
   id: number;
@@ -18,6 +22,15 @@ export interface CustomServiceApiRecord {
   id: string;
   serviceId: string;
   definition: CustomServiceDefinition;
+  updatedAt?: string;
+}
+
+export interface FixtureApiRecord {
+  id: string;
+  name: string;
+  template?: FixtureTemplateId;
+  event: unknown;
+  schema?: Record<string, unknown>;
   updatedAt?: string;
 }
 
@@ -161,6 +174,60 @@ export async function updateCustomServiceApi(
 /** Delete an existing custom service by record UUID or custom.* serviceId. */
 export async function deleteCustomServiceApi(token: string, identifier: string): Promise<void> {
   await apiRequest<{ deleted: boolean }>(`/api/custom-services/${encodeURIComponent(identifier)}`, {
+    method: 'DELETE',
+    token,
+  });
+}
+
+/** List saved payload fixtures in the authenticated user's library. */
+export async function fetchFixturesApi(token: string): Promise<FixtureApiRecord[]> {
+  const res = await apiRequest<{ fixtures: FixtureApiRecord[] }>('/api/fixtures', { token });
+  return res.fixtures;
+}
+
+/** Save a payload fixture to the authenticated user's library. */
+export async function createFixtureApi(
+  token: string,
+  fixture: Omit<PayloadFixture, 'id'>,
+): Promise<FixtureApiRecord> {
+  const res = await apiRequest<{ fixture: FixtureApiRecord }>('/api/fixtures', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({
+      name: fixture.name,
+      template: fixture.template ?? null,
+      event: fixture.event,
+      schema: fixture.schema ?? null,
+    }),
+  });
+  return res.fixture;
+}
+
+/** Update an existing saved payload fixture in the user's library. */
+export async function updateFixtureApi(
+  token: string,
+  id: string,
+  fixture: Omit<PayloadFixture, 'id'>,
+): Promise<FixtureApiRecord> {
+  const res = await apiRequest<{ fixture: FixtureApiRecord }>(
+    `/api/fixtures/${encodeURIComponent(id)}`,
+    {
+      method: 'PUT',
+      token,
+      body: JSON.stringify({
+        name: fixture.name,
+        template: fixture.template ?? null,
+        event: fixture.event,
+        schema: fixture.schema ?? null,
+      }),
+    },
+  );
+  return res.fixture;
+}
+
+/** Delete a saved payload fixture from the user's library. */
+export async function deleteFixtureApi(token: string, id: string): Promise<void> {
+  await apiRequest<{ deleted: boolean }>(`/api/fixtures/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     token,
   });

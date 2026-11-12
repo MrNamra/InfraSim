@@ -10,7 +10,9 @@ import type {
   GroupInstance,
   NodeConfig,
   NodeInstance,
+  PayloadFixture,
   Scenario,
+  ScriptAsset,
 } from '@infrasim/shared-types';
 import { createEmptyDesign } from '@infrasim/shared-types';
 import { getService } from '@infrasim/catalog';
@@ -74,6 +76,7 @@ export interface DesignStoreState {
   reduceMotionOverride: boolean;
   presets: CustomPreset[];
   userCustomServices: CustomServiceDefinition[];
+  libraryFixtures: PayloadFixture[];
   clipboard: { nodes: NodeInstance[]; edges: EdgeInstance[] } | null;
 
   // Actions
@@ -123,6 +126,14 @@ export interface DesignStoreState {
   deleteCustomService: (serviceId: string) => void;
   replaceNodeServiceId: (nodeId: string, service: CustomServiceDefinition) => void;
 
+  setLibraryFixtures: (fixtures: PayloadFixture[]) => void;
+  upsertDesignFixture: (fixture: PayloadFixture) => void;
+  deleteDesignFixture: (fixtureId: string) => void;
+  upsertLibraryFixture: (fixture: PayloadFixture) => void;
+  deleteLibraryFixture: (fixtureId: string) => void;
+  upsertDesignScript: (script: ScriptAsset) => void;
+  deleteDesignScript: (scriptId: string) => void;
+
   selectNode: (nodeId: string | null) => void;
   selectEdge: (edgeId: string | null) => void;
   selectGroup: (groupId: string | null) => void;
@@ -168,6 +179,7 @@ export const useDesignStore = create<DesignStoreState>()(
       reduceMotionOverride: false,
       presets: [],
       userCustomServices: [],
+      libraryFixtures: [],
       clipboard: null,
 
       loadDesign: (design, resetHistory = true) => {
@@ -744,6 +756,73 @@ export const useDesignStore = create<DesignStoreState>()(
             node.serviceId = cloned.id;
             node.label = cloned.name;
             node.config = createInitialNodeConfig(cloned);
+          }
+        });
+      },
+
+      setLibraryFixtures: (fixtures) =>
+        set((state) => {
+          state.libraryFixtures = structuredClone(fixtures);
+        }),
+
+      upsertDesignFixture: (fixture) => {
+        const cloned = structuredClone(fixture);
+        commit((draft) => {
+          const idx = draft.fixtures.findIndex((f) => f.id === cloned.id);
+          if (idx >= 0) {
+            draft.fixtures[idx] = cloned;
+          } else {
+            draft.fixtures.push(cloned);
+          }
+        });
+      },
+
+      deleteDesignFixture: (fixtureId) => {
+        commit((draft) => {
+          draft.fixtures = draft.fixtures.filter((f) => f.id !== fixtureId);
+        });
+      },
+
+      upsertLibraryFixture: (fixture) => {
+        const cloned = structuredClone(fixture);
+        set((state) => {
+          state.libraryFixtures = [
+            cloned,
+            ...state.libraryFixtures.filter((f) => f.id !== cloned.id),
+          ];
+        });
+      },
+
+      deleteLibraryFixture: (fixtureId) => {
+        set((state) => {
+          state.libraryFixtures = state.libraryFixtures.filter((f) => f.id !== fixtureId);
+        });
+      },
+
+      upsertDesignScript: (script) => {
+        const cloned = structuredClone(script);
+        commit((draft) => {
+          const idx = draft.scripts.findIndex((s) => s.id === cloned.id);
+          if (idx >= 0) {
+            draft.scripts[idx] = cloned;
+          } else {
+            draft.scripts.push(cloned);
+          }
+        });
+      },
+
+      deleteDesignScript: (scriptId) => {
+        commit((draft) => {
+          draft.scripts = draft.scripts.filter((s) => s.id !== scriptId);
+          for (const node of draft.nodes) {
+            if (node.config.scriptId === scriptId) {
+              delete node.config.scriptId;
+            }
+          }
+          for (const scenario of draft.scenarios) {
+            if (scenario.scriptId === scriptId) {
+              delete scenario.scriptId;
+            }
           }
         });
       },

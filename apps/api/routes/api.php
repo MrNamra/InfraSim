@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CustomServiceController;
+use App\Http\Controllers\FixtureController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PriceController;
 use Illuminate\Support\Facades\Route;
@@ -30,5 +31,10 @@ Route::middleware('throttle:api')->group(function (): void {
         Route::post('/custom-services', [CustomServiceController::class, 'store']);
         Route::put('/custom-services/{customService}', [CustomServiceController::class, 'update']);
         Route::delete('/custom-services/{customService}', [CustomServiceController::class, 'destroy']);
+
+        Route::get('/fixtures', [FixtureController::class, 'index']);
+        Route::post('/fixtures', [FixtureController::class, 'store']);
+        Route::put('/fixtures/{fixture}', [FixtureController::class, 'update']);
+        Route::delete('/fixtures/{fixture}', [FixtureController::class, 'destroy']);
     });
 });

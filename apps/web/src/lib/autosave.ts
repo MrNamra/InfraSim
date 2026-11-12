@@ -1,5 +1,10 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { CustomPreset, CustomServiceDefinition, Design } from '@infrasim/shared-types';
+import type {
+  CustomPreset,
+  CustomServiceDefinition,
+  Design,
+  PayloadFixture,
+} from '@infrasim/shared-types';
 
 export interface StoredDesignRecord {
   id: string;
@@ -22,6 +27,13 @@ export interface StoredCustomServiceRecord {
   service: CustomServiceDefinition;
 }
 
+export interface StoredFixtureRecord {
+  id: string;
+  name: string;
+  updatedAt: number;
+  fixture: PayloadFixture;
+}
+
 export interface StoredMetaRecord {
   key: string;
   value: string;
@@ -31,6 +43,7 @@ class InfraSimDatabase extends Dexie {
   designs!: EntityTable<StoredDesignRecord, 'id'>;
   presets!: EntityTable<StoredPresetRecord, 'id'>;
   customServices!: EntityTable<StoredCustomServiceRecord, 'id'>;
+  fixtures!: EntityTable<StoredFixtureRecord, 'id'>;
   meta!: EntityTable<StoredMetaRecord, 'key'>;
 
   constructor() {
@@ -44,6 +57,13 @@ class InfraSimDatabase extends Dexie {
       designs: 'id, updatedAt',
       presets: 'id, updatedAt',
       customServices: 'id, updatedAt',
+      meta: 'key',
+    });
+    this.version(3).stores({
+      designs: 'id, updatedAt',
+      presets: 'id, updatedAt',
+      customServices: 'id, updatedAt',
+      fixtures: 'id, updatedAt',
       meta: 'key',
     });
   }
@@ -152,4 +172,37 @@ export async function deleteCustomServiceFromIndexedDb(serviceId: string): Promi
     return;
   }
   await db.customServices.delete(serviceId);
+}
+
+/** Persists a payload fixture to the user's IndexedDB fixture library. */
+export async function saveFixtureToIndexedDb(fixture: PayloadFixture): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    return;
+  }
+  await db.fixtures.put({
+    id: fixture.id,
+    name: fixture.name,
+    updatedAt: Date.now(),
+    fixture: structuredClone(fixture),
+  });
+}
+
+/** Loads saved user fixtures from IndexedDB newest first. */
+export async function loadFixturesFromIndexedDb(): Promise<PayloadFixture[]> {
+  const db = getDb();
+  if (!db) {
+    return [];
+  }
+  const rows = await db.fixtures.orderBy('updatedAt').reverse().toArray();
+  return rows.map((row) => row.fixture);
+}
+
+/** Deletes a saved fixture from IndexedDB. */
+export async function deleteFixtureFromIndexedDb(fixtureId: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    return;
+  }
+  await db.fixtures.delete(fixtureId);
 }
