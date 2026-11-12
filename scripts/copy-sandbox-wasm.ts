@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const outDir = path.join(repoRoot, 'apps', 'web', 'public', 'wasm');
+const monacoOutDir = path.join(repoRoot, 'apps', 'web', 'public', 'monaco', 'vs');
 
 // Resolve WASM binaries via @infrasim/sandbox + quickjs-emscripten so pnpm strict isolation finds them.
 const sandboxRequire = createRequire(path.join(repoRoot, 'packages', 'sandbox', 'package.json'));
@@ -28,6 +29,32 @@ const ASSETS: AssetCopySpec[] = [
   },
 ];
 
+function syncDirectory(srcDir: string, destDir: string): number {
+  let copied = 0;
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const srcPath = path.join(srcDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copied += syncDirectory(srcPath, destPath);
+    } else if (entry.isFile()) {
+      const srcStat = fs.statSync(srcPath);
+      let needsCopy = true;
+      if (fs.existsSync(destPath)) {
+        const destStat = fs.statSync(destPath);
+        if (destStat.size === srcStat.size && destStat.mtimeMs >= srcStat.mtimeMs) {
+          needsCopy = false;
+        }
+      }
+      if (needsCopy) {
+        fs.copyFileSync(srcPath, destPath);
+        copied += 1;
+      }
+    }
+  }
+  return copied;
+}
+
 function main(): void {
   fs.mkdirSync(outDir, { recursive: true });
   for (const asset of ASSETS) {
@@ -45,6 +72,24 @@ function main(): void {
       fs.copyFileSync(srcPath, destPath);
       console.log(
         `Copied ${path.relative(repoRoot, destPath)} (${(srcStat.size / 1024).toFixed(1)} KB)`,
+      );
+    }
+  }
+
+  const monacoSrcDir = path.join(
+    repoRoot,
+    'apps',
+    'web',
+    'node_modules',
+    'monaco-editor',
+    'min',
+    'vs',
+  );
+  if (fs.existsSync(monacoSrcDir)) {
+    const count = syncDirectory(monacoSrcDir, monacoOutDir);
+    if (count > 0) {
+      console.log(
+        `Synced ${count} Monaco asset file(s) to ${path.relative(repoRoot, monacoOutDir)}`,
       );
     }
   }

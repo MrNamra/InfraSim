@@ -33,8 +33,9 @@ apps/web/next-env.d.ts
 # Generated / downloaded seed snapshots
 packages/cost-engine/seed/prices.seed.json
 
-# Copied WASM assets for browser Web Workers (synced via scripts/copy-sandbox-wasm.ts)
+# Copied WASM & Monaco assets for browser Web Workers / Code tab (synced via scripts/copy-sandbox-wasm.ts)
 apps/web/public/wasm/*.wasm
+apps/web/public/monaco/
 
 # OS / Editor
 .DS_Store

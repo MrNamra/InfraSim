@@ -12,6 +12,8 @@ export default tseslint.config(
       '**/coverage/**',
       'apps/api/**',
       'apps/web/next-env.d.ts',
+      'apps/web/public/monaco/**',
+      'apps/web/public/wasm/**',
       'playwright-report/**',
       'test-results/**',
     ],

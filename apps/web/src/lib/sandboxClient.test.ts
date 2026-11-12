@@ -70,4 +70,23 @@ describe('T3.1 sandboxClient heartbeat watchdog', () => {
     expect(spy).toHaveBeenCalledOnce();
     client.terminate();
   });
+
+  it('delegates runSuite cleanly via fallback when Worker is unavailable', async () => {
+    const client = createSandboxClient();
+    const report = await client.runSuite({
+      script: {
+        ...sampleScript,
+        source:
+          'export async function handler() { return { statusCode: 200, body: JSON.stringify({ ok: true }) }; }',
+      },
+      fixtures: [
+        { id: 'f1', name: 'Pass 200', event: {}, expectedStatus: 200 },
+        { id: 'f2', name: 'Expect 201', event: {}, expectedStatus: 201 },
+      ],
+    });
+    expect(report.total).toBe(2);
+    expect(report.passed).toBe(1);
+    expect(report.failed).toBe(1);
+    client.terminate();
+  });
 });

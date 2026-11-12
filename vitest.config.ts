@@ -4,20 +4,23 @@ import { defineConfig } from 'vitest/config';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
-const packageAliases = [
-  'shared-types',
-  'catalog',
-  'sim-engine',
-  'sandbox',
-  'network-analyzer',
-  'cost-engine',
-  'terraform',
-  'diagnosis',
-  'ui-kit',
-].reduce<Record<string, string>>((acc, pkg) => {
-  acc[`@infrasim/${pkg}`] = path.resolve(rootDir, `packages/${pkg}/src/index.ts`);
-  return acc;
-}, {});
+const packageAliases: Record<string, string> = {
+  '@infrasim/sandbox/fixtures': path.resolve(rootDir, 'packages/sandbox/src/fixtures.ts'),
+  ...[
+    'shared-types',
+    'catalog',
+    'sim-engine',
+    'sandbox',
+    'network-analyzer',
+    'cost-engine',
+    'terraform',
+    'diagnosis',
+    'ui-kit',
+  ].reduce<Record<string, string>>((acc, pkg) => {
+    acc[`@infrasim/${pkg}`] = path.resolve(rootDir, `packages/${pkg}/src/index.ts`);
+    return acc;
+  }, {}),
+};
 
 export default defineConfig({
   esbuild: {

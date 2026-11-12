@@ -2,10 +2,13 @@ import * as Comlink from 'comlink';
 import {
   bundleUserScript,
   executeInSandbox,
+  runFixtureSuite,
   type BundleResult,
   type BundleScriptInput,
   type DryRunInput,
   type DryRunResult,
+  type FixtureSuiteReport,
+  type RunFixtureSuiteInput,
 } from '@infrasim/sandbox';
 
 /** Comlink worker RPC surface exposed by `sandbox.worker.ts`. */
@@ -13,6 +16,7 @@ export interface SandboxWorkerApi {
   ping: () => number;
   bundle: (input: Omit<BundleScriptInput, 'sdkGenerator'>) => Promise<BundleResult>;
   dryRun: (input: Omit<DryRunInput, 'mockResolver'>) => Promise<DryRunResult>;
+  runSuite: (input: Omit<RunFixtureSuiteInput, 'mockResolver'>) => Promise<FixtureSuiteReport>;
 }
 
 function getOrigin(): string {
@@ -35,6 +39,16 @@ const workerApi: SandboxWorkerApi = {
   async dryRun(input) {
     const origin = getOrigin();
     return executeInSandbox({
+      ...input,
+      quickJsWasmUrl:
+        input.quickJsWasmUrl ?? (origin ? `${origin}/wasm/quickjs-release-sync.wasm` : undefined),
+      esbuildWasmUrl: input.esbuildWasmUrl ?? (origin ? `${origin}/wasm/esbuild.wasm` : undefined),
+    });
+  },
+
+  async runSuite(input) {
+    const origin = getOrigin();
+    return runFixtureSuite({
       ...input,
       quickJsWasmUrl:
         input.quickJsWasmUrl ?? (origin ? `${origin}/wasm/quickjs-release-sync.wasm` : undefined),

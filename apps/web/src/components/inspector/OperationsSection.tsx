@@ -24,6 +24,7 @@ export interface OperationsSectionProps {
   node: NodeInstance;
   service?: ServiceDefinition;
   seed: number;
+  focusedOpName?: string | null;
   onUpdateConfig: (updater: (config: NodeConfig) => void) => void;
 }
 
@@ -768,8 +769,20 @@ function OperationEditorCard({
 }
 
 /** Expandable operation-level latency, mock response template, headers, preview, and JSON Schema editor. */
-export function OperationsSection({ node, service, seed, onUpdateConfig }: OperationsSectionProps) {
-  const [expandedOp, setExpandedOp] = useState<string | null>(null);
+export function OperationsSection({
+  node,
+  service,
+  seed,
+  focusedOpName,
+  onUpdateConfig,
+}: OperationsSectionProps) {
+  const [expandedOp, setExpandedOp] = useState<string | null>(focusedOpName ?? null);
+
+  useEffect(() => {
+    if (focusedOpName) {
+      setExpandedOp(focusedOpName);
+    }
+  }, [focusedOpName]);
   const catalogOps = service?.operations ?? [];
   const catalogNames = new Set(catalogOps.map((o) => o.name));
   const extraOps: OperationDef[] = Object.keys(node.config.operations ?? {})

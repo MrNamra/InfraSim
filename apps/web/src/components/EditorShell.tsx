@@ -36,6 +36,7 @@ import type {
   CostAssumptions,
   CustomServiceDefinition,
   GroupInstance,
+  PayloadFixture,
   Provider,
   ServiceDefinition,
 } from '@infrasim/shared-types';
@@ -52,6 +53,7 @@ import {
   deleteCustomServiceApi,
   fetchCurrentUser,
   fetchCustomServicesApi,
+  fetchFixturesApi,
   getStoredToken,
   setStoredToken,
   updateCustomServiceApi,
@@ -61,9 +63,11 @@ import {
   deleteCustomServiceFromIndexedDb,
   loadActiveDesignFromIndexedDb,
   loadCustomServicesFromIndexedDb,
+  loadFixturesFromIndexedDb,
   loadPresetsFromIndexedDb,
   saveCustomServiceToIndexedDb,
   saveDesignToIndexedDb,
+  saveFixtureToIndexedDb,
 } from '../lib/autosave';
 import { formatCompactMonthlyCost, formatMoney, formatSnapshotAge } from '../lib/costFormat';
 import { mergeCustomServices } from '../lib/customServices';
@@ -75,10 +79,14 @@ import { type SimSpeed, useSimulationStore } from '../store/simulationStore';
 import { Canvas } from './canvas/Canvas';
 import type { NodeCostChipInfo } from './canvas/CanvasSimContext';
 import type { CommandItem } from './CommandPalette';
-import { MetricsDockTab } from './dock/MetricsDockTab';
 import { Palette } from './Palette';
 import { ServiceIcon } from './ServiceIcon';
 import type { WhyTabProps } from './inspector/WhyTab';
+
+const MetricsDockTab = dynamic(
+  () => import('./dock/MetricsDockTab').then((m) => m.MetricsDockTab),
+  { ssr: false },
+);
 
 const ConfigTab = dynamic(() => import('./inspector/ConfigTab').then((m) => m.ConfigTab), {
   ssr: false,
@@ -105,6 +113,9 @@ const LatencyMockTab = dynamic(
   () => import('./inspector/LatencyMockTab').then((m) => m.LatencyMockTab),
   { ssr: false },
 );
+const CodeTab = dynamic(() => import('./inspector/CodeTab').then((m) => m.CodeTab), {
+  ssr: false,
+});
 const CostTab = dynamic(() => import('./inspector/CostTab').then((m) => m.CostTab), {
   ssr: false,
 });
@@ -190,6 +201,21 @@ const DOCK_TABS: { id: DockTab; label: string; icon: typeof Activity }[] = [
   { id: 'insights', label: 'Insights', icon: HelpCircle },
 ];
 
+function mergePayloadFixtures(
+  primary: PayloadFixture[],
+  secondary: PayloadFixture[],
+): PayloadFixture[] {
+  const seen = new Set<string>();
+  const out: PayloadFixture[] = [];
+  for (const item of [...primary, ...secondary]) {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
 /** Top-level InfraSim workbench shell wired to catalog palette, React Flow canvas, and IndexedDB autosave. */
 export function EditorShell() {
   const [theme, setTheme] = useState<Theme>('dark');
@@ -217,6 +243,16 @@ export function EditorShell() {
   }>({ open: false });
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [appliedFixLabel, setAppliedFixLabel] = useState<string | null>(null);
+  const [focusedOpState, setFocusedOpState] = useState<{
+    nodeId: string;
+    opName: string;
+  } | null>(null);
+  const [codeFocusLocation, _setCodeFocusLocation] = useState<{
+    nodeId: string;
+    line: number;
+    column: number;
+    nonce: number;
+  } | null>(null);
   const [customModal, setCustomModal] = useState<{
     open: boolean;
     mode: 'create' | 'edit' | 'duplicate';
@@ -240,6 +276,7 @@ export function EditorShell() {
   const design = useDesignStore((s) => s.design);
   const presets = useDesignStore((s) => s.presets);
   const userCustomServices = useDesignStore((s) => s.userCustomServices);
+  const libraryFixtures = useDesignStore((s) => s.libraryFixtures);
   const activeScenarioId = useDesignStore((s) => s.activeScenarioId);
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
@@ -255,6 +292,11 @@ export function EditorShell() {
   const upsertCustomService = useDesignStore((s) => s.upsertCustomService);
   const deleteCustomService = useDesignStore((s) => s.deleteCustomService);
   const replaceNodeServiceId = useDesignStore((s) => s.replaceNodeServiceId);
+  const setLibraryFixtures = useDesignStore((s) => s.setLibraryFixtures);
+  const upsertDesignFixture = useDesignStore((s) => s.upsertDesignFixture);
+  const upsertLibraryFixture = useDesignStore((s) => s.upsertLibraryFixture);
+  const upsertDesignScript = useDesignStore((s) => s.upsertDesignScript);
+  const deleteDesignScript = useDesignStore((s) => s.deleteDesignScript);
   const applyPresetToNode = useDesignStore((s) => s.applyPresetToNode);
   const updateDesignMeta = useDesignStore((s) => s.updateDesignMeta);
   const updateScenario = useDesignStore((s) => s.updateScenario);
@@ -362,8 +404,12 @@ export function EditorShell() {
     const storedToken = getStoredToken();
     if (storedToken) {
       setToken(storedToken);
-      Promise.all([fetchCurrentUser(storedToken), fetchCustomServicesApi(storedToken)])
-        .then(([u, remoteCustom]) => {
+      Promise.all([
+        fetchCurrentUser(storedToken),
+        fetchCustomServicesApi(storedToken),
+        fetchFixturesApi(storedToken).catch(() => []),
+      ])
+        .then(([u, remoteCustom, remoteFixtures]) => {
           setUser(u);
           if (remoteCustom.length > 0) {
             const localNow = useDesignStore.getState().userCustomServices;
@@ -374,6 +420,23 @@ export function EditorShell() {
             setUserCustomServices(merged);
             for (const item of merged) {
               void saveCustomServiceToIndexedDb(item);
+            }
+          }
+          if (remoteFixtures.length > 0) {
+            const mappedRemote: PayloadFixture[] = remoteFixtures.map((r) => ({
+              id: r.id,
+              name: r.name,
+              ...(r.template ? { template: r.template } : {}),
+              event: r.event,
+              ...(r.schema ? { schema: r.schema } : {}),
+            }));
+            const mergedFixtures = mergePayloadFixtures(
+              mappedRemote,
+              useDesignStore.getState().libraryFixtures,
+            );
+            setLibraryFixtures(mergedFixtures);
+            for (const f of mergedFixtures) {
+              void saveFixtureToIndexedDb(f);
             }
           }
         })
@@ -387,8 +450,9 @@ export function EditorShell() {
       loadActiveDesignFromIndexedDb(),
       loadPresetsFromIndexedDb(),
       loadCustomServicesFromIndexedDb(),
+      loadFixturesFromIndexedDb(),
     ])
-      .then(([savedDesign, savedPresets, savedCustom]) => {
+      .then(([savedDesign, savedPresets, savedCustom, savedFixtures]) => {
         if (savedDesign && savedDesign.nodes.length + savedDesign.groups.length > 0) {
           loadDesign(savedDesign, true);
         }
@@ -399,6 +463,10 @@ export function EditorShell() {
           const existing = useDesignStore.getState().userCustomServices;
           setUserCustomServices(mergeCustomServices(existing, savedCustom));
         }
+        if (savedFixtures.length > 0) {
+          const existingFix = useDesignStore.getState().libraryFixtures;
+          setLibraryFixtures(mergePayloadFixtures(existingFix, savedFixtures));
+        }
       })
       .catch(() => {
         // Ignore IndexedDB unavailability in restricted contexts
@@ -406,7 +474,7 @@ export function EditorShell() {
       .finally(() => {
         autosaveHydratedRef.current = true;
       });
-  }, [loadDesign, setPresets, setUserCustomServices, hydrateCostStorage]);
+  }, [loadDesign, setPresets, setUserCustomServices, setLibraryFixtures, hydrateCostStorage]);
 
   // Debounced autosave to IndexedDB whenever Design changes
   useEffect(() => {
@@ -455,11 +523,29 @@ export function EditorShell() {
   );
 
   const handleInspectNode = useCallback(
-    (nodeId: string, tab: 'config' | 'latency' | 'cost' | 'why') => {
+    (nodeId: string, tab: 'config' | 'latency' | 'code' | 'cost' | 'why') => {
       selectNode(nodeId);
       setInspectorTab(tab);
     },
     [selectNode],
+  );
+
+  const handleEditCallMock = useCallback(
+    (targetNodeId: string | undefined, serviceId: string, opName: string) => {
+      const target =
+        (targetNodeId ? design.nodes.find((n) => n.id === targetNodeId) : undefined) ??
+        design.nodes.find((n) => n.serviceId === serviceId);
+      if (target) {
+        selectNode(target.id);
+        setFocusedOpState({ nodeId: target.id, opName });
+        setInspectorTab('latency');
+        return;
+      }
+      setStatusNotice(
+        `Add a ${serviceId} service and connect an edge from this node to customize ${opName} mock responses.`,
+      );
+    },
+    [design.nodes, selectNode],
   );
 
   // Map top diagnostic short reason onto each node card / tooltip
@@ -904,6 +990,12 @@ export function EditorShell() {
         group: 'Inspector',
         label: 'Open Latency & Mock tab',
         onSelect: () => setInspectorTab('latency'),
+      },
+      {
+        id: 'tab-code',
+        group: 'Inspector',
+        label: 'Open Code & Payload Tester tab',
+        onSelect: () => setInspectorTab('code'),
       },
       {
         id: 'tab-inspector-cost',
@@ -1908,10 +2000,32 @@ export function EditorShell() {
                   activeScenario={activeScenario}
                   seed={design.settings.seed}
                   presets={presets}
+                  focusedOpName={
+                    focusedOpState?.nodeId === selectedNode.id ? focusedOpState.opName : null
+                  }
                   onUpdateConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
                   onResetNode={() => resetNodeToDefaults(selectedNode.id)}
                   onSavePreset={addPreset}
                   onApplyPreset={(preset) => applyPresetToNode(selectedNode.id, preset)}
+                />
+              ) : inspectorTab === 'code' ? (
+                <CodeTab
+                  theme={theme}
+                  design={design}
+                  node={selectedNode}
+                  customServices={availableCustomServices}
+                  libraryFixtures={libraryFixtures}
+                  token={token}
+                  focusLocation={
+                    codeFocusLocation?.nodeId === selectedNode.id ? codeFocusLocation : null
+                  }
+                  onUpdateNodeConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
+                  onUpsertScript={upsertDesignScript}
+                  onDeleteScript={deleteDesignScript}
+                  onUpsertDesignFixture={upsertDesignFixture}
+                  onUpsertLibraryFixture={upsertLibraryFixture}
+                  onEditCallMock={handleEditCallMock}
+                  onOpenNetworkTab={() => setInspectorTab('network')}
                 />
               ) : inspectorTab === 'cost' ? (
                 <CostTab
@@ -2147,6 +2261,29 @@ export function EditorShell() {
                   setUserCustomServices(merged);
                   for (const item of merged) {
                     void saveCustomServiceToIndexedDb(item);
+                  }
+                }
+              })
+              .catch(() => {
+                // Ignore sync failure if offline
+              });
+            void fetchFixturesApi(nextToken)
+              .then((remoteFixtures) => {
+                if (remoteFixtures.length > 0) {
+                  const mapped: PayloadFixture[] = remoteFixtures.map((r) => ({
+                    id: r.id,
+                    name: r.name,
+                    ...(r.template ? { template: r.template } : {}),
+                    event: r.event,
+                    ...(r.schema ? { schema: r.schema } : {}),
+                  }));
+                  const merged = mergePayloadFixtures(
+                    mapped,
+                    useDesignStore.getState().libraryFixtures,
+                  );
+                  setLibraryFixtures(merged);
+                  for (const item of merged) {
+                    void saveFixtureToIndexedDb(item);
                   }
                 }
               })

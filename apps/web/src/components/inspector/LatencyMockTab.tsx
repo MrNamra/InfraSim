@@ -28,6 +28,7 @@ export interface LatencyMockTabProps {
   activeScenario?: Scenario | null;
   seed?: number;
   presets: CustomPreset[];
+  focusedOpName?: string | null;
   onUpdateConfig: (updater: (config: NodeConfig) => void) => void;
   onResetNode: () => void;
   onSavePreset: (preset: CustomPreset) => void;
@@ -41,6 +42,7 @@ export function LatencyMockTab({
   activeScenario,
   seed = 42,
   presets,
+  focusedOpName,
   onUpdateConfig,
   onResetNode,
   onSavePreset,
@@ -680,6 +682,7 @@ export function LatencyMockTab({
         node={node}
         service={service}
         seed={seed}
+        focusedOpName={focusedOpName}
         onUpdateConfig={onUpdateConfig}
       />
 
