@@ -6,6 +6,7 @@ import {
   newVariant,
 } from 'quickjs-emscripten';
 import type { LogEntry, NodeInstance } from '@infrasim/shared-types';
+import { bundleUserScript } from './bundler.js';
 import { buildGuestPrelude } from './guestPrelude.js';
 import { createSeededPrng, hashSeedParts } from './prng.js';
 import { SourceMapTranslator } from './sourceMap.js';
@@ -222,38 +223,6 @@ function normalizeQuickJsError(
   };
 }
 
-/** Formats source module into executable CommonJS wrapper when passed directly without external bundle. */
-function wrapDirectJsSource(source: string): string {
-  const exportedNames: string[] = [];
-  const transformed = source
-    .replace(/^\s*export\s+async\s+function\s+([A-Za-z0-9_$]+)/gm, (_m, name: string) => {
-      exportedNames.push(name);
-      return `async function ${name}`;
-    })
-    .replace(/^\s*export\s+function\s+([A-Za-z0-9_$]+)/gm, (_m, name: string) => {
-      exportedNames.push(name);
-      return `function ${name}`;
-    })
-    .replace(/^\s*export\s+const\s+([A-Za-z0-9_$]+)\s*=/gm, (_m, name: string) => {
-      exportedNames.push(name);
-      return `const ${name} =`;
-    })
-    .replace(/^\s*export\s+default\s+/gm, 'module.exports.default = ');
-
-  const exportLines = exportedNames
-    .map((name) => `if (typeof ${name} !== 'undefined') module.exports.${name} = ${name};`)
-    .join('\n');
-
-  return `
-const exports = {};
-const module = { exports };
-${transformed}
-${exportLines}
-if (typeof handler === 'function' && !module.exports.handler) module.exports.handler = handler;
-globalThis.__infrasimModuleExports = module.exports;
-`;
-}
-
 /**
  * Runs a single user handler invocation inside an isolated QuickJS-WASM runtime
  * using deterministic virtual time, resource limits, and seeded randomness.
@@ -323,6 +292,37 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
     }
   }
 
+  let bundledCode = input.prebuiltBundle?.code;
+  let sourceMapJson = input.prebuiltBundle?.sourceMapJson;
+
+  if (!bundledCode) {
+    const bundleRes = await bundleUserScript({
+      entryScript: input.script,
+      ...(input.designScripts ? { designScripts: input.designScripts } : {}),
+      ...(input.esbuildWasmUrl ? { esbuildWasmUrl: input.esbuildWasmUrl } : {}),
+    });
+    if (!bundleRes.ok || !bundleRes.code) {
+      const firstErr = bundleRes.errors?.[0] ?? {
+        category: 'UserCodeError' as const,
+        name: 'BuildError',
+        message: 'Failed to bundle handler script',
+      };
+      return {
+        ok: false,
+        seed,
+        virtualDurationMs: 0,
+        billedDurationMs: 1,
+        guestCpuMs: 0,
+        memoryPeakBytes: 0,
+        logs: [],
+        calls: [],
+        error: firstErr,
+      };
+    }
+    bundledCode = bundleRes.code;
+    sourceMapJson = bundleRes.sourceMapJson;
+  }
+
   const effectiveEnv = buildEffectiveEnv(input.node, input.script.env, input.env);
   const prelude = buildGuestPrelude({
     baseEpochMs: 1_700_000_000_000,
@@ -332,9 +332,8 @@ export async function executeInSandbox(input: DryRunInput): Promise<DryRunResult
     discoveryMode: Boolean(input.discoveryMode),
   });
 
-  const bundledCode = input.prebuiltBundle?.code ?? wrapDirectJsSource(input.script.source);
-  const preludeLineCount = input.prebuiltBundle ? 0 : 0;
-  const translator = new SourceMapTranslator(input.prebuiltBundle?.sourceMapJson, preludeLineCount);
+  const preludeLineCount = 0;
+  const translator = new SourceMapTranslator(sourceMapJson, preludeLineCount);
 
   const qjs = await loadQuickJsModule(input.quickJsWasmUrl);
   const rt = qjs.newRuntime();

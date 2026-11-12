@@ -1,9 +1,17 @@
 import * as Comlink from 'comlink';
-import { executeInSandbox, type DryRunInput, type DryRunResult } from '@infrasim/sandbox';
+import {
+  bundleUserScript,
+  executeInSandbox,
+  type BundleResult,
+  type BundleScriptInput,
+  type DryRunInput,
+  type DryRunResult,
+} from '@infrasim/sandbox';
 
 /** Comlink worker RPC surface exposed by `sandbox.worker.ts`. */
 export interface SandboxWorkerApi {
   ping: () => number;
+  bundle: (input: Omit<BundleScriptInput, 'sdkGenerator'>) => Promise<BundleResult>;
   dryRun: (input: Omit<DryRunInput, 'mockResolver'>) => Promise<DryRunResult>;
 }
 
@@ -14,6 +22,14 @@ function getOrigin(): string {
 const workerApi: SandboxWorkerApi = {
   ping() {
     return Date.now();
+  },
+
+  async bundle(input) {
+    const origin = getOrigin();
+    return bundleUserScript({
+      ...input,
+      esbuildWasmUrl: input.esbuildWasmUrl ?? (origin ? `${origin}/wasm/esbuild.wasm` : undefined),
+    });
   },
 
   async dryRun(input) {

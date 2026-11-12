@@ -17,77 +17,8 @@ interface MappingSegment {
 const VLQ_BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const VLQ_CHAR_TO_VAL = new Map<string, number>(Array.from(VLQ_BASE64).map((ch, idx) => [ch, idx]));
 
-function decodeVlqSegment(line: string): MappingSegment[] {
-  const segments: MappingSegment[] = [];
-  let i = 0;
-  let generatedColumn = 0;
-  let sourceIndex = 0;
-  let originalLine = 0;
-  let originalColumn = 0;
-
-  while (i < line.length) {
-    if (line[i] === ',') {
-      i += 1;
-      continue;
-    }
-
-    const readVlq = (): number | null => {
-      let result = 0;
-      let shift = 0;
-      while (i < line.length) {
-        const ch = line[i]!;
-        if (ch === ',' || ch === ';') {
-          return null;
-        }
-        i += 1;
-        const digit = VLQ_CHAR_TO_VAL.get(ch);
-        if (digit === undefined) {
-          return null;
-        }
-        const continuation = (digit & 32) !== 0;
-        result += (digit & 31) << shift;
-        shift += 5;
-        if (!continuation) {
-          const negative = (result & 1) === 1;
-          const shifted = result >> 1;
-          return negative ? -shifted : shifted;
-        }
-      }
-      return null;
-    };
-
-    const dGenCol = readVlq();
-    if (dGenCol === null) break;
-    generatedColumn += dGenCol;
-
-    if (i >= line.length || line[i] === ',') {
-      continue;
-    }
-
-    const dSource = readVlq();
-    const dOrigLine = readVlq();
-    const dOrigCol = readVlq();
-    if (dSource === null || dOrigLine === null || dOrigCol === null) {
-      break;
-    }
-    sourceIndex += dSource;
-    originalLine += dOrigLine;
-    originalColumn += dOrigCol;
-
-    // Consume optional 5th field (name index)
-    if (i < line.length && line[i] !== ',') {
-      readVlq();
-    }
-
-    segments.push({
-      generatedColumn: generatedColumn + 1, // 1-based
-      sourceIndex,
-      originalLine: originalLine + 1, // 1-based
-      originalColumn: originalColumn + 1, // 1-based
-    });
-  }
-
-  return segments;
+function cleanSourceName(raw: string): string {
+  return raw.replace(/^infrasim-virtual:\/design\//, '').replace(/^\/design\//, '');
 }
 
 /** Decodes Source Map v3 mappings so bundled QuickJS stacks map to editor lines/columns. */
@@ -113,7 +44,7 @@ export class SourceMapTranslator {
       return;
     }
 
-    this.sources = parsed.sources ?? [];
+    this.sources = (parsed.sources ?? []).map(cleanSourceName);
     const rawMappings = parsed.mappings ?? '';
     if (!rawMappings) {
       this.lines = [];
@@ -240,5 +171,3 @@ export class SourceMapTranslator {
     return { stack: rewritten, firstSite };
   }
 }
-
-void decodeVlqSegment;

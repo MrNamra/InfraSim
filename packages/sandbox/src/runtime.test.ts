@@ -1,6 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { ScriptAsset } from '@infrasim/shared-types';
-import { DEFAULT_DRY_RUN_LIMITS, executeInSandbox, type MockCallResolver } from './index.js';
+import {
+  DEFAULT_DRY_RUN_LIMITS,
+  executeInSandbox,
+  stopSandboxBundler,
+  type MockCallResolver,
+} from './index.js';
+
+afterAll(async () => {
+  await stopSandboxBundler();
+});
 
 function makeScript(
   source: string,
