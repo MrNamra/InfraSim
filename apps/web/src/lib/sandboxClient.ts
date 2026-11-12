@@ -6,6 +6,8 @@ import type {
   DryRunInput,
   DryRunResult,
   FixtureSuiteReport,
+  ProfileHandlerInput,
+  ProfileRunSummary,
   RunFixtureSuiteInput,
 } from '@infrasim/sandbox';
 import type { SandboxWorkerApi } from '../workers/sandbox.worker';
@@ -21,6 +23,7 @@ export interface SandboxClientOptions {
     autoFill?: (
       input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
     ) => Promise<AutoFillDiscoveryReport>;
+    profile?: (input: Omit<ProfileHandlerInput, 'mockResolver'>) => Promise<ProfileRunSummary>;
     terminate: () => void;
   };
 }
@@ -31,6 +34,7 @@ export interface SandboxClientHandle {
   autoFill: (
     input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
   ) => Promise<AutoFillDiscoveryReport>;
+  profile: (input: Omit<ProfileHandlerInput, 'mockResolver'>) => Promise<ProfileRunSummary>;
   terminate: () => void;
 }
 
@@ -41,6 +45,7 @@ interface WorkerInstance {
   autoFill?: (
     input: Omit<DryRunInput, 'mockResolver' | 'discoveryMode'>,
   ) => Promise<AutoFillDiscoveryReport>;
+  profile?: (input: Omit<ProfileHandlerInput, 'mockResolver'>) => Promise<ProfileRunSummary>;
   terminate: () => void;
 }
 
@@ -97,6 +102,7 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
       dryRun: (input) => remote.dryRun(input),
       runSuite: (input) => remote.runSuite(input),
       autoFill: (input) => remote.autoFill(input),
+      profile: (input) => remote.profile(input),
       terminate: () => {
         remote[Comlink.releaseProxy]();
         rawWorker.terminate();
@@ -110,7 +116,9 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
     op: () => Promise<T>,
     onTimeout: (message: string) => T,
     onCrash: (message: string) => T,
+    overrideWatchdogMs?: number,
   ): Promise<T> => {
+    const activeWatchdogMs = overrideWatchdogMs ?? watchdogTimeoutMs;
     let lastHeartbeat = Date.now();
     let abortedByWatchdog = false;
 
@@ -122,7 +130,7 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
         resolve(onTimeout(message));
       };
 
-      const pingIntervalMs = Math.min(2_000, Math.max(25, Math.floor(watchdogTimeoutMs / 4)));
+      const pingIntervalMs = Math.min(2_000, Math.max(25, Math.floor(activeWatchdogMs / 4)));
       heartbeatTimer = setInterval(() => {
         void worker
           .ping()
@@ -132,20 +140,20 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
           .catch(() => {
             // Worker exited or failed to respond; watchdog handles teardown
           });
-        if (Date.now() - lastHeartbeat > watchdogTimeoutMs) {
+        if (Date.now() - lastHeartbeat > activeWatchdogMs) {
           failWithTimeout(
-            `Sandbox worker stopped responding (>${Math.round(watchdogTimeoutMs / 1000)} s heartbeat timeout) and was restarted.`,
+            `Sandbox worker stopped responding (>${Math.round(activeWatchdogMs / 1000)} s heartbeat timeout) and was restarted.`,
           );
         }
       }, pingIntervalMs);
 
       inFlightWatchdog = setTimeout(() => {
-        if (Date.now() - lastHeartbeat >= watchdogTimeoutMs) {
+        if (Date.now() - lastHeartbeat >= activeWatchdogMs) {
           failWithTimeout(
-            `Sandbox worker stopped responding (>${Math.round(watchdogTimeoutMs / 1000)} s heartbeat timeout) and was restarted.`,
+            `Sandbox worker stopped responding (>${Math.round(activeWatchdogMs / 1000)} s heartbeat timeout) and was restarted.`,
           );
         }
-      }, watchdogTimeoutMs + 50);
+      }, activeWatchdogMs + 50);
 
       op()
         .then((res) => {
@@ -319,6 +327,67 @@ export function createSandboxClient(options: SandboxClientOptions = {}): Sandbox
             },
           },
         }),
+      );
+    },
+
+    async profile(input) {
+      const worker = spawnWorker();
+      if (!worker || !worker.profile) {
+        const mod = await import('@infrasim/sandbox');
+        return mod.profileHandlerScript(input);
+      }
+      const profileWatchdogMs = Math.max(watchdogTimeoutMs, (input.cpuBudgetMs ?? 20_000) + 5_000);
+      const cpuScale = input.cpuScale ?? 0.1;
+      return runWithWatchdog(
+        worker,
+        () => worker.profile!(input),
+        (message) => ({
+          callPlan: {
+            scriptId: input.script.id,
+            cpuMs: { distribution: 'lognormal', p50: 4, p95: 4 },
+            throwProbability: 0,
+            steps: [],
+          },
+          sampleCount: 0,
+          measuredGuestCpuMs: { distribution: 'lognormal', p50: 0, p95: 0 },
+          scaledCpuMs: { distribution: 'lognormal', p50: 4, p95: 4 },
+          cpuScale,
+          branchCount: 0,
+          throwProbability: 0,
+          sampledLogs: [],
+          wallDurationMs: profileWatchdogMs,
+          truncatedByBudget: true,
+          cacheKey: '',
+          error: {
+            category: 'CpuBudgetExceeded',
+            name: 'WorkerWatchdogTimeout',
+            message,
+          },
+        }),
+        (msg) => ({
+          callPlan: {
+            scriptId: input.script.id,
+            cpuMs: { distribution: 'lognormal', p50: 4, p95: 4 },
+            throwProbability: 0,
+            steps: [],
+          },
+          sampleCount: 0,
+          measuredGuestCpuMs: { distribution: 'lognormal', p50: 0, p95: 0 },
+          scaledCpuMs: { distribution: 'lognormal', p50: 4, p95: 4 },
+          cpuScale,
+          branchCount: 0,
+          throwProbability: 0,
+          sampledLogs: [],
+          wallDurationMs: 0,
+          truncatedByBudget: false,
+          cacheKey: '',
+          error: {
+            category: 'UserCodeError',
+            name: 'WorkerCrashError',
+            message: `Handler profiling crashed (${msg})`,
+          },
+        }),
+        profileWatchdogMs,
       );
     },
 

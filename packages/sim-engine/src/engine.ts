@@ -68,21 +68,60 @@ import {
 } from './stations.js';
 import {
   createArrivalStream,
+  estimateProfilePeakRps,
   estimateProfileTotalRequests,
   pickWeightedUserFlow,
   resolveScenarioEntryNode,
 } from './traffic.js';
+
+export interface LiveCodeExecutionOutput {
+  ok: boolean;
+  cpuMs: number;
+  virtualDurationMs: number;
+  errorKind?: ErrorKind;
+  errorMessage?: string;
+  logs: LogEntry[];
+  calls: {
+    serviceId: string;
+    op: string;
+    targetNodeId?: string;
+    latencyMs: number;
+    payloadBytes: number;
+    responseBytes: number;
+    parallelGroup?: string;
+    alias?: string;
+    errorKind?: ErrorKind;
+    tokens?: { in: number; out: number; thinking?: number };
+  }[];
+}
+
+export type LiveCodeExecutor = (params: {
+  scriptId: string;
+  node: NodeInstance;
+  design: Design;
+  seed: number;
+  seq: number;
+  event: unknown;
+  coldStart: boolean;
+  emitPlatformLogs: boolean;
+  requestId: string;
+  traceId?: string;
+}) => Promise<LiveCodeExecutionOutput>;
 
 export interface RunInput {
   design: Design;
   scenarioId: string;
   seed?: number;
   callPlans?: Record<string, CallPlan>;
+  profileLogs?: Record<string, LogEntry[][]>;
+  liveCodeExecutor?: LiveCodeExecutor;
   network?: NetworkAnalysis;
   options?: {
     frameIntervalMs?: number;
     maxEvents?: number;
     liveCode?: boolean;
+    verboseLogs?: boolean;
+    cpuScale?: number;
   };
 }
 
@@ -146,6 +185,9 @@ interface OutboundAttempt {
 
 interface CallCtx {
   id: number;
+  rootRequestId: string;
+  sampledForReplayLog: boolean;
+  sampledForPlatformSuccessLog: boolean;
   traceId: string;
   span?: Span;
   parentTraceSpans?: Span[];
@@ -168,8 +210,12 @@ interface CallCtx {
   payloadBytes: number;
   downstreamStarted: boolean;
   postCpuMs: number;
+  pendingPostOutcome?: CallOutcome;
   localWaitRemainingMs: number;
   queueHeadWaitDeadlineMs?: number;
+  livePlan?: CallPlan;
+  liveUserFailed?: boolean;
+  liveCpuMs?: number;
   onFinish?: (outcome: CallOutcome) => void;
 }
 
@@ -435,9 +481,29 @@ export async function runSimulation(
 
   const seed = input.seed ?? scenario.seedOverride ?? design.settings.seed ?? 42;
   const durationS = Math.max(1, scenario.durationS);
+  const isLiveCodeMode = Boolean(options?.liveCode);
+  const peakRps = estimateProfilePeakRps(scenario.profile, durationS);
+  if (isLiveCodeMode && peakRps > 50) {
+    throw new Error(
+      `Live code mode is capped at 50 RPS (scenario peak is ${Math.round(peakRps)} RPS). Disable live code or reduce traffic below 50 RPS.`,
+    );
+  }
+  const hasHandlerScripts = design.nodes.some((n) => {
+    if (!n.config.scriptId || n.serviceId === 'generic.client' || n.serviceId === 'generic.users') {
+      return false;
+    }
+    const script = design.scripts.find((s) => s.id === n.config.scriptId);
+    return !script || script.kind === 'handler';
+  });
+  if (isLiveCodeMode && hasHandlerScripts && !input.liveCodeExecutor) {
+    throw new Error('Live code mode requires a sandbox executor');
+  }
+
   const endMs = durationS * 1000;
   const frameIntervalMs = Math.max(25, options?.frameIntervalMs ?? 100);
   const maxEvents = options?.maxEvents ?? 8_000_000;
+  const verboseLogs = Boolean(options?.verboseLogs);
+  const cpuScale = Math.max(0.01, Math.min(10, options?.cpuScale ?? 0.1));
   const runId = `run-${seed}-${durationS}-${design.id}`;
 
   const customServices = design.customServices ?? [];
@@ -683,8 +749,24 @@ export async function runSimulation(
   const sampledTraces: Trace[] = [];
   let errorTraceCount = 0;
   const traceSampleRng = createRng(hashSeed(seed, 'global', 'traces'));
+  const logSampleRng = createRng(hashSeed(seed, 'global', 'logs'));
+  const MAX_TOTAL_LOGS_PER_RUN = 50_000;
+  const MAX_ERROR_LOGS_PER_RUN = 2_000;
+  const MAX_REPLAYED_USER_REQUESTS = 200;
   const pendingLogs: LogEntry[] = [];
   let logSeq = 0;
+  let totalLogsEmitted = 0;
+  let errorLogsEmitted = 0;
+  let suppressedErrorLogs = 0;
+  const isHandlerScript = (scriptId?: string): boolean => {
+    if (!scriptId) return false;
+    const script = design.scripts.find((s) => s.id === scriptId);
+    return !script || script.kind === 'handler';
+  };
+
+  const replayedUserRequestIds = new Set<string>();
+  let sampledPlatformSuccessCount = 0;
+  const pendingLiveStarts: { call: CallCtx; coldExtraMs: number }[] = [];
 
   const emitLog = (
     level: LogEntry['level'],
@@ -692,17 +774,75 @@ export async function runSimulation(
     message: string,
     nodeId?: string,
     traceId?: string,
+    extra?: {
+      requestId?: string;
+      data?: unknown;
+      site?: LogEntry['site'];
+      replayedFromProfile?: boolean;
+      tVirtualMs?: number;
+    },
   ) => {
-    if (pendingLogs.length < 400) {
-      pendingLogs.push({
-        id: ++logSeq,
-        tVirtualMs: Number(now.toFixed(2)),
-        level,
-        source,
-        ...(nodeId ? { nodeId } : {}),
-        ...(traceId ? { traceId } : {}),
-        message,
-      });
+    if (level === 'debug' && !verboseLogs) {
+      return;
+    }
+    if ((source === 'platform' || source === 'engine') && level === 'error') {
+      if (errorLogsEmitted >= MAX_ERROR_LOGS_PER_RUN) {
+        suppressedErrorLogs += 1;
+        return;
+      }
+      errorLogsEmitted += 1;
+    }
+    if (totalLogsEmitted >= MAX_TOTAL_LOGS_PER_RUN) {
+      return;
+    }
+    totalLogsEmitted += 1;
+    pendingLogs.push({
+      id: ++logSeq,
+      tVirtualMs: Number((extra?.tVirtualMs ?? now).toFixed(2)),
+      level,
+      source,
+      ...(nodeId ? { nodeId } : {}),
+      ...(extra?.requestId ? { requestId: extra.requestId } : {}),
+      ...(traceId ? { traceId } : {}),
+      message,
+      ...(extra?.data !== undefined ? { data: extra.data } : {}),
+      ...(extra?.site ? { site: extra.site } : {}),
+      ...(extra?.replayedFromProfile ? { replayedFromProfile: true } : {}),
+    });
+  };
+
+  const replayProfileUserLogs = (call: CallCtx, scriptId: string) => {
+    if (isLiveCodeMode) {
+      return;
+    }
+    const pool = input.profileLogs?.[scriptId];
+    if (!pool || pool.length === 0) {
+      return;
+    }
+    const alreadySampled = replayedUserRequestIds.has(call.rootRequestId);
+    const shouldReplay =
+      alreadySampled ||
+      (replayedUserRequestIds.size < MAX_REPLAYED_USER_REQUESTS &&
+        (call.sampledForReplayLog || replayedUserRequestIds.size === 0));
+    if (!shouldReplay) {
+      return;
+    }
+    replayedUserRequestIds.add(call.rootRequestId);
+    const chosen = pool[Math.floor(call.node.errorRng.next() * pool.length)]!;
+    for (const entry of chosen) {
+      emitLog(
+        entry.level,
+        entry.source,
+        entry.message,
+        call.node.node.id,
+        call.traceId || undefined,
+        {
+          requestId: call.rootRequestId,
+          ...(entry.data !== undefined ? { data: entry.data } : {}),
+          ...(entry.site ? { site: entry.site } : {}),
+          replayedFromProfile: true,
+        },
+      );
     }
   };
 
@@ -902,12 +1042,36 @@ export async function runSimulation(
       rn.bucketCompletions += 1;
       rn.frameCompletions += 1;
       rn.totalBytesOut += call.bytesOut;
+      if (
+        !rn.isClient &&
+        call.sampledForPlatformSuccessLog &&
+        !(isLiveCodeMode && isHandlerScript(rn.node.config.scriptId))
+      ) {
+        const provider = rn.service?.provider;
+        const msg =
+          provider === 'aws' && rn.kind === 'fn'
+            ? `REPORT RequestId: ${call.rootRequestId} Duration: ${totalLatencyMs.toFixed(2)} ms Billed Duration: ${Math.max(1, Math.ceil(totalLatencyMs))} ms Memory Size: ${Math.round((rn.node.config.memoryGb ?? 0.5) * 1024)} MB${call.coldStarted ? ` Init Duration: ${totalLatencyMs.toFixed(1)} ms` : ''}`
+            : `${rn.node.label} 200 OK${call.opName ? ` ${call.opName}` : ''} (${totalLatencyMs.toFixed(1)} ms)`;
+        emitLog('info', 'platform', msg, rn.node.id, call.traceId || undefined, {
+          requestId: call.rootRequestId,
+        });
+      }
     } else {
       const err = errorKind ?? 'server';
       if (err === 'dropped_queue_full') {
         rn.totalDrops += 1;
         rn.bucketDrops += 1;
         rn.frameDrops += 1;
+        if (!rn.isClient) {
+          emitLog(
+            'error',
+            'engine',
+            `Queue full drop on ${rn.node.label} (${call.opName ?? 'request'})`,
+            rn.node.id,
+            call.traceId || undefined,
+            { requestId: call.rootRequestId },
+          );
+        }
       } else {
         rn.totalErrorCount += 1;
         rn.bucketErrorCount += 1;
@@ -916,6 +1080,19 @@ export async function runSimulation(
         incrementErrorRecord(rn.frameErrors, err);
         if (err === 'throttled') {
           rn.bucketThrottled += 1;
+        }
+        if (
+          !rn.isClient &&
+          !(isLiveCodeMode && err === 'user_code' && call.sampledForPlatformSuccessLog)
+        ) {
+          emitLog(
+            'error',
+            'platform',
+            `${rn.node.label} ${err}${call.opName ? ` (${call.opName})` : ''} after ${totalLatencyMs.toFixed(1)} ms`,
+            rn.node.id,
+            call.traceId || undefined,
+            { requestId: call.rootRequestId },
+          );
         }
       }
     }
@@ -1015,6 +1192,14 @@ export async function runSimulation(
     if (edgeState.networkBlocked) {
       const mode = edgeState.networkBlocked.failureMode ?? 'timeout';
       if (mode === 'refused') {
+        emitLog(
+          'error',
+          'engine',
+          `Connection refused on ${edgeState.edge.id}: ${edgeState.networkBlocked.reasonCode ?? 'refused'}`,
+          targetNode.node.id,
+          attemptState.callerCall?.traceId || undefined,
+          { requestId: attemptState.callerCall?.rootRequestId },
+        );
         schedule(now + 1, {
           kind: 'RUN_CONTINUATION',
           fn: () => {
@@ -1029,9 +1214,11 @@ export async function runSimulation(
       const failKind: ErrorKind = mode === 'dns' ? 'not_reachable' : 'conn_timeout';
       emitLog(
         'error',
-        'platform',
+        'engine',
         `Network blocked on ${edgeState.edge.id}: ${edgeState.networkBlocked.reasonCode ?? mode}`,
         targetNode.node.id,
+        attemptState.callerCall?.traceId || undefined,
+        { requestId: attemptState.callerCall?.rootRequestId },
       );
       schedule(now + timeoutMs, {
         kind: 'RUN_CONTINUATION',
@@ -1048,6 +1235,14 @@ export async function runSimulation(
     if (edgeState.circuitBreaker && !allowCircuitBreakerRequest(edgeState.circuitBreaker, now)) {
       attemptState.edgeState.winCount += 1;
       attemptState.edgeState.winErrors += 1;
+      emitLog(
+        'warn',
+        'engine',
+        `Circuit breaker open on ${edgeState.edge.id} -> ${targetNode.node.label}`,
+        targetNode.node.id,
+        attemptState.callerCall?.traceId || undefined,
+        { requestId: attemptState.callerCall?.rootRequestId },
+      );
       attemptState.onSettled({ ok: false, errorKind: 'circuit_open', bytesOut: 0 });
       return;
     }
@@ -1077,8 +1272,12 @@ export async function runSimulation(
     const timeoutAtMs = Math.max(now + 5, attemptDeadlineMs);
     enqueueTimeout(timeoutAtMs, token);
 
+    const nextCallId = ++callCounter;
     const targetCall: CallCtx = {
-      id: ++callCounter,
+      id: nextCallId,
+      rootRequestId: attemptState.callerCall?.rootRequestId ?? `async-${nextCallId}`,
+      sampledForReplayLog: attemptState.callerCall?.sampledForReplayLog ?? false,
+      sampledForPlatformSuccessLog: attemptState.callerCall?.sampledForPlatformSuccessLog ?? false,
       traceId: attemptState.callerCall?.traceId ?? '',
       parentTraceSpans: attemptState.callerCall?.parentTraceSpans,
       node: targetNode,
@@ -1142,6 +1341,14 @@ export async function runSimulation(
             ? expDelay * Math.max(0.1, edgeState.rng.next())
             : expDelay;
           if (now + delayMs < attemptState.overallDeadlineMs) {
+            emitLog(
+              'warn',
+              'platform',
+              `Retrying ${targetNode.node.label} (attempt ${attemptState.attemptIndex + 2}/${attemptState.maxRetries + 1})`,
+              targetNode.node.id,
+              attemptState.callerCall?.traceId || undefined,
+              { requestId: attemptState.callerCall?.rootRequestId },
+            );
             schedule(now + delayMs, {
               kind: 'RETRY_ATTEMPT',
               attemptState: {
@@ -1214,8 +1421,40 @@ export async function runSimulation(
     });
   };
 
+  const findMatchingEdgesForStep = (
+    rn: RuntimeNode,
+    step: Extract<PlanStep, { kind: 'call' }>,
+  ): RuntimeEdge[] => {
+    const byService = rn.outgoingAll.filter((e) => e.toNode.node.serviceId === step.serviceId);
+    if (!step.alias) {
+      return byService;
+    }
+    const exact = byService.filter(
+      (e) =>
+        e.toNode.node.id === step.alias ||
+        e.toNode.node.label === step.alias ||
+        e.edge.label === step.alias,
+    );
+    return exact;
+  };
+
   const dispatchDownstreamFromNode = (call: CallCtx, onAllDone: (outcome: CallOutcome) => void) => {
     const rn = call.node;
+    const scriptId = rn.node.config.scriptId;
+    const activePlan =
+      call.livePlan ??
+      (scriptId && isHandlerScript(scriptId) ? input.callPlans?.[scriptId] : undefined);
+
+    if (activePlan) {
+      executePlanSteps(call, activePlan.steps, 0, (res) => {
+        onAllDone({
+          ok: res.ok,
+          errorKind: res.errorKind,
+          bytesOut: res.bytesOut > 0 ? res.bytesOut : Math.max(256, call.bytesOut),
+        });
+      });
+      return;
+    }
 
     // Async edges fire-and-forget alongside sync path
     for (const asyncEdge of rn.outgoingAsync) {
@@ -1229,14 +1468,6 @@ export async function runSimulation(
         },
         call.opName,
       );
-    }
-
-    // Call plan execution if user handler was profiled (Phase 3 ready hook)
-    const scriptId = rn.node.config.scriptId;
-    const plan = scriptId ? input.callPlans?.[scriptId] : undefined;
-    if (plan && plan.steps.length > 0) {
-      executePlanSteps(call, plan.steps, 0, onAllDone);
-      return;
     }
 
     if (rn.outgoingSync.length === 0) {
@@ -1311,26 +1542,123 @@ export async function runSimulation(
           onAllDone(bRes);
           return;
         }
-        executePlanSteps(call, steps, idx + 1, onAllDone);
+        executePlanSteps(call, steps, idx + 1, (rest) => {
+          onAllDone({
+            ok: rest.ok,
+            errorKind: rest.errorKind,
+            bytesOut: bRes.bytesOut + rest.bytesOut,
+          });
+        });
       });
       return;
     }
 
-    // step.kind === 'call'
+    // Contiguous parallelGroup batch (Promise.all semantics)
+    if (step.parallelGroup) {
+      const groupId = step.parallelGroup;
+      let endIdx = idx + 1;
+      while (endIdx < steps.length) {
+        const cand = steps[endIdx]!;
+        if (cand.kind === 'call' && cand.parallelGroup === groupId) {
+          endIdx += 1;
+        } else {
+          break;
+        }
+      }
+
+      const activeCalls: {
+        step: Extract<PlanStep, { kind: 'call' }>;
+        edge: RuntimeEdge;
+        count: number;
+      }[] = [];
+
+      for (let i = idx; i < endIdx; i++) {
+        const s = steps[i] as Extract<PlanStep, { kind: 'call' }>;
+        if (s.probability !== undefined && !call.node.routingRng.chance(s.probability)) {
+          continue;
+        }
+        const matching = findMatchingEdgesForStep(call.node, s);
+        if (matching.length === 0) {
+          emitLog(
+            'error',
+            'engine',
+            `Handler on ${call.node.node.label} attempted ${s.serviceId}.${s.op} but no connected matching edge was found`,
+            call.node.node.id,
+            call.traceId || undefined,
+            { requestId: call.rootRequestId },
+          );
+          onAllDone({ ok: false, errorKind: 'not_reachable', bytesOut: 0 });
+          return;
+        }
+        const edge = pickSyncEdgeWeighted(call.node, matching)!;
+        activeCalls.push({ step: s, edge, count: Math.max(1, s.count) });
+      }
+
+      if (activeCalls.length === 0) {
+        executePlanSteps(call, steps, endIdx, onAllDone);
+        return;
+      }
+
+      let remaining = activeCalls.reduce((sum, item) => sum + item.count, 0);
+      let firstErr: ErrorKind | undefined;
+      let bytesSum = 0;
+
+      for (const item of activeCalls) {
+        for (let k = 0; k < item.count; k++) {
+          invokeEdgeWithPolicy(
+            call,
+            item.edge,
+            call.deadlineMs,
+            item.step.payloadBytes ?? call.payloadBytes,
+            (res) => {
+              remaining -= 1;
+              bytesSum += res.bytesOut;
+              if (!res.ok && !firstErr) {
+                firstErr = res.errorKind ?? 'server';
+              }
+              if (remaining === 0) {
+                if (firstErr) {
+                  onAllDone({ ok: false, errorKind: firstErr, bytesOut: bytesSum });
+                } else {
+                  executePlanSteps(call, steps, endIdx, (rest) => {
+                    onAllDone({
+                      ok: rest.ok,
+                      errorKind: rest.errorKind,
+                      bytesOut: bytesSum + rest.bytesOut,
+                    });
+                  });
+                }
+              }
+            },
+            item.step.op,
+          );
+        }
+      }
+      return;
+    }
+
+    // Sequential call step
     if (step.probability !== undefined && !call.node.routingRng.chance(step.probability)) {
       executePlanSteps(call, steps, idx + 1, onAllDone);
       return;
     }
-    const matching = call.node.outgoingAll.filter(
-      (e) => e.toNode.node.serviceId === step.serviceId,
-    );
+    const matching = findMatchingEdgesForStep(call.node, step);
     if (matching.length === 0) {
+      emitLog(
+        'error',
+        'engine',
+        `Handler on ${call.node.node.label} attempted ${step.serviceId}.${step.op} but no connected matching edge was found`,
+        call.node.node.id,
+        call.traceId || undefined,
+        { requestId: call.rootRequestId },
+      );
       onAllDone({ ok: false, errorKind: 'not_reachable', bytesOut: 0 });
       return;
     }
     const edge = pickSyncEdgeWeighted(call.node, matching)!;
     let remaining = Math.max(1, step.count);
     let firstErr: ErrorKind | undefined;
+    let bytesSum = 0;
     for (let k = 0; k < remaining; k++) {
       invokeEdgeWithPolicy(
         call,
@@ -1339,14 +1667,21 @@ export async function runSimulation(
         step.payloadBytes ?? call.payloadBytes,
         (res) => {
           remaining -= 1;
+          bytesSum += res.bytesOut;
           if (!res.ok && !firstErr) {
-            firstErr = res.errorKind;
+            firstErr = res.errorKind ?? 'server';
           }
           if (remaining === 0) {
             if (firstErr) {
-              onAllDone({ ok: false, errorKind: firstErr, bytesOut: 0 });
+              onAllDone({ ok: false, errorKind: firstErr, bytesOut: bytesSum });
             } else {
-              executePlanSteps(call, steps, idx + 1, onAllDone);
+              executePlanSteps(call, steps, idx + 1, (rest) => {
+                onAllDone({
+                  ok: rest.ok,
+                  errorKind: rest.errorKind,
+                  bytesOut: bytesSum + rest.bytesOut,
+                });
+              });
             }
           }
         },
@@ -1357,6 +1692,33 @@ export async function runSimulation(
 
   const finishNodeAfterLocalWork = (call: CallCtx) => {
     const rn = call.node;
+    if (call.liveUserFailed) {
+      settleCallAndReleaseResources(call, false, 'user_code');
+      return;
+    }
+
+    const scriptId = rn.node.config.scriptId;
+    const activePlan =
+      call.livePlan ??
+      (scriptId && isHandlerScript(scriptId) ? input.callPlans?.[scriptId] : undefined);
+    if (
+      !isLiveCodeMode &&
+      activePlan &&
+      activePlan.throwProbability > 0 &&
+      rn.errorRng.chance(activePlan.throwProbability)
+    ) {
+      emitLog(
+        'error',
+        'user',
+        `Uncaught handler exception on ${rn.node.label}`,
+        rn.node.id,
+        call.traceId || undefined,
+        { requestId: call.rootRequestId },
+      );
+      settleCallAndReleaseResources(call, false, 'user_code');
+      return;
+    }
+
     // Probabilistic service error injection (supports scenario & operation error overrides)
     const errSpec = getEffectiveErrorOutcome(rn, call.opName);
     if (errSpec.errorRate > 0 && rn.errorRng.chance(errSpec.errorRate)) {
@@ -1383,14 +1745,49 @@ export async function runSimulation(
         return;
       }
       // Cache miss -> call origin downstream
-      dispatchDownstreamFromNode(call, (res) => {
+      const completeAfterDownstream = (res: CallOutcome) => {
+        if (call.postCpuMs > 0 && rn.station.coresCapacity > 0 && !call.settledWithCaller) {
+          call.pendingPostOutcome = res;
+          const postRes = acquireCoreOrQueue(
+            rn.station,
+            { call, stage: 'post' },
+            call.postCpuMs,
+            now,
+          );
+          if (postRes.acquired) {
+            call.holdingCore = true;
+            schedule(now + postRes.effectiveCpuMs, { kind: 'END_CPU', call, stage: 'post' });
+          }
+          return;
+        }
         settleCallAndReleaseResources(call, res.ok, res.errorKind);
-      });
+      };
+
+      dispatchDownstreamFromNode(call, completeAfterDownstream);
       return;
     }
 
-    if (rn.outgoingAll.length > 0 && rn.kind !== 'sql' && rn.kind !== 'doc' && rn.kind !== 'kv') {
+    if (
+      (rn.outgoingAll.length > 0 || Boolean(activePlan)) &&
+      rn.kind !== 'sql' &&
+      rn.kind !== 'doc' &&
+      rn.kind !== 'kv'
+    ) {
       dispatchDownstreamFromNode(call, (res) => {
+        if (call.postCpuMs > 0 && rn.station.coresCapacity > 0 && !call.settledWithCaller) {
+          call.pendingPostOutcome = res;
+          const postRes = acquireCoreOrQueue(
+            rn.station,
+            { call, stage: 'post' },
+            call.postCpuMs,
+            now,
+          );
+          if (postRes.acquired) {
+            call.holdingCore = true;
+            schedule(now + postRes.effectiveCpuMs, { kind: 'END_CPU', call, stage: 'post' });
+          }
+          return;
+        }
         settleCallAndReleaseResources(call, res.ok, res.errorKind);
       });
       return;
@@ -1569,31 +1966,12 @@ export async function runSimulation(
 
     // Compute two-constraint lifecycle (cores for CPU segments + slots held over downstream I/O)
     if (rn.kind === 'compute' || rn.kind === 'fn') {
-      const cpuMs = rn.node.config.cpuMsPerRequest ?? 4;
-      const localServiceSampleMs = sampleNodeServiceLatency(rn, false, call.opName);
-      const preCpuMs =
-        cpuMs > 0 ? Math.max(0.01, cpuMs * (rn.outgoingSync.length > 0 ? 0.7 : 1)) : 0;
-      const postCpuMs = cpuMs > 0 && rn.outgoingSync.length > 0 ? Math.max(0.01, cpuMs * 0.3) : 0;
-      call.postCpuMs = postCpuMs;
-
-      // Any local simulated think/processing time above CPU work holds the concurrency slot cleanly
-      call.localWaitRemainingMs =
-        Math.max(0, localServiceSampleMs - (preCpuMs + postCpuMs)) + coldExtraMs;
-
-      if (preCpuMs > 0 && rn.station.coresCapacity > 0) {
-        const res = acquireCoreOrQueue(rn.station, { call, stage: 'local' }, preCpuMs, now);
-        if (res.acquired) {
-          call.holdingCore = true;
-          schedule(now + res.effectiveCpuMs, { kind: 'END_CPU', call, stage: 'local' });
-        }
+      const scriptId = rn.node.config.scriptId;
+      if (isLiveCodeMode && scriptId && isHandlerScript(scriptId)) {
+        pendingLiveStarts.push({ call, coldExtraMs });
         return;
       }
-
-      if (call.localWaitRemainingMs > 0) {
-        schedule(now + call.localWaitRemainingMs, { kind: 'END_LOCAL_WAIT', call });
-      } else {
-        finishNodeAfterLocalWork(call);
-      }
+      resumeComputeAfterLiveCode(call, coldExtraMs);
       return;
     }
 
@@ -1601,6 +1979,141 @@ export async function runSimulation(
     const serviceMs = sampleNodeServiceLatency(rn, false, call.opName) + coldExtraMs;
     schedule(now + serviceMs, { kind: 'END_LOCAL_WAIT', call });
   }
+
+  function resumeComputeAfterLiveCode(call: CallCtx, coldExtraMs: number) {
+    const rn = call.node;
+    const scriptId = rn.node.config.scriptId;
+    if (scriptId && isHandlerScript(scriptId)) {
+      replayProfileUserLogs(call, scriptId);
+    }
+
+    const activePlan =
+      call.livePlan ??
+      (scriptId && isHandlerScript(scriptId) ? input.callPlans?.[scriptId] : undefined);
+    const cpuMs =
+      rn.node.config.cpuMsPerRequest ??
+      call.liveCpuMs ??
+      (activePlan ? sampleLatency(activePlan.cpuMs, rn.latencyRng) : 4);
+    const localServiceSampleMs = activePlan
+      ? cpuMs + rn.chaosExtraLatencyMs
+      : sampleNodeServiceLatency(rn, false, call.opName);
+    const preCpuMs = cpuMs > 0 ? Math.max(0.01, cpuMs * (rn.outgoingSync.length > 0 ? 0.7 : 1)) : 0;
+    const postCpuMs = cpuMs > 0 && rn.outgoingSync.length > 0 ? Math.max(0.01, cpuMs * 0.3) : 0;
+    call.postCpuMs = postCpuMs;
+
+    // Any local simulated think/processing time above CPU work holds the concurrency slot cleanly
+    call.localWaitRemainingMs =
+      Math.max(0, localServiceSampleMs - (preCpuMs + postCpuMs)) + coldExtraMs;
+
+    if (preCpuMs > 0 && rn.station.coresCapacity > 0) {
+      const res = acquireCoreOrQueue(rn.station, { call, stage: 'local' }, preCpuMs, now);
+      if (res.acquired) {
+        call.holdingCore = true;
+        schedule(now + res.effectiveCpuMs, { kind: 'END_CPU', call, stage: 'local' });
+      }
+      return;
+    }
+
+    if (call.localWaitRemainingMs > 0) {
+      schedule(now + call.localWaitRemainingMs, { kind: 'END_LOCAL_WAIT', call });
+    } else {
+      finishNodeAfterLocalWork(call);
+    }
+  }
+
+  const pickFixtureEventForNode = (call: CallCtx): unknown => {
+    const candidates = design.fixtures ?? [];
+    if (candidates.length > 0) {
+      let total = 0;
+      for (const f of candidates) total += Math.max(0, f.weight ?? 1);
+      if (total <= 0) {
+        return candidates[Math.floor(call.node.routingRng.next() * candidates.length)]!.event;
+      }
+      let cursor = call.node.routingRng.next() * total;
+      for (const f of candidates) {
+        cursor -= Math.max(0, f.weight ?? 1);
+        if (cursor <= 0) return f.event;
+      }
+      return candidates[candidates.length - 1]!.event;
+    }
+    return {
+      httpMethod: call.opName?.split(' ')[0] ?? 'POST',
+      path: call.opName?.split(' ')[1] ?? '/',
+      headers: { 'x-request-id': call.rootRequestId },
+      requestContext: { requestId: call.rootRequestId },
+      body: '{}',
+    };
+  };
+
+  const processLiveInvocation = async (item: { call: CallCtx; coldExtraMs: number }) => {
+    const { call, coldExtraMs } = item;
+    const rn = call.node;
+    const scriptId = rn.node.config.scriptId;
+    if (!scriptId || !input.liveCodeExecutor) {
+      resumeComputeAfterLiveCode(call, coldExtraMs);
+      return;
+    }
+
+    const event = pickFixtureEventForNode(call);
+    const out = await input.liveCodeExecutor({
+      scriptId,
+      node: rn.node,
+      design,
+      seed,
+      seq: call.id,
+      event,
+      coldStart: call.coldStarted,
+      emitPlatformLogs: call.sampledForPlatformSuccessLog,
+      requestId: call.rootRequestId,
+      ...(call.traceId ? { traceId: call.traceId } : {}),
+    });
+
+    for (const entry of out.logs) {
+      if (
+        entry.source === 'platform' &&
+        !call.sampledForPlatformSuccessLog &&
+        entry.level === 'info'
+      ) {
+        continue;
+      }
+      emitLog(entry.level, entry.source, entry.message, rn.node.id, call.traceId || undefined, {
+        requestId: call.rootRequestId,
+        ...(entry.data !== undefined ? { data: entry.data } : {}),
+        ...(entry.site ? { site: entry.site } : {}),
+        tVirtualMs: Number(Math.max(now, now + entry.tVirtualMs).toFixed(2)),
+      });
+    }
+
+    const scaledCpuMs = Number(Math.max(0.2, out.cpuMs * cpuScale).toFixed(3));
+    call.liveCpuMs = scaledCpuMs;
+
+    const svcCounts = new Map<string, number>();
+    for (const e of rn.outgoingAll) {
+      svcCounts.set(e.toNode.node.serviceId, (svcCounts.get(e.toNode.node.serviceId) ?? 0) + 1);
+    }
+    const steps: PlanStep[] = out.calls.map((c) => {
+      const sameCount = svcCounts.get(c.serviceId) ?? 0;
+      const pinAlias = c.alias ?? (sameCount > 1 && c.targetNodeId ? c.targetNodeId : undefined);
+      return {
+        kind: 'call',
+        serviceId: c.serviceId,
+        op: c.op,
+        count: 1,
+        ...(c.payloadBytes > 0 ? { payloadBytes: c.payloadBytes } : {}),
+        ...(c.parallelGroup ? { parallelGroup: c.parallelGroup } : {}),
+        ...(pinAlias ? { alias: pinAlias } : {}),
+      };
+    });
+
+    call.livePlan = {
+      scriptId,
+      cpuMs: { distribution: 'fixed', p50: scaledCpuMs, p95: scaledCpuMs },
+      throwProbability: 0,
+      steps,
+    };
+    call.liveUserFailed = !out.ok;
+    resumeComputeAfterLiveCode(call, coldExtraMs);
+  };
 
   const handleNodeArrive = (call: CallCtx) => {
     const rn = call.node;
@@ -1921,6 +2434,15 @@ export async function runSimulation(
     token.attempt.edgeState.winErrors += 1;
     token.attempt.edgeState.winLatencySum += now - token.attempt.startMs;
 
+    emitLog(
+      'error',
+      'platform',
+      `Timeout calling ${token.attempt.targetNode.node.label} after ${Math.round(now - token.attempt.startMs)} ms`,
+      token.attempt.targetNode.node.id,
+      token.attempt.callerCall?.traceId || undefined,
+      { requestId: token.attempt.callerCall?.rootRequestId },
+    );
+
     if (token.attempt.edgeState.circuitBreaker) {
       recordCircuitBreakerOutcome(token.attempt.edgeState.circuitBreaker, false, now);
     }
@@ -1934,6 +2456,14 @@ export async function runSimulation(
         ? expDelay * Math.max(0.1, retryCfg.edgeState.rng.next())
         : expDelay;
       if (now + delayMs < retryCfg.overallDeadlineMs) {
+        emitLog(
+          'warn',
+          'platform',
+          `Retrying ${retryCfg.targetNode.node.label} after timeout (attempt ${retryCfg.attemptIndex + 2}/${retryCfg.maxRetries + 1})`,
+          retryCfg.targetNode.node.id,
+          retryCfg.callerCall?.traceId || undefined,
+          { requestId: retryCfg.callerCall?.rootRequestId },
+        );
         schedule(now + delayMs, {
           kind: 'RETRY_ATTEMPT',
           attemptState: {
@@ -1952,7 +2482,15 @@ export async function runSimulation(
     throw new SimulationAbortedError();
   }
 
-  while (!heap.isEmpty() || !timeoutHeap.isEmpty()) {
+  while (!heap.isEmpty() || !timeoutHeap.isEmpty() || pendingLiveStarts.length > 0) {
+    while (pendingLiveStarts.length > 0) {
+      if (signal?.aborted) {
+        throw new SimulationAbortedError();
+      }
+      const nextLive = pendingLiveStarts.shift()!;
+      await processLiveInvocation(nextLive);
+    }
+
     pruneSettledTimeouts();
     const topTimeout = timeoutHeap.peek();
     const topHeap = heap.peek();
@@ -2016,6 +2554,13 @@ export async function runSimulation(
         bucketRootArrivals += 1;
         const shouldSampleTrace = sampledTraces.length < 200 || traceSampleRng.chance(200 / reqIdx);
         const reqStartMs = now;
+        const rootRequestId = `req-${reqIdx}`;
+        const sampledForReplayLog = reqIdx === 1 || logSampleRng.chance(0.01);
+        const sampledForPlatformSuccessLog =
+          sampledPlatformSuccessCount === 0 || logSampleRng.chance(0.01);
+        if (sampledForPlatformSuccessLog) {
+          sampledPlatformSuccessCount += 1;
+        }
         const traceId = shouldSampleTrace ? `tr-${reqIdx}` : '';
         const traceSpans: Span[] | undefined = shouldSampleTrace ? [] : undefined;
 
@@ -2073,6 +2618,9 @@ export async function runSimulation(
           const firstEdge = pickSyncEdgeWeighted(entryNode, entryNode.outgoingSync)!;
           const reqCallCtx: CallCtx = {
             id: ++callCounter,
+            rootRequestId,
+            sampledForReplayLog,
+            sampledForPlatformSuccessLog,
             traceId,
             parentTraceSpans: traceSpans,
             node: entryNode,
@@ -2124,6 +2672,9 @@ export async function runSimulation(
         // Direct entry into a service node (no Client node on canvas)
         const rootCall: CallCtx = {
           id: ++callCounter,
+          rootRequestId,
+          sampledForReplayLog,
+          sampledForPlatformSuccessLog,
           traceId,
           parentTraceSpans: traceSpans,
           node: entryNode,
@@ -2179,6 +2730,12 @@ export async function runSimulation(
             call: nextCoreTask.item.call,
             stage: nextCoreTask.item.stage,
           });
+        }
+
+        if (ev.stage === 'post') {
+          const outcome = call.pendingPostOutcome;
+          settleCallAndReleaseResources(call, outcome?.ok ?? true, outcome?.errorKind);
+          break;
         }
 
         if (call.localWaitRemainingMs > 0) {
@@ -2294,6 +2851,12 @@ export async function runSimulation(
           rn.lastScaleOutMs = now;
           rn.station.instancesTotal = desired;
           rn.warmingInstances += delta;
+          emitLog(
+            'info',
+            'engine',
+            `Autoscaling scale-out on ${rn.node.label}: ${curTotal} -> ${desired} instances`,
+            rn.node.id,
+          );
           const nextCaps = resolveNodeCapacities(
             { ...rn.node, config: { ...rn.node.config, instances: desired } },
             rn.service,
@@ -2324,6 +2887,12 @@ export async function runSimulation(
           const nextInstances = Math.max(as.min, curTotal - 1);
           rn.lastScaleInMs = now;
           rn.station.instancesTotal = nextInstances;
+          emitLog(
+            'info',
+            'engine',
+            `Autoscaling scale-in on ${rn.node.label}: ${curTotal} -> ${nextInstances} instances`,
+            rn.node.id,
+          );
           const nextCaps = resolveNodeCapacities(
             { ...rn.node, config: { ...rn.node.config, instances: nextInstances } },
             rn.service,
@@ -2390,15 +2959,27 @@ export async function runSimulation(
             const fails = (rn.lbFailStreaks.get(edge.edge.id) ?? 0) + 1;
             rn.lbFailStreaks.set(edge.edge.id, fails);
             rn.lbPassStreaks.set(edge.edge.id, 0);
-            if (fails >= hc.unhealthyThreshold) {
+            if (fails >= hc.unhealthyThreshold && !rn.lbEdgeUnhealthy.has(edge.edge.id)) {
               rn.lbEdgeUnhealthy.add(edge.edge.id);
+              emitLog(
+                'warn',
+                'engine',
+                `Health check marked ${target.node.label} unhealthy from ${rn.node.label}`,
+                target.node.id,
+              );
             }
           } else {
             const passes = (rn.lbPassStreaks.get(edge.edge.id) ?? 0) + 1;
             rn.lbPassStreaks.set(edge.edge.id, passes);
             rn.lbFailStreaks.set(edge.edge.id, 0);
-            if (passes >= hc.healthyThreshold) {
+            if (passes >= hc.healthyThreshold && rn.lbEdgeUnhealthy.has(edge.edge.id)) {
               rn.lbEdgeUnhealthy.delete(edge.edge.id);
+              emitLog(
+                'info',
+                'engine',
+                `Health check restored ${target.node.label} to healthy from ${rn.node.label}`,
+                target.node.id,
+              );
             }
           }
         }
@@ -2411,6 +2992,13 @@ export async function runSimulation(
 
       case 'CHAOS_EVENT': {
         const { chaos, active } = ev;
+        const chaosTargetId = 'nodeId' in chaos ? chaos.nodeId : undefined;
+        emitLog(
+          'warn',
+          'engine',
+          `Chaos ${chaos.kind} ${active ? 'started' : 'ended'}${chaosTargetId ? ` on ${runtimeNodes.get(chaosTargetId)?.node.label ?? chaosTargetId}` : ''}`,
+          chaosTargetId,
+        );
         if (chaos.kind === 'kill-instances') {
           const rn = runtimeNodes.get(chaos.nodeId);
           if (rn) {
@@ -2494,6 +3082,13 @@ export async function runSimulation(
       flushBucket(s);
     }
   }
+  if (suppressedErrorLogs > 0) {
+    emitLog(
+      'warn',
+      'engine',
+      `${suppressedErrorLogs.toLocaleString()} more error logs suppressed (limit 2,000 per run reached)`,
+    );
+  }
   emitSimFrame();
 
   // Compile final SimulationResult & UsageCounters
@@ -2521,16 +3116,19 @@ export async function runSimulation(
       if (cnt) totalErrScaled[k as ErrorKind] = cnt * scaleFactor;
     }
 
+    const scriptId = rn.node.config.scriptId;
+    const planCpuP50 =
+      scriptId && isHandlerScript(scriptId) ? input.callPlans?.[scriptId]?.cpuMs.p50 : undefined;
+    const effectiveCpuP50 = rn.node.config.cpuMsPerRequest ?? planCpuP50;
     const effLatP50 = Math.max(
-      rn.node.config.cpuMsPerRequest ?? 1,
+      effectiveCpuP50 ?? 1,
       rn.node.config.latency?.p50 ?? rn.service?.latency.p50 ?? 15,
     );
     let theoreticalMax = (rn.capacities.totalSlots * scaleFactor * 1000) / Math.max(1, effLatP50);
     if (rn.capacities.totalCores > 0) {
       theoreticalMax = Math.min(
         theoreticalMax,
-        (rn.capacities.totalCores * scaleFactor * 1000) /
-          Math.max(0.1, rn.node.config.cpuMsPerRequest ?? 4),
+        (rn.capacities.totalCores * scaleFactor * 1000) / Math.max(0.1, effectiveCpuP50 ?? 4),
       );
     }
     if (rn.capacities.connectionsMax !== null && rn.capacities.connectionsMax > 0) {

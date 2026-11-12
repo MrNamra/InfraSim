@@ -20,6 +20,11 @@
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js",
       "default": "./dist/doctor.js"
+    },
+    "./profile-key": {
+      "types": "./dist/profileKey.d.ts",
+      "import": "./dist/profileKey.js",
+      "default": "./dist/profileKey.js"
     }
   },
   "dependencies": {

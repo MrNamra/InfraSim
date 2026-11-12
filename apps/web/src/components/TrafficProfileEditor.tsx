@@ -2,14 +2,22 @@
 
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { evaluateProfileRps, sampleProfileCurve } from '@infrasim/sim-engine';
+import {
+  estimateProfilePeakRps,
+  evaluateProfileRps,
+  sampleProfileCurve,
+} from '@infrasim/sim-engine';
 import type { Scenario, TrafficProfile } from '@infrasim/shared-types';
 
 export interface TrafficProfileEditorProps {
   scenario: Scenario;
   seed: number;
+  liveCodeMode?: boolean;
+  verboseLogs?: boolean;
   onUpdateScenario: (updater: (scenario: Scenario) => void) => void;
   onUpdateSeed: (seed: number) => void;
+  onChangeLiveCodeMode?: (enabled: boolean) => void;
+  onChangeVerboseLogs?: (enabled: boolean) => void;
 }
 
 function buildDefaultProfile(kind: TrafficProfile['kind'], durationS: number): TrafficProfile {
@@ -55,11 +63,17 @@ function buildDefaultProfile(kind: TrafficProfile['kind'], durationS: number): T
 export function TrafficProfileEditor({
   scenario,
   seed,
+  liveCodeMode = false,
+  verboseLogs = false,
   onUpdateScenario,
   onUpdateSeed,
+  onChangeLiveCodeMode,
+  onChangeVerboseLogs,
 }: TrafficProfileEditorProps) {
   const profile = scenario.profile;
   const durationS = Math.max(1, scenario.durationS);
+  const peakRps = estimateProfilePeakRps(profile, durationS);
+  const liveCodeAllowed = peakRps <= 50;
   const curve = sampleProfileCurve(profile, durationS, 48);
   const customMax =
     profile.kind === 'custom' ? Math.max(0, ...profile.points.map((pt) => pt.rps)) : 0;
@@ -634,6 +648,53 @@ export function TrafficProfileEditor({
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {onChangeLiveCodeMode || onChangeVerboseLogs ? (
+        <div className="space-y-2 border-t border-[var(--border-hairline)] pt-3">
+          {onChangeLiveCodeMode ? (
+            <label className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium text-[var(--text-primary)]">
+                  Live code execution
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)] tabular-nums">
+                  {liveCodeAllowed
+                    ? 'Runs actual sandboxed handler per request (cap 50 req/s)'
+                    : `Disabled above 50 req/s (peak ${Math.round(peakRps)} req/s)`}
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                data-testid="live-code-toggle"
+                checked={liveCodeAllowed && liveCodeMode}
+                disabled={!liveCodeAllowed}
+                onChange={(e) => onChangeLiveCodeMode(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-[var(--border-strong)] accent-[var(--accent)] disabled:opacity-40"
+              />
+            </label>
+          ) : null}
+
+          {onChangeVerboseLogs ? (
+            <label className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium text-[var(--text-primary)]">
+                  Verbose debug logs
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)]">
+                  Include console.debug lines during simulation runs
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                data-testid="verbose-logs-toggle"
+                checked={verboseLogs}
+                onChange={(e) => onChangeVerboseLogs(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-[var(--border-strong)] accent-[var(--accent)]"
+              />
+            </label>
+          ) : null}
         </div>
       ) : null}
     </div>

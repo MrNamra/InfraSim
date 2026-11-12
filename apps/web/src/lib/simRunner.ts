@@ -4,7 +4,6 @@ import * as Comlink from 'comlink';
 import type { SimFrame, SimulationResult } from '@infrasim/shared-types';
 import type { RunInput } from '@infrasim/sim-engine';
 import type { SimWorkerApi } from '../workers/sim.worker';
-import { runSimulationBatchWithDiagnosis } from './simWorkerCore';
 
 export interface SimRunnerHandle {
   run: (
@@ -72,6 +71,7 @@ export function createSimRunner(): SimRunnerHandle {
             signal.addEventListener('abort', () => fallbackController?.abort(), { once: true });
           }
         }
+        const { runSimulationBatchWithDiagnosis } = await import('./simWorkerCore');
         return runSimulationBatchWithDiagnosis(input, onFrameBatch, fallbackController.signal);
       }
 

@@ -43,11 +43,13 @@ import {
   validateFixtureEvent,
 } from '@infrasim/sandbox/fixtures';
 import { analyzeDryRunDiagnostics } from '@infrasim/sandbox/doctor';
+import { computeProfileCacheKey } from '@infrasim/sandbox/profile-key';
 import type {
   AutoFillPatchPreview,
   DryRunResult,
   FixtureSuiteReport,
   PayloadDoctorHint,
+  ProfileRunSummary,
 } from '@infrasim/sandbox';
 import { Button } from '@infrasim/ui-kit';
 import { createFixtureApi } from '../../lib/api';
@@ -66,6 +68,10 @@ export interface CodeTabProps {
   libraryFixtures: PayloadFixture[];
   token: string | null;
   focusLocation?: { line: number; column: number; nonce: number } | null;
+  profileSummary?: ProfileRunSummary;
+  profileIterations?: 50 | 200 | 500;
+  onChangeProfileIterations?: (iterations: 50 | 200 | 500) => void;
+  onSaveProfileSummary?: (scriptId: string, summary: ProfileRunSummary) => void;
   onUpdateNodeConfig: (updater: (config: NodeConfig) => void) => void;
   onUpsertScript: (script: ScriptAsset) => void;
   onDeleteScript: (scriptId: string) => void;
@@ -177,6 +183,10 @@ export function CodeTab({
   libraryFixtures,
   token,
   focusLocation,
+  profileSummary,
+  profileIterations = 200,
+  onChangeProfileIterations,
+  onSaveProfileSummary,
   onUpdateNodeConfig,
   onUpsertScript,
   onDeleteScript,
@@ -232,6 +242,9 @@ export function CodeTab({
 
   const [runSeed, setRunSeed] = useState<number>(design.settings.seed ?? 42);
   const [running, setRunning] = useState(false);
+  const [profiling, setProfiling] = useState(false);
+  const [localIterations, setLocalIterations] = useState<50 | 200 | 500>(profileIterations);
+  const effectiveIterations = onChangeProfileIterations ? profileIterations : localIterations;
   const [autoFillRunning, setAutoFillRunning] = useState(false);
   const [autoFillPatches, setAutoFillPatches] = useState<AutoFillPatchPreview[] | null>(null);
   const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
@@ -644,6 +657,74 @@ export function CodeTab({
     setFixtureNotice(`Generated payload from schema (seed ${nextSeed})`);
   }, [runSeed, parsedSchemaState]);
 
+  const expectedProfileKey = useMemo(() => {
+    if (!attachedScript || attachedScript.kind !== 'handler') return null;
+    return computeProfileCacheKey({
+      script: attachedScript,
+      designScripts: design.scripts,
+      design,
+      node,
+      customServices,
+      fixtures: design.fixtures.length > 0 ? design.fixtures : [buildActiveFixture()],
+      seed: runSeed,
+      iterations: effectiveIterations,
+    });
+  }, [
+    attachedScript,
+    design,
+    node,
+    customServices,
+    buildActiveFixture,
+    runSeed,
+    effectiveIterations,
+  ]);
+
+  const profileStatus: 'unprofiled' | 'stale' | 'cached' = !profileSummary
+    ? 'unprofiled'
+    : expectedProfileKey && profileSummary.cacheKey === expectedProfileKey
+      ? 'cached'
+      : 'stale';
+
+  const handleProfileHandler = useCallback(async () => {
+    if (!attachedScript || attachedScript.kind !== 'handler') return;
+    setProfiling(true);
+    setFixtureNotice(null);
+    try {
+      const pool: PayloadFixture[] =
+        design.fixtures.length > 0 ? design.fixtures : [buildActiveFixture()];
+      const client = getSharedSandboxClient();
+      const summary = await client.profile({
+        script: attachedScript,
+        designScripts: design.scripts,
+        design,
+        node,
+        customServices,
+        fixtures: pool,
+        seed: runSeed,
+        iterations: effectiveIterations,
+      });
+      onSaveProfileSummary?.(attachedScript.id, summary);
+      if (summary.error) {
+        setFixtureNotice(`Profiling failed: ${summary.error.message}`);
+      } else {
+        setFixtureNotice(
+          `Profiled ${summary.sampleCount} runs (${summary.branchCount} branches, ${summary.wallDurationMs} ms)`,
+        );
+      }
+    } finally {
+      setProfiling(false);
+    }
+  }, [
+    attachedScript,
+    design,
+    buildActiveFixture,
+    node,
+    customServices,
+    runSeed,
+    effectiveIterations,
+    onSaveProfileSummary,
+  ]);
+
   const handleSaveAsFixture = useCallback(async () => {
     if (!parsedEventState.valid) {
       setFixtureNotice('Fix invalid JSON before saving fixture');
@@ -1028,6 +1109,138 @@ export function CodeTab({
           />
         </div>
       </section>
+
+      {/* Handler Profiling for Simulation */}
+      {!isClientNode && attachedScript.kind === 'handler' ? (
+        <section
+          data-testid="handler-profiler-section"
+          className="space-y-2.5 border-t border-[var(--border-hairline)] pt-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] font-medium text-[var(--text-primary)]">
+              Load simulation profile
+            </span>
+            <span
+              data-testid="profile-cache-status"
+              className={`rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium ${
+                profileStatus === 'cached'
+                  ? 'bg-[rgba(76,195,138,0.12)] text-[var(--status-ok)]'
+                  : profileStatus === 'stale'
+                    ? 'bg-[rgba(245,158,11,0.12)] text-[var(--status-warm)]'
+                    : 'bg-[var(--bg-raised)] text-[var(--text-muted)]'
+              }`}
+            >
+              {profileStatus === 'cached'
+                ? 'Cached'
+                : profileStatus === 'stale'
+                  ? 'Stale'
+                  : 'Not profiled'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="profile-handler-btn"
+              disabled={profiling || running}
+              onClick={() => void handleProfileHandler()}
+              className="h-8 flex-1 px-2.5 text-[11px]"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${profiling ? 'animate-spin' : ''}`}
+                strokeWidth={1.5}
+              />
+              <span>{profiling ? 'Profiling' : 'Profile handler'}</span>
+            </Button>
+            <select
+              aria-label="Profile sample iterations"
+              data-testid="profile-iterations-select"
+              value={effectiveIterations}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                const typed: 50 | 200 | 500 = next === 50 ? 50 : next === 500 ? 500 : 200;
+                if (onChangeProfileIterations) {
+                  onChangeProfileIterations(typed);
+                } else {
+                  setLocalIterations(typed);
+                }
+              }}
+              className="h-8 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 font-mono text-[11px] tabular-nums text-[var(--text-primary)]"
+            >
+              <option value={50}>N = 50</option>
+              <option value={200}>N = 200</option>
+              <option value={500}>N = 500</option>
+            </select>
+          </div>
+
+          {profileSummary ? (
+            <div className="space-y-2 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-2.5 text-[11px]">
+              <div
+                data-testid="profile-cpu-calibration"
+                className="font-mono text-[11px] tabular-nums text-[var(--text-primary)]"
+              >
+                Measured (interpreter): {profileSummary.measuredGuestCpuMs.p50.toFixed(1)} ms →
+                using {(node.config.cpuMsPerRequest ?? profileSummary.scaledCpuMs.p50).toFixed(2)}{' '}
+                ms
+                {node.config.cpuMsPerRequest !== undefined ? ' (override)' : ' (estimate)'}
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] tabular-nums">
+                <span>
+                  {profileSummary.sampleCount} samples · {profileSummary.branchCount} branches ·{' '}
+                  {profileSummary.callPlan.steps.length} steps
+                </span>
+                <span>Errors {(profileSummary.throwProbability * 100).toFixed(1)}%</span>
+              </div>
+              {profileSummary.truncatedByBudget ? (
+                <div className="text-[10px] text-[var(--status-warm)]">
+                  Stopped at 20 s profiling CPU budget
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between gap-2 border-t border-[var(--border-hairline)] pt-2">
+                <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
+                  <span>CPU ms/req</span>
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.5}
+                    data-testid="cpu-ms-override-input"
+                    value={
+                      node.config.cpuMsPerRequest !== undefined
+                        ? node.config.cpuMsPerRequest
+                        : Number(profileSummary.scaledCpuMs.p50.toFixed(2))
+                    }
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      onUpdateNodeConfig((cfg) => {
+                        if (Number.isFinite(val) && val > 0) {
+                          cfg.cpuMsPerRequest = val;
+                        }
+                      });
+                    }}
+                    className="h-6 w-20 rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-1.5 font-mono text-[11px] tabular-nums text-[var(--text-primary)]"
+                  />
+                </label>
+                {node.config.cpuMsPerRequest !== undefined ? (
+                  <button
+                    type="button"
+                    data-testid="reset-cpu-estimate-btn"
+                    onClick={() =>
+                      onUpdateNodeConfig((cfg) => {
+                        delete cfg.cpuMsPerRequest;
+                      })
+                    }
+                    className="text-[11px] font-medium text-[var(--accent)] hover:underline"
+                  >
+                    Reset to estimate
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* Payload Tester */}
       {!isClientNode ? (

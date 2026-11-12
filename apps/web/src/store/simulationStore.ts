@@ -1,7 +1,13 @@
 import { create } from 'zustand';
-import type { Design, LogEntry, SimFrame, SimulationResult } from '@infrasim/shared-types';
+import type { ProfileRunSummary } from '@infrasim/sandbox';
+import type {
+  CallPlan,
+  Design,
+  LogEntry,
+  SimFrame,
+  SimulationResult,
+} from '@infrasim/shared-types';
 import { type SimRunnerHandle, createSimRunner } from '../lib/simRunner';
-import { SimulationAbortedError } from '../lib/simWorkerCore';
 
 export const MAX_LOG_RING_BUFFER = 50_000;
 
@@ -91,9 +97,18 @@ export interface SimulationStoreState {
   logs: LogEntry[];
   missingClientPromptOpen: boolean;
   lastRunDesignId: string | null;
+  liveCodeMode: boolean;
+  verboseLogs: boolean;
+  profileIterations: 50 | 200 | 500;
+  profileSummaries: Record<string, ProfileRunSummary>;
 
   appendLogs: (entries: readonly LogEntry[]) => void;
   clearLogs: () => void;
+  setLiveCodeMode: (enabled: boolean) => void;
+  setVerboseLogs: (enabled: boolean) => void;
+  setProfileIterations: (iterations: 50 | 200 | 500) => void;
+  setProfileSummary: (scriptId: string, summary: ProfileRunSummary) => void;
+  clearProfileSummaries: () => void;
 
   runSimulation: (
     design: Design,
@@ -145,6 +160,10 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
   logs: [],
   missingClientPromptOpen: false,
   lastRunDesignId: null,
+  liveCodeMode: false,
+  verboseLogs: false,
+  profileIterations: 200,
+  profileSummaries: {},
 
   appendLogs: (entries) => {
     if (entries.length === 0) return;
@@ -154,6 +173,17 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
   },
 
   clearLogs: () => set({ logs: [] }),
+  setLiveCodeMode: (liveCodeMode) => set({ liveCodeMode }),
+  setVerboseLogs: (verboseLogs) => set({ verboseLogs }),
+  setProfileIterations: (profileIterations) => set({ profileIterations }),
+  setProfileSummary: (scriptId, summary) =>
+    set((state) => ({
+      profileSummaries: {
+        ...state.profileSummaries,
+        [scriptId]: summary,
+      },
+    })),
+  clearProfileSummaries: () => set({ profileSummaries: {} }),
 
   runSimulation: async (design, scenarioId, opts) => {
     if (design.nodes.length === 0) {
@@ -196,12 +226,31 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
     });
 
     const t0 = performance.now();
+    const { liveCodeMode, verboseLogs, profileSummaries } = get();
+    const { estimateProfilePeakRps } = await import('@infrasim/sim-engine');
+    const peakRps = scenario ? estimateProfilePeakRps(scenario.profile, durationS) : 0;
+    const effectiveLiveCode = liveCodeMode && peakRps <= 50;
+    const callPlans: Record<string, CallPlan> = {};
+    const profileLogs: Record<string, LogEntry[][]> = {};
+    for (const [sid, summary] of Object.entries(profileSummaries)) {
+      callPlans[sid] = summary.callPlan;
+      if (summary.sampledLogs.length > 0) {
+        profileLogs[sid] = summary.sampledLogs;
+      }
+    }
+
     try {
       const simResult = await getRunner().run(
         {
           design: structuredClone(design),
           scenarioId: scenario?.id ?? scenarioId,
           ...(opts?.seedOverride !== undefined ? { seed: opts.seedOverride } : {}),
+          ...(Object.keys(callPlans).length > 0 ? { callPlans } : {}),
+          ...(Object.keys(profileLogs).length > 0 ? { profileLogs } : {}),
+          options: {
+            liveCode: effectiveLiveCode,
+            verboseLogs,
+          },
         },
         (batch) => {
           if (token !== activeRunToken || batch.length === 0) {
@@ -253,7 +302,6 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
         return { started: false, reason: 'aborted' };
       }
       if (
-        err instanceof SimulationAbortedError ||
         (err instanceof Error && err.name === 'SimulationAbortedError') ||
         controller.signal.aborted
       ) {

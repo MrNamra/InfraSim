@@ -74,6 +74,53 @@ export function evaluateProfileRps(profile: TrafficProfile, tS: number, duration
   }
 }
 
+/** Computes the exact upper-bound arrival rate (req/s) across `[0, durationS]` for capacity and live-code guards. */
+export function estimateProfilePeakRps(profile: TrafficProfile, durationS: number): number {
+  const safeDur = Math.max(0.001, durationS);
+  switch (profile.kind) {
+    case 'constant':
+      return Math.max(0, profile.rps);
+    case 'ramp':
+      return Math.max(0, profile.fromRps, profile.toRps);
+    case 'spike': {
+      const hasOverlap =
+        profile.atS < safeDur && profile.widthS > 0 && profile.atS + profile.widthS > 0;
+      return Math.max(0, hasOverlap ? Math.max(profile.baseRps, profile.peakRps) : profile.baseRps);
+    }
+    case 'steps': {
+      const sorted = [...profile.steps].sort((a, b) => a.atS - b.atS);
+      let maxRps = 0;
+      for (const s of sorted) {
+        if (s.atS <= safeDur) {
+          maxRps = Math.max(maxRps, s.rps);
+        }
+      }
+      return Math.max(0, maxRps);
+    }
+    case 'diurnal': {
+      let peak = 0;
+      const samples = 240;
+      for (let i = 0; i <= samples; i++) {
+        peak = Math.max(peak, evaluateProfileRps(profile, (i / samples) * safeDur, safeDur));
+      }
+      return Math.max(0, peak);
+    }
+    case 'custom': {
+      let peak = 0;
+      for (const pt of profile.points) {
+        if (pt.tS <= safeDur || profile.points.length <= 1) {
+          peak = Math.max(peak, pt.rps);
+        }
+      }
+      const samples = 120;
+      for (let i = 0; i <= samples; i++) {
+        peak = Math.max(peak, evaluateProfileRps(profile, (i / samples) * safeDur, safeDur));
+      }
+      return Math.max(0, peak);
+    }
+  }
+}
+
 /** Numerically estimates total incoming client requests over `[0, durationS]` for event scaling. */
 export function estimateProfileTotalRequests(profile: TrafficProfile, durationS: number): number {
   const safeDur = Math.max(0, durationS);

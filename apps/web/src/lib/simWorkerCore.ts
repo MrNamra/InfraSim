@@ -31,8 +31,17 @@ export async function runSimulationBatchWithDiagnosis(
     onFrameBatch(out);
   };
 
+  let effectiveInput = input;
+  if (input.options?.liveCode && !input.liveCodeExecutor) {
+    const { createLiveCodeExecutor } = await import('./liveCodeExecutor');
+    effectiveInput = {
+      ...input,
+      liveCodeExecutor: createLiveCodeExecutor(input.design),
+    };
+  }
+
   const result = await runSimulation(
-    input,
+    effectiveInput,
     (frame) => {
       batch.push(frame);
       if (performance.now() - lastFlushMs >= batchWindowMs) {

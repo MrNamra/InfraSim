@@ -14,3 +14,5 @@ export * from './autoFill.js';
 export * from './doctor.js';
 export * from './platformLogs.js';
 export * from './runtime.js';
+export * from './profileKey.js';
+export * from './profiler.js';

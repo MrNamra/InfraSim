@@ -335,8 +335,16 @@ export function EditorShell() {
   const simLogs = useSimulationStore((s) => s.logs);
   const simError = useSimulationStore((s) => s.errorMessage);
   const missingClientPromptOpen = useSimulationStore((s) => s.missingClientPromptOpen);
+  const liveCodeMode = useSimulationStore((s) => s.liveCodeMode);
+  const verboseLogs = useSimulationStore((s) => s.verboseLogs);
+  const profileIterations = useSimulationStore((s) => s.profileIterations);
+  const profileSummaries = useSimulationStore((s) => s.profileSummaries);
 
   const startSimulation = useSimulationStore((s) => s.runSimulation);
+  const setLiveCodeMode = useSimulationStore((s) => s.setLiveCodeMode);
+  const setVerboseLogs = useSimulationStore((s) => s.setVerboseLogs);
+  const setProfileIterations = useSimulationStore((s) => s.setProfileIterations);
+  const setProfileSummary = useSimulationStore((s) => s.setProfileSummary);
   const appendSimLogs = useSimulationStore((s) => s.appendLogs);
   const clearSimLogs = useSimulationStore((s) => s.clearLogs);
   const stopPlayback = useSimulationStore((s) => s.stopPlayback);
@@ -623,11 +631,86 @@ export function EditorShell() {
     prevSelectedNodeRef.current = selectedNodeId;
   }, [selectedNodeId, currentFrame]);
 
+  const ensureHandlerProfiles = useCallback(
+    async (curDesign: Design) => {
+      const state = useSimulationStore.getState();
+      const scenario =
+        curDesign.scenarios.find((s) => s.id === activeScenarioId) ?? curDesign.scenarios[0];
+      if (state.liveCodeMode && scenario) {
+        const { estimateProfilePeakRps } = await import('@infrasim/sim-engine');
+        if (estimateProfilePeakRps(scenario.profile, Math.max(1, scenario.durationS)) <= 50) {
+          return;
+        }
+      }
+
+      const pendingNodes = curDesign.nodes.filter((n) => {
+        if (
+          !n.config.scriptId ||
+          n.serviceId === 'generic.client' ||
+          n.serviceId === 'generic.users'
+        ) {
+          return false;
+        }
+        const script = curDesign.scripts.find((s) => s.id === n.config.scriptId);
+        return script?.kind === 'handler';
+      });
+      if (pendingNodes.length === 0) {
+        return;
+      }
+
+      const mergedCustom = mergeCustomServices(
+        useDesignStore.getState().userCustomServices,
+        curDesign.customServices,
+      );
+      const [{ getSharedSandboxClient }, { computeProfileCacheKey }] = await Promise.all([
+        import('../lib/sandboxClient'),
+        import('@infrasim/sandbox/profile-key'),
+      ]);
+      const client = getSharedSandboxClient();
+
+      const seenScripts = new Set<string>();
+      for (const node of pendingNodes) {
+        const script = curDesign.scripts.find((s) => s.id === node.config.scriptId);
+        if (!script || seenScripts.has(script.id)) continue;
+        seenScripts.add(script.id);
+
+        const expectedKey = computeProfileCacheKey({
+          script,
+          designScripts: curDesign.scripts,
+          design: curDesign,
+          node,
+          customServices: mergedCustom,
+          fixtures: curDesign.fixtures,
+          seed: curDesign.settings.seed,
+          iterations: state.profileIterations,
+        });
+        const cached = useSimulationStore.getState().profileSummaries[script.id];
+        if (cached && cached.cacheKey === expectedKey) {
+          continue;
+        }
+        const summary = await client.profile({
+          script,
+          designScripts: curDesign.scripts,
+          design: curDesign,
+          node,
+          customServices: mergedCustom,
+          fixtures: curDesign.fixtures,
+          seed: curDesign.settings.seed,
+          iterations: state.profileIterations,
+        });
+        setProfileSummary(script.id, summary);
+      }
+    },
+    [activeScenarioId, setProfileSummary],
+  );
+
   const handleRunSimulation = useCallback(async () => {
     setScenarioOpen(false);
     setAppliedFixLabel(null);
-    await startSimulation(useDesignStore.getState().design, activeScenarioId);
-  }, [activeScenarioId, startSimulation]);
+    const curDesign = useDesignStore.getState().design;
+    await ensureHandlerProfiles(curDesign);
+    await startSimulation(curDesign, activeScenarioId);
+  }, [activeScenarioId, ensureHandlerProfiles, startSimulation]);
 
   const handleApplyPatchedDesign = useCallback(
     (nextDesign: typeof design, fixLabel: string) => {
@@ -639,8 +722,9 @@ export function EditorShell() {
 
   const handleRerunVerify = useCallback(() => {
     setAppliedFixLabel(null);
-    void startSimulation(useDesignStore.getState().design, activeScenarioId);
-  }, [activeScenarioId, startSimulation]);
+    const curDesign = useDesignStore.getState().design;
+    void ensureHandlerProfiles(curDesign).then(() => startSimulation(curDesign, activeScenarioId));
+  }, [activeScenarioId, ensureHandlerProfiles, startSimulation]);
 
   const handleSaveCustomService = useCallback(
     async (
@@ -1340,8 +1424,12 @@ export function EditorShell() {
                     <TrafficProfileEditor
                       scenario={activeScenario}
                       seed={design.settings.seed}
+                      liveCodeMode={liveCodeMode}
+                      verboseLogs={verboseLogs}
                       onUpdateScenario={(updater) => updateScenario(activeScenario.id, updater)}
                       onUpdateSeed={(seed) => updateDesignMeta({ settings: { seed } })}
+                      onChangeLiveCodeMode={setLiveCodeMode}
+                      onChangeVerboseLogs={setVerboseLogs}
                     />
                   ) : (
                     <ChaosTimelineEditor
@@ -2059,6 +2147,14 @@ export function EditorShell() {
                   focusLocation={
                     codeFocusLocation?.nodeId === selectedNode.id ? codeFocusLocation : null
                   }
+                  profileSummary={
+                    selectedNode.config.scriptId
+                      ? profileSummaries[selectedNode.config.scriptId]
+                      : undefined
+                  }
+                  profileIterations={profileIterations}
+                  onChangeProfileIterations={setProfileIterations}
+                  onSaveProfileSummary={setProfileSummary}
                   onUpdateNodeConfig={(updater) => updateNodeConfig(selectedNode.id, updater)}
                   onUpsertScript={upsertDesignScript}
                   onDeleteScript={deleteDesignScript}

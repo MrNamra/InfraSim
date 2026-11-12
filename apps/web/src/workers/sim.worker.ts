@@ -1,6 +1,7 @@
 import * as Comlink from 'comlink';
 import type { SimFrame, SimulationResult } from '@infrasim/shared-types';
 import type { RunInput } from '@infrasim/sim-engine';
+import { createLiveCodeExecutor } from '../lib/liveCodeExecutor';
 import { runSimulationBatchWithDiagnosis } from '../lib/simWorkerCore';
 
 let activeController: AbortController | null = null;
@@ -20,7 +21,11 @@ const workerApi: SimWorkerApi = {
     activeController = controller;
 
     try {
-      return await runSimulationBatchWithDiagnosis(input, onFrameBatch, controller.signal);
+      const enrichedInput: RunInput =
+        input.options?.liveCode && !input.liveCodeExecutor
+          ? { ...input, liveCodeExecutor: createLiveCodeExecutor(input.design) }
+          : input;
+      return await runSimulationBatchWithDiagnosis(enrichedInput, onFrameBatch, controller.signal);
     } finally {
       if (activeController === controller) {
         activeController = null;

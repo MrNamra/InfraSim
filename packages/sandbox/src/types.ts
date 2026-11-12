@@ -284,6 +284,27 @@ export interface ProfileRunSummary {
   sampledLogs: LogEntry[][];
   wallDurationMs: number;
   truncatedByBudget: boolean;
+  cacheKey?: string;
+  error?: SandboxErrorReport;
+}
+
+/** Input options for profiling a handler script N times into a cached CallPlan. */
+export interface ProfileHandlerInput {
+  script: ScriptAsset;
+  designScripts?: readonly ScriptAsset[];
+  fixtures?: readonly PayloadFixture[];
+  design?: Design;
+  node?: NodeInstance;
+  customServices?: readonly ServiceDefinition[];
+  seed?: number;
+  iterations?: number;
+  cpuScale?: number;
+  cpuBudgetMs?: number;
+  maxSampledLogRuns?: number;
+  env?: Record<string, string>;
+  mockResolver?: MockCallResolver;
+  quickJsWasmUrl?: string;
+  esbuildWasmUrl?: string;
 }
 
 /** k6-style traffic extraction & threshold evaluation result. */
