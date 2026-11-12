@@ -400,11 +400,25 @@ export function buildGuestPrelude(opts: GuestPreludeOptions): string {
   let __tmpBytesUsed = 0;
   const __MAX_TMP_BYTES = ${maxTmp};
   function __normalizeTmpPath(p) {
-    const str = String(p || '');
-    if (!str.startsWith('/tmp/') && str !== '/tmp') {
-      throw new Error('Filesystem access outside /tmp is not available in the simulator (' + str + ')');
+    const raw = String(p || '');
+    const parts = raw.split('/');
+    const stack = [];
+    for (const part of parts) {
+      if (!part || part === '.') continue;
+      if (part === '..') {
+        if (stack.length === 0) {
+          throw new Error('Filesystem access outside /tmp is not available in the simulator (' + raw + ')');
+        }
+        stack.pop();
+      } else {
+        stack.push(part);
+      }
     }
-    return str;
+    const norm = '/' + stack.join('/');
+    if (!norm.startsWith('/tmp/') && norm !== '/tmp') {
+      throw new Error('Filesystem access outside /tmp is not available in the simulator (' + raw + ')');
+    }
+    return norm;
   }
   __global.__infrasimFs = {
     writeFileSync(p, data) {

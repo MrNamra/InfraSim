@@ -406,6 +406,12 @@ export function MetricsDockTab({
     };
   }, [isScrubbing]);
 
+  const activeThresholds = scenarioThresholds ?? design.scenarios[0]?.thresholds;
+  const thresholdResults = useMemo(
+    () => (result && activeThresholds ? evaluateScenarioThresholds(activeThresholds, result) : []),
+    [result, activeThresholds],
+  );
+
   if (!result) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 text-center">
@@ -474,12 +480,6 @@ export function MetricsDockTab({
       onSeekToTimeS(maxX);
     }
   };
-
-  const activeThresholds = scenarioThresholds ?? design.scenarios[0]?.thresholds;
-  const thresholdResults = useMemo(
-    () => (result && activeThresholds ? evaluateScenarioThresholds(activeThresholds, result) : []),
-    [result, activeThresholds],
-  );
 
   const cursorPct =
     currentTimeS !== null ? chartTimeSToPercent(currentTimeS, maxX, svgWidth, padX) : null;

@@ -423,7 +423,7 @@ export function CodeTab({
     const parsedWeight = Number(weightDraft);
     const id = selectedFixtureKey.startsWith('design:')
       ? selectedFixtureKey.slice('design:'.length)
-      : createFixtureId();
+      : selectedFixtureKey;
     return {
       id,
       name: fixtureNameDraft.trim() || 'Custom payload',

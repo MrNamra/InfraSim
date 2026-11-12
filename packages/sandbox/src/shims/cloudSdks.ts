@@ -331,7 +331,11 @@ export class BedrockRuntimeClient {
     }
 
     if (kind === 'invokeModel') {
-      const jsonStr = typeof rawOut === 'string' ? rawOut : JSON.stringify(rawOut);
+      const enriched =
+        rawOut && typeof rawOut === 'object' && !Array.isArray(rawOut) && !('id' in rawOut)
+          ? { id: 'resp-' + globalThis.crypto.randomUUID().slice(0, 8), ...rawOut }
+          : rawOut;
+      const jsonStr = typeof enriched === 'string' ? enriched : JSON.stringify(enriched);
       return {
         contentType: 'application/json',
         body: globalThis.Buffer.from(jsonStr),

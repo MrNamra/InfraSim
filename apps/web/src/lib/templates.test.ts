@@ -7,7 +7,7 @@ import { STARTER_TEMPLATES, getStarterTemplate } from './templates';
 
 describe('Phase 1 starter templates', () => {
   it('validates every starter template against Design JSON Schema and catalog services', () => {
-    expect(STARTER_TEMPLATES.length).toBe(2);
+    expect(STARTER_TEMPLATES.length).toBe(3);
 
     for (const tpl of STARTER_TEMPLATES) {
       const res = validateDesign(tpl.design);
@@ -80,5 +80,17 @@ describe('Phase 1 starter templates', () => {
 
     const insights = diagnose({ design: bypassedDesign, result: bypassedRes });
     expect(insights.some((i) => i.ruleId === 'db-pool-exhausted')).toBe(true);
+  });
+
+  it('tpl-rag-chatbot simulates embeddings + vector search + streaming Bedrock pipeline deterministically', async () => {
+    const tpl = getStarterTemplate('tpl-rag-chatbot')!;
+    expect(tpl).toBeDefined();
+    const d = structuredClone(tpl.design);
+    const scenarioId = d.scenarios[0]!.id;
+
+    const r1 = await runSimulation({ design: d, scenarioId }, () => {});
+    expect(r1.summary.totalRequests).toBeGreaterThan(200);
+    expect(r1.perNode.llm).toBeDefined();
+    expect(r1.perNode.llm!.success).toBeGreaterThan(0);
   });
 });
