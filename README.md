@@ -4,6 +4,8 @@
 
 InfraSim is a local-first engineering workbench for designing, simulating, and validating cloud architectures before deploying real infrastructure. Build topologies across AWS, GCP, Azure, and OCI, simulate hundreds of seconds of realistic traffic, observe queue saturation and cascading failures in real time, and diagnose bottlenecks with one-click architectural fixes.
 
+![InfraSim Workbench](docs/assets/workbench.png)
+
 ---
 
 ## Key Capabilities
@@ -17,6 +19,28 @@ InfraSim is a local-first engineering workbench for designing, simulating, and v
 - **Bi-Directional Terraform:** Export live architectures directly to clean Terraform HCL or import existing Terraform plans and state files.
 - **Architecture Challenges:** Interactive troubleshooting scenarios with automatic client-side and server-side verification.
 - **Local-First & Private:** Fully functional offline via IndexedDB, with optional cloud sync, version history, and revocable read-only share links.
+
+---
+
+## Visual Tour
+
+### Discrete-Event Simulation & Live Telemetry
+
+Simulate realistic workloads (spikes, diurnal cycles, constant load) and inspect per-node latency, queue depths, error rates, and saturation points with interactive timeline scrubbing:
+
+![Simulation Telemetry & Timeline Scrubber](docs/assets/timeline-scrubber.png)
+
+### Automated Root-Cause Diagnostics ("Why?")
+
+When queues saturate or downstream services throttle, the Why? diagnostics engine pinpoints root causes and offers one-click architectural remedies with instant before-and-after re-runs:
+
+![Automated Diagnostics](docs/assets/workbench-diagnostics.png)
+
+### Architecture Starter Templates
+
+Start quickly from 10 production-grade architecture blueprints (3-tier web apps, cache layers, serverless APIs, event-driven pipelines, multi-AZ HA, retry storms, LLM RAG chatbots, and cross-cloud cost comparisons) plus 8 network puzzles:
+
+![Starter Templates Gallery](docs/assets/templates-modal.png)
 
 ---
 
