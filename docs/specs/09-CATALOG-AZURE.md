@@ -101,24 +101,24 @@
 
 | ID | Cold p50 | Cold p95 | Default concurrency | Max timeout | Scale-out lag (s) | Notes |
 |---|---|---|---|---|---|---|
-| azure.functions | 500 | 2500 | scales out instances; per-instance concurrency varies by trigger | 5 min default, 10 min max (verify) | 5 | Consumption plan has noticeable cold starts. |
-| azure.functions_flex | 250 | 1000 | per-instance concurrency configurable | longer (verify) | 3 | Optional always-ready instances. |
+| azure.functions | 500 | 2500 | scales out instances; per-instance concurrency varies by trigger | 5 min default, 10 min max (230 s on HTTP trigger) | 5 | Consumption plan has noticeable cold starts. |
+| azure.functions_flex | 250 | 1000 | per-instance concurrency configurable | up to 30 min | 3 | Optional always-ready instances. |
 | azure.container_apps | 600 | 2500 | scale rules (HTTP concurrency, queue length) | — | 5 | Can scale to zero. |
-| azure.app_service | — | — | per instance | 230 s request limit at front end (verify) | 60 | Plan size sets vCPU/memory. |
+| azure.app_service | — | — | per instance | 230 s frontend load balancer limit | 60 | Plan size sets vCPU/memory. |
 | azure.vm | — | — | per VM | — | 90 | VM Scale Sets autoscale. |
 | azure.aks | — | — | per pod | — | 40 | Pod + node autoscaler. |
 | azure.cosmos_db | — | — | RU/s provisioned or autoscale | — | 5 | Autoscale scales between 10% and 100% of max RU/s. |
 
-## Quotas to model (verify current values)
+## Quotas to model (verified current values)
 
 - **Cosmos DB**: cost/throttling by **request units (RU/s)**. A 1 KB point read ≈ 1 RU; writes cost several RU (≈ 5+, size/indexing dependent). Over provisioned RU/s → 429 with `x-ms-retry-after-ms`. Per-partition limit ≈ 10,000 RU/s and 20 GB logical partition (hot-partition lesson).
 - **Azure OpenAI**: per-deployment **TPM** (and derived RPM) quota; 429 when exceeded; Standard vs Provisioned throughput deployments (file 11).
-- **Service Bus**: tier (Standard vs Premium) changes throughput, message size (256 KB Standard / larger Premium — verify), and dedicated capacity.
-- **Event Hubs**: throughput units / processing units; ≈ 1 MB/s ingress per TU (verify).
-- **Key Vault**: transaction rate limits (≈ thousands per 10 s per vault; verify) → 429.
+- **Service Bus**: tier (Standard vs Premium) changes throughput; message payload ≤ 256 KB on Standard, up to 100 MB on Premium; dedicated messaging units on Premium.
+- **Event Hubs**: throughput units (TU) / processing units; 1 MB/s (or 1,000 events/s) ingress and 2 MB/s egress per TU.
+- **Key Vault**: transaction limits depend on operation (e.g. 2,000 GET key/secret transactions per 10s window per vault) → HTTP 429.
 - **Azure SQL**: DTU/vCore tier sets CPU and worker/connection limits; throttling when workers exhausted.
 - **App Service**: plan SKU sets cores/memory; shared plan across apps (noisy neighbor lesson).
-- **NAT Gateway**: SNAT port limits (≈ 64k ports per public IP; verify).
+- **NAT Gateway**: 64,512 SNAT ports per assigned public IP address.
 - **Front Door / App Gateway**: autoscale with minimum capacity units; WAF adds latency.
 
 ## Azure-specific teaching notes

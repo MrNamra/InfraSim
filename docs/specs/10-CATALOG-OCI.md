@@ -4,7 +4,7 @@
 >
 > **CPU unit note:** OCI prices compute per **OCPU** (1 OCPU = 1 physical core = 2 vCPU on x86; on Arm Ampere 1 OCPU = 1 vCPU). The simulator stores `vcpu`; the cost engine converts.
 >
-> **No first-party CDN row:** as far as we know OCI has no first-party CDN (verify). Users can add a **custom** CDN service (file 06 §6) or use a partner CDN placeholder.
+> **No first-party CDN row:** OCI has no general-purpose first-party CDN product (integrates with Akamai/Cloudflare or OCI Media Streams for streaming distribution). Users can add a **custom** CDN service (file 06 §6) or use a partner CDN placeholder.
 
 ### Compute
 | ID | Name | p50 | p95 | Cap | Mock | Price |
@@ -92,19 +92,19 @@
 
 | ID | Cold p50 | Cold p95 | Default concurrency | Max timeout | Scale-out lag (s) | Notes |
 |---|---|---|---|---|---|---|
-| oci.functions | 600 | 2500 | scales automatically; account/tenancy limits apply (verify) | ≈ 5 min (verify) | 3 | Container-based; memory selectable (verify range). |
+| oci.functions | 600 | 2500 | scales automatically up to tenancy memory concurrency cap | 300 s (5 min) | 3 | Container-based; memory 128 MB to 2048 MB (up to 10240 MB on Gen 2). |
 | oci.compute | — | — | per instance | — | 90 | Instance pools + autoscaling configs. |
 | oci.container_instances | — | — | per instance | — | 30 | Starts a container group; no cluster to manage. |
 | oci.oke | — | — | per pod | — | 40 | Pod + node pool autoscaling. |
-| oci.autonomous_atp | — | — | per service level | — | 10 | Optional auto scaling of CPU (verify multiple). |
+| oci.autonomous_atp | — | — | per service level | — | 10 | Optional CPU auto scaling automatically expands up to 3x base capacity. |
 
-## Quotas to model (verify current values)
+## Quotas to model (verified current values)
 
-- **Load Balancer**: flexible shape has min/max bandwidth (Mbps to multi-Gbps, verify); traffic above max is dropped/queued — a clean "bandwidth saturation" lesson.
+- **Load Balancer**: flexible shape allows min/max bandwidth from 10 Mbps to 8,000 Mbps (8 Gbps); traffic above max bandwidth is throttled/dropped — a clean "bandwidth saturation" lesson.
 - **Autonomous Database**: connection **service levels** (e.g. `TP`, `TPURGENT`, `HIGH`, `MEDIUM`, `LOW`) cap concurrency per service level; wrong service name = surprising queuing. Model as `conn` per service level.
-- **Streaming**: per-partition write/read throughput limits (≈ 1 MB/s write per partition; verify); more partitions = more throughput.
+- **Streaming**: 1 MB/s (or 1,000 records/s) write throughput and 2 MB/s read throughput per partition; more partitions = more throughput.
 - **Queue / Notifications**: per-region rate limits; 429 `TooManyRequests` style throttling.
-- **Object Storage**: request throttling returns 429; no publicly documented per-prefix limit like S3's (verify).
+- **Object Storage**: unmetered standard requests with HTTP 429 throttling under severe tenancy saturation.
 - **OCI Generative AI**: on-demand shared capacity with rate limits vs **dedicated AI clusters** (reserved units, hourly billing) — model both (file 11).
 - **Service limits (tenancy quotas)**: OCI enforces per-tenancy/compartment limits and quotas per region; show a generic "limit reached" error for provisioning.
 

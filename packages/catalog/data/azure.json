@@ -338,6 +338,7 @@
       "idleTtlS": 600
     },
     "scaleOutLagS": 3,
+    "maxTimeoutS": 1800,
     "failure": {
       "errorRate": 0.0005,
       "kinds": [

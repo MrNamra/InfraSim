@@ -14708,6 +14708,7 @@ export const CATALOG_SERVICES: readonly ServiceDefinition[] = [
       "idleTtlS": 600
     },
     "scaleOutLagS": 3,
+    "maxTimeoutS": 1800,
     "failure": {
       "errorRate": 0.0005,
       "kinds": [
@@ -20176,7 +20177,7 @@ export const CATALOG_SERVICES: readonly ServiceDefinition[] = [
       "event"
     ],
     "icon": "fn",
-    "notes": "Container-based; memory selectable (verify range)."
+    "notes": "Container-based; memory 128 MB to 2048 MB (up to 10240 MB on Gen 2)."
   },
   {
     "id": "oci.container_instances",
@@ -21945,7 +21946,7 @@ export const CATALOG_SERVICES: readonly ServiceDefinition[] = [
       "rds"
     ],
     "icon": "sql",
-    "notes": "Optional auto scaling of CPU (verify multiple)."
+    "notes": "Optional CPU auto scaling automatically expands up to 3x base capacity."
   },
   {
     "id": "oci.autonomous_adw",

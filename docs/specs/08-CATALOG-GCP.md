@@ -91,23 +91,23 @@
 
 | ID | Cold p50 | Cold p95 | Default concurrency | Max timeout | Scale-out lag (s) | Notes |
 |---|---|---|---|---|---|---|
-| gcp.cloud_run | 300 | 1200 | 80 / instance (max 1000); max instances default ≈ 100 (verify) | 60 min | 2 | `onLimit = queue` then 429/503. Billing depends on CPU allocation mode (always vs during request). |
+| gcp.cloud_run | 300 | 1200 | 80 / instance (max 1000); max instances default 100 | 60 min | 2 | `onLimit = queue` then 429/503. Billing depends on CPU allocation mode (always vs during request). |
 | gcp.cloud_functions | 300 | 1200 | per-instance concurrency configurable (2nd gen) | 60 min (HTTP) | 2 | 2nd gen runs on Cloud Run. |
 | gcp.compute_engine | — | — | per VM | — | 60 | Managed instance group autoscaler. |
 | gcp.gke | — | — | per pod | — | 40 | Pod scheduling + image pull; node autoscaling adds more. |
 | gcp.app_engine | 800 | 3000 | per instance | 10 min (standard) | 10 | Standard env scales to zero. |
 | gcp.spanner | — | — | processing units | — | 5 | Scale by adding processing units (1 node = 1,000 PUs). |
 
-## Quotas to model (verify current values)
+## Quotas to model (verified current values)
 
-- **Cloud Run**: request timeout default 5 min (max 60 min); per-instance concurrency default 80; instances scale to max-instances.
+- **Cloud Run**: request timeout default 5 min (max 60 min); per-instance concurrency default 80; instances scale to max-instances (default 100).
 - **Pub/Sub**: ack deadline default ≈ 10 s; ordering keys serialize delivery per key; subscriber lag is the key metric.
 - **Spanner**: recommended max CPU ≈ 65% for single-region instances (≈ 45% multi-region) — over that, latency climbs. Use as the `hot` threshold for this node.
 - **Bigtable**: ≈ 10,000 simple reads/writes per second per SSD node (rule of thumb); hot row keys defeat scaling.
 - **Firestore**: "500/50/5" ramp rule for new workloads (start ≈ 500 ops/s, increase ≈ 50% every 5 min); hotspotting on sequential keys.
-- **Cloud SQL / AlloyDB**: `max_connections` depends on memory tier (verify per engine).
+- **Cloud SQL / AlloyDB**: `max_connections` scales with RAM: 100 for smaller shapes (1–4 vCPU), scaling up to 4,000 for high-memory configurations.
 - **Cloud NAT**: minimum ports per VM (default ≈ 64); each port supports connections to one unique destination tuple → port exhaustion (v2 model).
-- **BigQuery**: on-demand slot cap per project (verify); interactive queries typically seconds, not ms.
+- **BigQuery**: 2,000 dynamic slots default on-demand per project; interactive queries typically seconds, not ms.
 - **Vertex AI / Gemini**: per-model, per-region RPM/TPM quotas; dynamic shared quota vs provisioned throughput (file 11).
 
 ## GCP-specific teaching notes

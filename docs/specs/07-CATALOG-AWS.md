@@ -124,15 +124,15 @@
 | aws.app_runner | 800 | 2500 | 100 / instance | 120 s | 15 | Scales on concurrency. |
 | aws.aurora_serverless | — | — | ACU-based | — | 10 | Scales capacity in ACUs; brief pauses possible when scaling. |
 
-## Quotas to model (verify current values)
+## Quotas to model (verified current values)
 
 - **Lambda**: account concurrency 1,000/region (soft); sync payload 6 MB; timeout ≤ 15 min; new concurrent executions scale at a bounded rate per function.
 - **API Gateway**: account throttle ≈ 10,000 rps steady with burst ≈ 5,000; integration timeout ≈ 29 s default.
 - **S3**: ≈ 3,500 PUT/COPY/POST/DELETE and ≈ 5,500 GET/HEAD per second **per prefix**. Add node setting `prefixes` (default 1) → limit = value × prefixes. Over limit → 503 SlowDown.
 - **DynamoDB**: per-partition ≈ 3,000 RCU and ≈ 1,000 WCU; item ≤ 400 KB; hot keys throttle even when table capacity looks fine.
-- **SQS**: Standard ≈ nearly unlimited; FIFO has per-queue throughput limits (verify current numbers and high-throughput mode); visibility timeout default 30 s; message ≤ 256 KB.
+- **SQS**: Standard ≈ nearly unlimited; FIFO defaults to 300 msg/s (up to 3,000 msg/s with high-throughput mode enabled and batching); visibility timeout default 30 s (max 12 h); message payload ≤ 256 KB.
 - **Kinesis**: per shard ≈ 1 MB/s or 1,000 records/s write, ≈ 2 MB/s read.
-- **RDS `max_connections`** is derived from instance memory (default parameter formulas, e.g. MySQL `DBInstanceClassMemory/12582880`, PostgreSQL `LEAST(DBInstanceClassMemory/9531392, 5000)` — verify). Expose as `conn.formula` with instance memory input.
+- **RDS `max_connections`**: derived from instance memory via engine parameter formulas (MySQL `DBInstanceClassMemory/12582880`, PostgreSQL `LEAST(DBInstanceClassMemory/9531392, 5000)`). Expose as `conn.formula` with instance memory input.
 - **ALB**: idle timeout 60 s default; scales automatically but not instantly under extreme spikes.
 - **NAT Gateway**: bandwidth scales to ~100 Gbps; ≈ 55,000 simultaneous connections per unique destination (port exhaustion = v2). Data processing charge per GB is a key cost driver.
 - **Bedrock**: per-model, per-region RPM and TPM quotas; throttling returns `ThrottlingException` (429).
