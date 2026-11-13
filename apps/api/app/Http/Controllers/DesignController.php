@@ -31,6 +31,12 @@ class DesignController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        if (strlen($request->getContent()) > 2 * 1024 * 1024) {
+            return response()->json([
+                'message' => 'Design payload exceeds maximum permitted size of 2 MB.',
+            ], 413);
+        }
+
         $validated = $request->validate([
             'id' => ['nullable', 'uuid'],
             'name' => ['required', 'string', 'min:1', 'max:160'],
@@ -95,6 +101,12 @@ class DesignController extends Controller
         $design = $this->findOwnedOrFailResponse($request, $id, $errorResponse);
         if ($errorResponse !== null) {
             return $errorResponse;
+        }
+
+        if (strlen($request->getContent()) > 2 * 1024 * 1024) {
+            return response()->json([
+                'message' => 'Design payload exceeds maximum permitted size of 2 MB.',
+            ], 413);
         }
 
         $validated = $request->validate([
@@ -291,7 +303,7 @@ class DesignController extends Controller
         if (isset($doc['scripts']) && is_array($doc['scripts'])) {
             foreach ($doc['scripts'] as $idx => $script) {
                 if (is_array($script)) {
-                    $doc['scripts'][$idx]['env'] = new \stdClass();
+                    $doc['scripts'][$idx]['env'] = new \stdClass;
                 }
             }
         }

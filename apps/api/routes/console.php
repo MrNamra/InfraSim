@@ -12,3 +12,8 @@ Schedule::command('prices:sync --provider=all --regions=us-east-1,eastus,us-east
     ->dailyAt('03:15')
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('designs:prune-versions --keep=50')
+    ->weeklyOn(1, '04:00')
+    ->withoutOverlapping()
+    ->onOneServer();

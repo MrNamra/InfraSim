@@ -19,7 +19,7 @@ Route::middleware('throttle:api')->group(function (): void {
         Route::post('/sync', [PriceController::class, 'sync'])->middleware('auth:sanctum');
     });
 
-    Route::prefix('challenges')->group(function (): void {
+    Route::prefix('challenges')->middleware('throttle:challenges')->group(function (): void {
         Route::get('/', [ChallengeController::class, 'index']);
         Route::get('/{slug}', [ChallengeController::class, 'show']);
         Route::get('/{slug}/leaderboard', [ChallengeController::class, 'leaderboard']);
@@ -30,7 +30,7 @@ Route::middleware('throttle:api')->group(function (): void {
         });
     });
 
-    Route::prefix('auth')->group(function (): void {
+    Route::prefix('auth')->middleware('throttle:auth')->group(function (): void {
         Route::post('/register', [AuthController::class, 'register']);
         Route::post('/login', [AuthController::class, 'login']);
 
@@ -43,13 +43,15 @@ Route::middleware('throttle:api')->group(function (): void {
     Route::get('/shared/{token}', [DesignController::class, 'showShared']);
 
     Route::middleware('auth:sanctum')->group(function (): void {
-        Route::get('/designs', [DesignController::class, 'index']);
-        Route::post('/designs', [DesignController::class, 'store']);
-        Route::get('/designs/{id}', [DesignController::class, 'show']);
-        Route::put('/designs/{id}', [DesignController::class, 'update']);
-        Route::delete('/designs/{id}', [DesignController::class, 'destroy']);
-        Route::get('/designs/{id}/versions', [DesignController::class, 'versions']);
-        Route::post('/designs/{id}/share', [DesignController::class, 'share']);
+        Route::middleware('throttle:designs')->group(function (): void {
+            Route::get('/designs', [DesignController::class, 'index']);
+            Route::post('/designs', [DesignController::class, 'store']);
+            Route::get('/designs/{id}', [DesignController::class, 'show']);
+            Route::put('/designs/{id}', [DesignController::class, 'update']);
+            Route::delete('/designs/{id}', [DesignController::class, 'destroy']);
+            Route::get('/designs/{id}/versions', [DesignController::class, 'versions']);
+            Route::post('/designs/{id}/share', [DesignController::class, 'share']);
+        });
 
         Route::get('/custom-services', [CustomServiceController::class, 'index']);
         Route::post('/custom-services', [CustomServiceController::class, 'store']);

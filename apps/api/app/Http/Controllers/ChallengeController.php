@@ -260,6 +260,7 @@ class ChallengeController extends Controller
 
             if (! isset($bestByUser[$uid])) {
                 $bestByUser[$uid] = $entry;
+
                 continue;
             }
 

@@ -19,5 +19,41 @@ export default function createNextConfig(phase: string): NextConfig {
       '@infrasim/sandbox',
       '@infrasim/terraform',
     ],
+    async headers() {
+      return [
+        {
+          source: '/(.*)',
+          headers: [
+            {
+              key: 'Content-Security-Policy',
+              value: [
+                "default-src 'self'",
+                "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'",
+                "worker-src 'self' blob:",
+                "style-src 'self' 'unsafe-inline'",
+                "font-src 'self' data:",
+                "img-src 'self' data: blob: https:",
+                "connect-src 'self' http://localhost:* http://127.0.0.1:* https://* ws://* wss://*",
+                "frame-ancestors 'none'",
+                "object-src 'none'",
+                "base-uri 'self'",
+              ].join('; '),
+            },
+            {
+              key: 'X-Content-Type-Options',
+              value: 'nosniff',
+            },
+            {
+              key: 'X-Frame-Options',
+              value: 'DENY',
+            },
+            {
+              key: 'Referrer-Policy',
+              value: 'strict-origin-when-cross-origin',
+            },
+          ],
+        },
+      ];
+    },
   };
 }

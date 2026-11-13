@@ -15,7 +15,7 @@ class ChallengeSeeder extends Seeder
     public function run(): void
     {
         $repoRoot = dirname(base_path(), 2);
-        $entryPath = $repoRoot . '/packages/diagnosis/dist/challenges/starterChallenges.js';
+        $entryPath = $repoRoot.'/packages/diagnosis/dist/challenges/starterChallenges.js';
 
         if (! is_file($entryPath)) {
             throw new RuntimeException(
@@ -35,7 +35,7 @@ class ChallengeSeeder extends Seeder
         $process->run();
 
         if (! $process->isSuccessful()) {
-            throw new RuntimeException('Failed exporting starter challenges: ' . $process->getErrorOutput());
+            throw new RuntimeException('Failed exporting starter challenges: '.$process->getErrorOutput());
         }
 
         $items = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);

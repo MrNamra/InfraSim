@@ -108,9 +108,9 @@ class ChallengeVerifierService
         ?array $priceSnapshot = null,
     ): array {
         $repoRoot = dirname(base_path(), 2);
-        $cliScript = $repoRoot . '/packages/diagnosis/dist/challenges/verifyCli.js';
+        $cliScript = $repoRoot.'/packages/diagnosis/dist/challenges/verifyCli.js';
 
-        if (!is_file($cliScript)) {
+        if (! is_file($cliScript)) {
             throw new RuntimeException(
                 'Challenge verifier CLI build missing at packages/diagnosis/dist/challenges/verifyCli.js',
             );
@@ -129,7 +129,7 @@ class ChallengeVerifierService
         $process->setInput($encoded);
         $process->run();
 
-        if (!$process->isSuccessful()) {
+        if (! $process->isSuccessful()) {
             $errMsg = trim($process->getErrorOutput()) ?: 'Challenge verification failed.';
             if (
                 str_contains($errMsg, 'CallPlan') ||
@@ -142,7 +142,7 @@ class ChallengeVerifierService
         }
 
         $decoded = json_decode($process->getOutput(), true);
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             throw new RuntimeException('Challenge verifier returned malformed JSON output.');
         }
 

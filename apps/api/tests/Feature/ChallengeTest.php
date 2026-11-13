@@ -6,6 +6,7 @@ use App\Models\Challenge;
 use App\Models\Price;
 use App\Models\PriceSnapshot;
 use App\Models\User;
+use Database\Seeders\ChallengeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -46,7 +47,7 @@ class ChallengeTest extends TestCase
             'name' => 'Starter',
             'version' => 1,
             'groups' => [],
-            'network' => new \stdClass(),
+            'network' => new \stdClass,
             'settings' => ['region' => 'us-east-1', 'seed' => 101, 'includeFreeTier' => true],
             'nodes' => [
                 [
@@ -54,7 +55,7 @@ class ChallengeTest extends TestCase
                     'serviceId' => 'generic.client',
                     'label' => 'Client',
                     'position' => ['x' => 0, 'y' => 0],
-                    'config' => ['instances' => 1, 'operations' => new \stdClass()],
+                    'config' => ['instances' => 1, 'operations' => new \stdClass],
                 ],
                 [
                     'id' => 'api',
@@ -69,7 +70,7 @@ class ChallengeTest extends TestCase
                         'cpuMsPerRequest' => 15,
                         'queue' => ['maxLength' => 20, 'policy' => 'reject'],
                         'latency' => ['distribution' => 'fixed', 'p50' => 25, 'p95' => 35],
-                        'operations' => new \stdClass(),
+                        'operations' => new \stdClass,
                     ],
                 ],
             ],
@@ -250,8 +251,8 @@ class ChallengeTest extends TestCase
 
     public function test_challenge_seeder_seeds_all_ten_challenges_idempotently(): void
     {
-        $this->seed(\Database\Seeders\ChallengeSeeder::class);
-        $this->seed(\Database\Seeders\ChallengeSeeder::class);
+        $this->seed(ChallengeSeeder::class);
+        $this->seed(ChallengeSeeder::class);
 
         $this->assertDatabaseCount('challenges', 10);
         $res = $this->getJson('/api/challenges')->assertOk();

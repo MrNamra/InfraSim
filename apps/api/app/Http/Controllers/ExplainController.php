@@ -76,7 +76,7 @@ class ExplainController extends Controller
             'insights.*.suggestedFixes' => ['present', 'array', 'max:5'],
         ]);
 
-        $cacheKey = 'explain:v1:' . hash('sha256', json_encode($validated, JSON_THROW_ON_ERROR));
+        $cacheKey = 'explain:v1:'.hash('sha256', json_encode($validated, JSON_THROW_ON_ERROR));
         $cached = Cache::get($cacheKey);
         if (is_array($cached) && isset($cached['explanation'], $cached['nextSteps'])) {
             return response()->json([
@@ -216,7 +216,7 @@ class ExplainController extends Controller
                 if (! is_array($fix) || empty($fix['label'])) {
                     continue;
                 }
-                $tradeOff = ! empty($fix['tradeOff']) ? ' (' . $fix['tradeOff'] . ')' : '';
+                $tradeOff = ! empty($fix['tradeOff']) ? ' ('.$fix['tradeOff'].')' : '';
                 $steps[] = sprintf('%s: %s%s', $insight['title'], $fix['label'], $tradeOff);
                 if (count($steps) >= 4) {
                     return $steps;

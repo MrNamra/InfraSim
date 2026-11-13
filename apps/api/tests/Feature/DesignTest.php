@@ -28,13 +28,13 @@ class DesignTest extends TestCase
                     'config' => [
                         'instances' => 2,
                         'mockEnv' => ['DB_PASS' => 'CANARY_SECRET_999'],
-                        'operations' => new \stdClass(),
+                        'operations' => new \stdClass,
                     ],
                 ],
             ],
             'edges' => [],
             'groups' => [],
-            'network' => new \stdClass(),
+            'network' => new \stdClass,
             'scenarios' => [],
             'scripts' => [
                 [
