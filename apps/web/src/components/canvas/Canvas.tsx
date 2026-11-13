@@ -875,8 +875,8 @@ function CanvasInner({
               Drag or double-click services from the catalog on the left, connect handles to wire
               traffic paths, or open a starter template.
             </p>
-            {onLoadTemplateClick ? (
-              <div className="mt-4 flex justify-center">
+            <div className="mt-4 flex items-center justify-center gap-2">
+              {onLoadTemplateClick ? (
                 <button
                   type="button"
                   data-testid="empty-browse-templates-button"
@@ -885,8 +885,16 @@ function CanvasInner({
                 >
                   Browse starter templates
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+              <button
+                type="button"
+                data-testid="empty-start-scratch-btn"
+                onClick={() => clearSelection()}
+                className="h-8 rounded-[8px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-3 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)]"
+              >
+                Start from scratch
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

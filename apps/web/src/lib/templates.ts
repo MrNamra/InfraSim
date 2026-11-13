@@ -474,6 +474,1190 @@ export async function handler(event: any) {
   return d;
 }
 
+function buildServerlessApiTemplateDesign(): Design {
+  const d = createEmptyDesign('tpl-serverless-api', 'Serverless API');
+  d.description =
+    'HTTP API Gateway → AWS Lambda function → Amazon DynamoDB on-demand under ramping traffic.';
+  d.settings.primaryProvider = 'aws';
+  d.nodes = [
+    {
+      id: 'client',
+      serviceId: 'generic.client',
+      label: 'Client',
+      position: { x: 48, y: 176 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'gateway',
+      serviceId: 'aws.apigw_http',
+      label: 'API Gateway (HTTP)',
+      position: { x: 384, y: 176 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 5 },
+        operations: {},
+      },
+    },
+    {
+      id: 'fn',
+      serviceId: 'aws.lambda',
+      label: 'Order Handler',
+      position: { x: 720, y: 176 },
+      config: {
+        instances: 10,
+        memoryGb: 0.5,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        timeoutMs: 5000,
+        latency: { distribution: 'lognormal', p50: 12, p95: 35 },
+        operations: {},
+      },
+    },
+    {
+      id: 'db',
+      serviceId: 'aws.dynamodb',
+      label: 'Orders Table',
+      position: { x: 1056, y: 176 },
+      config: {
+        instances: 1,
+        readRatio: 0.7,
+        latency: { distribution: 'lognormal', p50: 4, p95: 12 },
+        operations: {},
+      },
+    },
+  ];
+  d.edges = [
+    {
+      id: 'e-client-gw',
+      from: 'client',
+      to: 'gateway',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-gw-fn',
+      from: 'gateway',
+      to: 'fn',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-fn-db',
+      from: 'fn',
+      to: 'db',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+  ];
+  d.scenarios = [
+    {
+      id: 'scenario-ramp',
+      name: 'Ramping traffic',
+      durationS: 30,
+      entryNodeId: 'client',
+      profile: { kind: 'ramp', fromRps: 10, toRps: 180 },
+      flows: [
+        {
+          id: 'flow-checkout',
+          name: 'POST /checkout',
+          weight: 1,
+          steps: [{ method: 'POST', path: '/checkout' }],
+        },
+      ],
+      chaos: [],
+    },
+  ];
+  return d;
+}
+
+function buildEventPipelineTemplateDesign(): Design {
+  const d = createEmptyDesign('tpl-event-pipeline', 'Event-driven order pipeline');
+  d.description =
+    'ALB → Ingestion API → SQS queue buffering orders for ECS Fargate workers writing to RDS with DLQ fallback.';
+  d.settings.primaryProvider = 'aws';
+  d.nodes = [
+    {
+      id: 'client',
+      serviceId: 'generic.client',
+      label: 'Client',
+      position: { x: 48, y: 176 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'alb',
+      serviceId: 'aws.alb',
+      label: 'Ingress ALB',
+      position: { x: 336, y: 176 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 6 },
+        operations: {},
+      },
+    },
+    {
+      id: 'ingest',
+      serviceId: 'aws.ec2',
+      label: 'Ingest Service',
+      position: { x: 624, y: 176 },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 4,
+        maxInFlightPerInstance: 100,
+        latency: { distribution: 'lognormal', p50: 6, p95: 18 },
+        operations: {},
+      },
+    },
+    {
+      id: 'queue',
+      serviceId: 'aws.sqs',
+      label: 'Order Queue',
+      position: { x: 912, y: 176 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 5, p95: 15 },
+        operations: {},
+      },
+    },
+    {
+      id: 'workers',
+      serviceId: 'aws.fargate',
+      label: 'Order Processors',
+      position: { x: 1200, y: 176 },
+      config: {
+        instances: 4,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 16,
+        maxInFlightPerInstance: 15,
+        latency: { distribution: 'lognormal', p50: 20, p95: 55 },
+        operations: {},
+      },
+    },
+    {
+      id: 'db',
+      serviceId: 'aws.rds_postgres',
+      label: 'Orders DB',
+      position: { x: 1488, y: 176 },
+      config: {
+        instances: 1,
+        connections: { max: 80 },
+        readRatio: 0.25,
+        writeLatencyMultiplier: 1.3,
+        latency: { distribution: 'lognormal', p50: 8, p95: 25 },
+        operations: {},
+      },
+    },
+    {
+      id: 'dlq',
+      serviceId: 'aws.sqs',
+      label: 'Order DLQ',
+      position: { x: 1200, y: 352 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 5, p95: 15 },
+        operations: {},
+      },
+    },
+  ];
+  d.edges = [
+    {
+      id: 'e-client-alb',
+      from: 'client',
+      to: 'alb',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-alb-ingest',
+      from: 'alb',
+      to: 'ingest',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-ingest-queue',
+      from: 'ingest',
+      to: 'queue',
+      protocol: 'https',
+      port: 443,
+      callType: 'async',
+      weight: 1,
+    },
+    {
+      id: 'e-queue-workers',
+      from: 'queue',
+      to: 'workers',
+      protocol: 'https',
+      port: 443,
+      callType: 'async',
+      weight: 1,
+    },
+    {
+      id: 'e-workers-db',
+      from: 'workers',
+      to: 'db',
+      protocol: 'sql',
+      port: 5432,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-workers-dlq',
+      from: 'workers',
+      to: 'dlq',
+      protocol: 'https',
+      port: 443,
+      callType: 'async',
+      weight: 0.01,
+    },
+  ];
+  d.scenarios = [
+    {
+      id: 'scenario-burst',
+      name: 'Order rush spike',
+      durationS: 30,
+      entryNodeId: 'client',
+      profile: { kind: 'spike', baseRps: 40, peakRps: 260, atS: 5, widthS: 22 },
+      flows: [
+        {
+          id: 'flow-submit',
+          name: 'POST /orders',
+          weight: 1,
+          steps: [{ method: 'POST', path: '/orders' }],
+        },
+      ],
+      chaos: [],
+    },
+  ];
+  return d;
+}
+
+function buildMultiAzHaTemplateDesign(): Design {
+  const d = createEmptyDesign('tpl-multi-az-ha', 'Multi-AZ HA with AZ outage');
+  d.description =
+    'ALB balancing across dual-AZ EC2 instances with Multi-AZ RDS failover capability under simulated zone failure.';
+  d.settings.primaryProvider = 'aws';
+  d.groups = [
+    {
+      id: 'grp-az1',
+      kind: 'az',
+      label: 'Availability Zone us-east-1a',
+      provider: 'aws',
+      region: 'us-east-1',
+      position: { x: 580, y: 80 },
+      size: { width: 280, height: 180 },
+    },
+    {
+      id: 'grp-az2',
+      kind: 'az',
+      label: 'Availability Zone us-east-1b',
+      provider: 'aws',
+      region: 'us-east-1',
+      position: { x: 580, y: 280 },
+      size: { width: 280, height: 180 },
+    },
+  ];
+  d.nodes = [
+    {
+      id: 'client',
+      serviceId: 'generic.client',
+      label: 'Client',
+      position: { x: 48, y: 240 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'alb',
+      serviceId: 'aws.alb',
+      label: 'Multi-AZ ALB',
+      position: { x: 320, y: 240 },
+      config: {
+        instances: 2,
+        latency: { distribution: 'lognormal', p50: 2, p95: 5 },
+        operations: {},
+      },
+    },
+    {
+      id: 'api_az1',
+      serviceId: 'aws.ec2',
+      label: 'API Server (AZ-A)',
+      parentGroupId: 'grp-az1',
+      az: 'us-east-1a',
+      position: { x: 620, y: 130 },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        maxInFlightPerInstance: 50,
+        latency: { distribution: 'lognormal', p50: 10, p95: 30 },
+        operations: {},
+      },
+    },
+    {
+      id: 'api_az2',
+      serviceId: 'aws.ec2',
+      label: 'API Server (AZ-B)',
+      parentGroupId: 'grp-az2',
+      az: 'us-east-1b',
+      position: { x: 620, y: 330 },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        maxInFlightPerInstance: 50,
+        latency: { distribution: 'lognormal', p50: 10, p95: 30 },
+        operations: {},
+      },
+    },
+    {
+      id: 'db',
+      serviceId: 'aws.rds_postgres',
+      label: 'RDS Multi-AZ',
+      position: { x: 960, y: 240 },
+      config: {
+        instances: 2,
+        connections: { max: 100 },
+        readRatio: 0.8,
+        writeLatencyMultiplier: 1.4,
+        latency: { distribution: 'lognormal', p50: 8, p95: 25 },
+        operations: {},
+      },
+    },
+  ];
+  d.edges = [
+    {
+      id: 'e-client-alb',
+      from: 'client',
+      to: 'alb',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-alb-az1',
+      from: 'alb',
+      to: 'api_az1',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 0.5,
+    },
+    {
+      id: 'e-alb-az2',
+      from: 'alb',
+      to: 'api_az2',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 0.5,
+    },
+    {
+      id: 'e-az1-db',
+      from: 'api_az1',
+      to: 'db',
+      protocol: 'sql',
+      port: 5432,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-az2-db',
+      from: 'api_az2',
+      to: 'db',
+      protocol: 'sql',
+      port: 5432,
+      callType: 'sync',
+      weight: 1,
+    },
+  ];
+  d.scenarios = [
+    {
+      id: 'scenario-az-failover',
+      name: 'AZ-A outage at 10s',
+      durationS: 30,
+      entryNodeId: 'client',
+      profile: { kind: 'constant', rps: 90 },
+      flows: [
+        {
+          id: 'flow-main',
+          name: 'GET /status',
+          weight: 1,
+          steps: [{ method: 'GET', path: '/status' }],
+        },
+      ],
+      chaos: [
+        {
+          atS: 10,
+          durationS: 15,
+          kind: 'kill-instances',
+          nodeId: 'api_az1',
+          count: 2,
+        },
+      ],
+    },
+  ];
+  return d;
+}
+
+function buildRetryStormTemplateDesign(): Design {
+  const d = createEmptyDesign('tpl-retry-storm', 'Retry storm and circuit breaker');
+  d.description =
+    'Cascading timeout loop between edge API and downstream dependency with retry policy amplifying load.';
+  d.settings.primaryProvider = 'aws';
+  d.nodes = [
+    {
+      id: 'client',
+      serviceId: 'generic.client',
+      label: 'Client',
+      position: { x: 48, y: 176 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'alb',
+      serviceId: 'aws.alb',
+      label: 'ALB',
+      position: { x: 336, y: 176 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 5 },
+        operations: {},
+      },
+    },
+    {
+      id: 'frontend',
+      serviceId: 'aws.ec2',
+      label: 'Storefront API',
+      position: { x: 624, y: 176 },
+      config: {
+        instances: 3,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 6,
+        maxInFlightPerInstance: 60,
+        timeoutMs: 3000,
+        latency: { distribution: 'lognormal', p50: 8, p95: 25 },
+        operations: {},
+      },
+    },
+    {
+      id: 'backend',
+      serviceId: 'aws.ec2',
+      label: 'Payment Service',
+      position: { x: 912, y: 176 },
+      config: {
+        instances: 1,
+        vcpu: 1,
+        memoryGb: 2,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 16,
+        maxInFlightPerInstance: 20,
+        queue: { maxLength: 30, policy: 'reject' },
+        timeoutMs: 2500,
+        latency: { distribution: 'lognormal', p50: 25, p95: 80 },
+        operations: {},
+      },
+    },
+    {
+      id: 'db',
+      serviceId: 'aws.rds_postgres',
+      label: 'Ledger DB',
+      position: { x: 1200, y: 176 },
+      config: {
+        instances: 1,
+        connections: { max: 40 },
+        readRatio: 0.5,
+        latency: { distribution: 'lognormal', p50: 8, p95: 25 },
+        operations: {},
+      },
+    },
+  ];
+  d.edges = [
+    {
+      id: 'e-client-alb',
+      from: 'client',
+      to: 'alb',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-alb-frontend',
+      from: 'alb',
+      to: 'frontend',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-frontend-backend',
+      from: 'frontend',
+      to: 'backend',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+      retry: { max: 3, backoffMs: 200, jitter: true },
+    },
+    {
+      id: 'e-backend-db',
+      from: 'backend',
+      to: 'db',
+      protocol: 'sql',
+      port: 5432,
+      callType: 'sync',
+      weight: 1,
+    },
+  ];
+  d.scenarios = [
+    {
+      id: 'scenario-storm',
+      name: 'Spike with downstream slowdown',
+      durationS: 30,
+      entryNodeId: 'client',
+      profile: { kind: 'spike', baseRps: 30, peakRps: 130, atS: 6, widthS: 20 },
+      flows: [
+        {
+          id: 'flow-pay',
+          name: 'POST /pay',
+          weight: 1,
+          steps: [{ method: 'POST', path: '/pay' }],
+        },
+      ],
+      chaos: [
+        {
+          atS: 8,
+          durationS: 12,
+          kind: 'add-latency',
+          nodeId: 'backend',
+          extraMs: 120,
+        },
+      ],
+    },
+  ];
+  return d;
+}
+
+function buildMultiRegionTemplateDesign(): Design {
+  const d = createEmptyDesign('tpl-multi-region', 'Multi-region latency & cost');
+  d.description =
+    'Route 53 Geolocation routing to regional ALBs and compute in us-east-1 and eu-central-1 with Global DynamoDB replication.';
+  d.settings.primaryProvider = 'aws';
+  d.nodes = [
+    {
+      id: 'client_us',
+      serviceId: 'generic.client',
+      label: 'US Clients',
+      position: { x: 48, y: 110 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'client_eu',
+      serviceId: 'generic.client',
+      label: 'EU Clients',
+      position: { x: 48, y: 310 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'dns',
+      serviceId: 'aws.route53',
+      label: 'Route 53 Geolocation',
+      position: { x: 288, y: 210 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 5, p95: 15 },
+        operations: {},
+      },
+    },
+    {
+      id: 'alb_us',
+      serviceId: 'aws.alb',
+      label: 'ALB (us-east-1)',
+      region: 'us-east-1',
+      position: { x: 576, y: 110 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 6 },
+        operations: {},
+      },
+    },
+    {
+      id: 'api_us',
+      serviceId: 'aws.ec2',
+      label: 'API (us-east-1)',
+      region: 'us-east-1',
+      position: { x: 864, y: 110 },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        latency: { distribution: 'lognormal', p50: 10, p95: 28 },
+        operations: {},
+      },
+    },
+    {
+      id: 'alb_eu',
+      serviceId: 'aws.alb',
+      label: 'ALB (eu-central-1)',
+      region: 'eu-central-1',
+      position: { x: 576, y: 310 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 6 },
+        operations: {},
+      },
+    },
+    {
+      id: 'api_eu',
+      serviceId: 'aws.ec2',
+      label: 'API (eu-central-1)',
+      region: 'eu-central-1',
+      position: { x: 864, y: 310 },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        latency: { distribution: 'lognormal', p50: 10, p95: 28 },
+        operations: {},
+      },
+    },
+    {
+      id: 'db_global',
+      serviceId: 'aws.dynamodb',
+      label: 'Global DynamoDB',
+      position: { x: 1152, y: 210 },
+      config: {
+        instances: 1,
+        readRatio: 0.8,
+        latency: { distribution: 'lognormal', p50: 4, p95: 12 },
+        operations: {},
+      },
+    },
+  ];
+  d.edges = [
+    {
+      id: 'e-us-dns',
+      from: 'client_us',
+      to: 'dns',
+      protocol: 'dns',
+      port: 53,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-eu-dns',
+      from: 'client_eu',
+      to: 'dns',
+      protocol: 'dns',
+      port: 53,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-dns-us',
+      from: 'dns',
+      to: 'alb_us',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 0.6,
+    },
+    {
+      id: 'e-dns-eu',
+      from: 'dns',
+      to: 'alb_eu',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 0.4,
+    },
+    {
+      id: 'e-alb-api-us',
+      from: 'alb_us',
+      to: 'api_us',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-alb-api-eu',
+      from: 'alb_eu',
+      to: 'api_eu',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-api-db-us',
+      from: 'api_us',
+      to: 'db_global',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-api-db-eu',
+      from: 'api_eu',
+      to: 'db_global',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+  ];
+  d.scenarios = [
+    {
+      id: 'scenario-multi-region',
+      name: 'Global concurrent traffic',
+      durationS: 30,
+      entryNodeId: 'client_us',
+      profile: { kind: 'constant', rps: 120 },
+      flows: [
+        {
+          id: 'flow-user',
+          name: 'GET /profile',
+          weight: 1,
+          steps: [{ method: 'GET', path: '/profile' }],
+        },
+      ],
+      chaos: [],
+    },
+  ];
+  return d;
+}
+
+function buildPubSubFanoutTemplateDesign(): Design {
+  const d = createEmptyDesign('tpl-pubsub-fanout', 'Pub/Sub event fanout');
+  d.description =
+    'Amazon SNS publishing events across multiple SQS queues to decouple email alerts and analytics processing.';
+  d.settings.primaryProvider = 'aws';
+  d.nodes = [
+    {
+      id: 'client',
+      serviceId: 'generic.client',
+      label: 'Client',
+      position: { x: 48, y: 176 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'alb',
+      serviceId: 'aws.alb',
+      label: 'API Gateway ALB',
+      position: { x: 300, y: 176 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 5 },
+        operations: {},
+      },
+    },
+    {
+      id: 'svc',
+      serviceId: 'aws.ec2',
+      label: 'Order Ingestion API',
+      position: { x: 560, y: 176 },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 6,
+        latency: { distribution: 'lognormal', p50: 8, p95: 22 },
+        operations: {},
+      },
+    },
+    {
+      id: 'topic',
+      serviceId: 'aws.sns',
+      label: 'Orders Topic',
+      position: { x: 820, y: 176 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 4, p95: 12 },
+        operations: {},
+      },
+    },
+    {
+      id: 'q_notif',
+      serviceId: 'aws.sqs',
+      label: 'Notifications Queue',
+      position: { x: 1080, y: 100 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 5, p95: 15 },
+        operations: {},
+      },
+    },
+    {
+      id: 'q_analytics',
+      serviceId: 'aws.sqs',
+      label: 'Analytics Queue',
+      position: { x: 1080, y: 260 },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 5, p95: 15 },
+        operations: {},
+      },
+    },
+    {
+      id: 'w_notif',
+      serviceId: 'aws.fargate',
+      label: 'Email Worker',
+      position: { x: 1340, y: 100 },
+      config: {
+        instances: 2,
+        vcpu: 1,
+        memoryGb: 2,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 10,
+        latency: { distribution: 'lognormal', p50: 15, p95: 45 },
+        operations: {},
+      },
+    },
+    {
+      id: 'w_analytics',
+      serviceId: 'aws.fargate',
+      label: 'ETL Ingest Worker',
+      position: { x: 1340, y: 260 },
+      config: {
+        instances: 2,
+        vcpu: 1,
+        memoryGb: 2,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 14,
+        latency: { distribution: 'lognormal', p50: 20, p95: 60 },
+        operations: {},
+      },
+    },
+  ];
+  d.edges = [
+    {
+      id: 'e-client-alb',
+      from: 'client',
+      to: 'alb',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-alb-svc',
+      from: 'alb',
+      to: 'svc',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-svc-topic',
+      from: 'svc',
+      to: 'topic',
+      protocol: 'https',
+      port: 443,
+      callType: 'async',
+      weight: 1,
+    },
+    {
+      id: 'e-topic-notif',
+      from: 'topic',
+      to: 'q_notif',
+      protocol: 'https',
+      port: 443,
+      callType: 'async',
+      weight: 1,
+    },
+    {
+      id: 'e-topic-analytics',
+      from: 'topic',
+      to: 'q_analytics',
+      protocol: 'https',
+      port: 443,
+      callType: 'async',
+      weight: 1,
+    },
+    {
+      id: 'e-notif-worker',
+      from: 'q_notif',
+      to: 'w_notif',
+      protocol: 'https',
+      port: 443,
+      callType: 'async',
+      weight: 1,
+    },
+    {
+      id: 'e-analytics-worker',
+      from: 'q_analytics',
+      to: 'w_analytics',
+      protocol: 'https',
+      port: 443,
+      callType: 'async',
+      weight: 1,
+    },
+  ];
+  d.scenarios = [
+    {
+      id: 'scenario-fanout',
+      name: 'Event fanout load',
+      durationS: 30,
+      entryNodeId: 'client',
+      profile: { kind: 'constant', rps: 80 },
+      flows: [
+        {
+          id: 'flow-publish',
+          name: 'POST /events',
+          weight: 1,
+          steps: [{ method: 'POST', path: '/events' }],
+        },
+      ],
+      chaos: [],
+    },
+  ];
+  return d;
+}
+
+function buildCrossCloudTemplateDesign(): Design {
+  const d = createEmptyDesign('tpl-cross-cloud', 'Cross-cloud cost comparison');
+  d.description =
+    'Equivalent 3-tier architectures running on AWS, GCP, Azure, and OCI side-by-side for cost and latency benchmarking.';
+  d.settings.primaryProvider = 'aws';
+  d.groups = [
+    {
+      id: 'grp-aws',
+      kind: 'region',
+      label: 'Amazon Web Services (us-east-1)',
+      provider: 'aws',
+      region: 'us-east-1',
+      position: { x: 30, y: 30 },
+      size: { width: 1040, height: 160 },
+    },
+    {
+      id: 'grp-gcp',
+      kind: 'region',
+      label: 'Google Cloud Platform (us-central1)',
+      provider: 'gcp',
+      region: 'us-central1',
+      position: { x: 30, y: 210 },
+      size: { width: 1040, height: 160 },
+    },
+    {
+      id: 'grp-azure',
+      kind: 'region',
+      label: 'Microsoft Azure (eastus)',
+      provider: 'azure',
+      region: 'eastus',
+      position: { x: 30, y: 390 },
+      size: { width: 1040, height: 160 },
+    },
+    {
+      id: 'grp-oci',
+      kind: 'region',
+      label: 'Oracle Cloud Infrastructure (us-ashburn-1)',
+      provider: 'oci',
+      region: 'us-ashburn-1',
+      position: { x: 30, y: 570 },
+      size: { width: 1040, height: 160 },
+    },
+  ];
+  d.nodes = [
+    // AWS
+    {
+      id: 'client_aws',
+      serviceId: 'generic.client',
+      label: 'Client (AWS)',
+      parentGroupId: 'grp-aws',
+      position: { x: 60, y: 80 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'alb_aws',
+      serviceId: 'aws.alb',
+      label: 'AWS ALB',
+      parentGroupId: 'grp-aws',
+      position: { x: 320, y: 80 },
+      config: { instances: 1, latency: { distribution: 'lognormal', p50: 2, p95: 6 }, operations: {} },
+    },
+    {
+      id: 'api_aws',
+      serviceId: 'aws.ec2',
+      label: 'AWS EC2 API',
+      parentGroupId: 'grp-aws',
+      position: { x: 580, y: 80 },
+      config: { instances: 2, vcpu: 2, memoryGb: 4, runtimePreset: 'node', cpuMsPerRequest: 8, latency: { distribution: 'lognormal', p50: 10, p95: 28 }, operations: {} },
+    },
+    {
+      id: 'db_aws',
+      serviceId: 'aws.rds_postgres',
+      label: 'AWS RDS Postgres',
+      parentGroupId: 'grp-aws',
+      position: { x: 840, y: 80 },
+      config: { instances: 1, connections: { max: 60 }, latency: { distribution: 'lognormal', p50: 8, p95: 24 }, operations: {} },
+    },
+    // GCP
+    {
+      id: 'client_gcp',
+      serviceId: 'generic.client',
+      label: 'Client (GCP)',
+      parentGroupId: 'grp-gcp',
+      position: { x: 60, y: 260 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'lb_gcp',
+      serviceId: 'gcp.lb_https',
+      label: 'GCP HTTPS LB',
+      parentGroupId: 'grp-gcp',
+      position: { x: 320, y: 260 },
+      config: { instances: 1, latency: { distribution: 'lognormal', p50: 2, p95: 6 }, operations: {} },
+    },
+    {
+      id: 'api_gcp',
+      serviceId: 'gcp.compute_engine',
+      label: 'GCP Compute VM',
+      parentGroupId: 'grp-gcp',
+      position: { x: 580, y: 260 },
+      config: { instances: 2, vcpu: 2, memoryGb: 4, runtimePreset: 'node', cpuMsPerRequest: 8, latency: { distribution: 'lognormal', p50: 10, p95: 28 }, operations: {} },
+    },
+    {
+      id: 'db_gcp',
+      serviceId: 'gcp.cloud_sql_postgres',
+      label: 'GCP Cloud SQL PG',
+      parentGroupId: 'grp-gcp',
+      position: { x: 840, y: 260 },
+      config: { instances: 1, connections: { max: 60 }, latency: { distribution: 'lognormal', p50: 8, p95: 24 }, operations: {} },
+    },
+    // Azure
+    {
+      id: 'client_azure',
+      serviceId: 'generic.client',
+      label: 'Client (Azure)',
+      parentGroupId: 'grp-azure',
+      position: { x: 60, y: 440 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'gw_azure',
+      serviceId: 'azure.app_gateway',
+      label: 'Azure App Gateway',
+      parentGroupId: 'grp-azure',
+      position: { x: 320, y: 440 },
+      config: { instances: 1, latency: { distribution: 'lognormal', p50: 2, p95: 6 }, operations: {} },
+    },
+    {
+      id: 'api_azure',
+      serviceId: 'azure.vm',
+      label: 'Azure VM API',
+      parentGroupId: 'grp-azure',
+      position: { x: 580, y: 440 },
+      config: { instances: 2, vcpu: 2, memoryGb: 4, runtimePreset: 'node', cpuMsPerRequest: 8, latency: { distribution: 'lognormal', p50: 10, p95: 28 }, operations: {} },
+    },
+    {
+      id: 'db_azure',
+      serviceId: 'azure.postgres_flexible',
+      label: 'Azure Flexible PG',
+      parentGroupId: 'grp-azure',
+      position: { x: 840, y: 440 },
+      config: { instances: 1, connections: { max: 60 }, latency: { distribution: 'lognormal', p50: 8, p95: 24 }, operations: {} },
+    },
+    // OCI
+    {
+      id: 'client_oci',
+      serviceId: 'generic.client',
+      label: 'Client (OCI)',
+      parentGroupId: 'grp-oci',
+      position: { x: 60, y: 620 },
+      config: { instances: 1, operations: {} },
+    },
+    {
+      id: 'lb_oci',
+      serviceId: 'oci.load_balancer',
+      label: 'OCI Load Balancer',
+      parentGroupId: 'grp-oci',
+      position: { x: 320, y: 620 },
+      config: { instances: 1, latency: { distribution: 'lognormal', p50: 2, p95: 6 }, operations: {} },
+    },
+    {
+      id: 'api_oci',
+      serviceId: 'oci.compute',
+      label: 'OCI Compute VM',
+      parentGroupId: 'grp-oci',
+      position: { x: 580, y: 620 },
+      config: { instances: 2, vcpu: 2, memoryGb: 4, runtimePreset: 'node', cpuMsPerRequest: 8, latency: { distribution: 'lognormal', p50: 10, p95: 28 }, operations: {} },
+    },
+    {
+      id: 'db_oci',
+      serviceId: 'oci.postgres',
+      label: 'OCI PostgreSQL',
+      parentGroupId: 'grp-oci',
+      position: { x: 840, y: 620 },
+      config: { instances: 1, connections: { max: 60 }, latency: { distribution: 'lognormal', p50: 8, p95: 24 }, operations: {} },
+    },
+  ];
+  d.edges = [
+    // AWS
+    { id: 'e-aws-c-alb', from: 'client_aws', to: 'alb_aws', protocol: 'https', port: 443, callType: 'sync', weight: 1 },
+    { id: 'e-aws-alb-api', from: 'alb_aws', to: 'api_aws', protocol: 'http', port: 8080, callType: 'sync', weight: 1 },
+    { id: 'e-aws-api-db', from: 'api_aws', to: 'db_aws', protocol: 'sql', port: 5432, callType: 'sync', weight: 1 },
+    // GCP
+    { id: 'e-gcp-c-lb', from: 'client_gcp', to: 'lb_gcp', protocol: 'https', port: 443, callType: 'sync', weight: 1 },
+    { id: 'e-gcp-lb-api', from: 'lb_gcp', to: 'api_gcp', protocol: 'http', port: 8080, callType: 'sync', weight: 1 },
+    { id: 'e-gcp-api-db', from: 'api_gcp', to: 'db_gcp', protocol: 'sql', port: 5432, callType: 'sync', weight: 1 },
+    // Azure
+    { id: 'e-az-c-gw', from: 'client_azure', to: 'gw_azure', protocol: 'https', port: 443, callType: 'sync', weight: 1 },
+    { id: 'e-az-gw-api', from: 'gw_azure', to: 'api_azure', protocol: 'http', port: 8080, callType: 'sync', weight: 1 },
+    { id: 'e-az-api-db', from: 'api_azure', to: 'db_azure', protocol: 'sql', port: 5432, callType: 'sync', weight: 1 },
+    // OCI
+    { id: 'e-oci-c-lb', from: 'client_oci', to: 'lb_oci', protocol: 'https', port: 443, callType: 'sync', weight: 1 },
+    { id: 'e-oci-lb-api', from: 'lb_oci', to: 'api_oci', protocol: 'http', port: 8080, callType: 'sync', weight: 1 },
+    { id: 'e-oci-api-db', from: 'api_oci', to: 'db_oci', protocol: 'sql', port: 5432, callType: 'sync', weight: 1 },
+  ];
+  d.scenarios = [
+    {
+      id: 'scenario-multi-cloud',
+      name: '100 RPS benchmark',
+      durationS: 30,
+      entryNodeId: 'client_aws',
+      profile: { kind: 'constant', rps: 100 },
+      flows: [
+        {
+          id: 'flow-orders',
+          name: 'GET /items',
+          weight: 1,
+          steps: [{ method: 'GET', path: '/items' }],
+        },
+      ],
+      chaos: [],
+    },
+  ];
+  return d;
+}
+
 function buildNetDbUnreachableDesign(): Design {
   const d = createEmptyDesign('tpl-net-db-unreachable', 'My DB is unreachable');
   d.description =
@@ -1752,6 +2936,50 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     design: buildAddCacheTemplateDesign(),
   },
   {
+    id: 'tpl-serverless-api',
+    title: 'Serverless API',
+    category: 'starter',
+    summary: 'HTTP API Gateway triggering auto-scaling Lambda functions backed by DynamoDB on-demand.',
+    lesson:
+      'Observe sub-millisecond gateway dispatch, Lambda concurrency scaling under burst, and zero idle costs when traffic ceases.',
+    topologySummary: 'Client → API Gateway (HTTP) → Lambda (10×) → DynamoDB (On-Demand)',
+    scenarioSummary: 'Ramp 10 → 180 req/s · 30 s',
+    design: buildServerlessApiTemplateDesign(),
+  },
+  {
+    id: 'tpl-event-pipeline',
+    title: 'Event-driven order pipeline',
+    category: 'starter',
+    summary: 'Ingestion API and SQS queue buffering order bursts for ECS Fargate workers and DLQ.',
+    lesson:
+      'Under sudden ingest surges, SQS absorbs excess requests preventing database saturation; observe worker queue draining and DLQ isolation.',
+    topologySummary: 'Client → ALB → Ingest API → SQS Queue → ECS Fargate (4×) → RDS Postgres + DLQ',
+    scenarioSummary: 'Spike 40 → 260 req/s · 30 s',
+    design: buildEventPipelineTemplateDesign(),
+  },
+  {
+    id: 'tpl-multi-az-ha',
+    title: 'Multi-AZ HA with AZ outage',
+    category: 'starter',
+    summary: 'ALB balancing across dual-AZ EC2 instances with Multi-AZ RDS failover capability under simulated zone failure.',
+    lesson:
+      'Inject an AZ outage at 10s: watch ALB shift 100% of requests to AZ-B with zero dropped requests while maintaining healthy response times.',
+    topologySummary: 'Client → Multi-AZ ALB → AZ-A API + AZ-B API → RDS Multi-AZ',
+    scenarioSummary: 'Constant 90 req/s · 30 s (AZ-A outage at 10s)',
+    design: buildMultiAzHaTemplateDesign(),
+  },
+  {
+    id: 'tpl-retry-storm',
+    title: 'Retry storm & circuit breaker',
+    category: 'starter',
+    summary: 'Cascading timeout loop between edge API and downstream dependency with retry policy amplifying load.',
+    lesson:
+      'Downstream slowdown causes upstream retries, amplifying load 3x until queue overflows. Enable the edge circuit breaker to fail fast and recover.',
+    topologySummary: 'Client → ALB → Storefront API → Payment Svc (Retries ×3) → Ledger DB',
+    scenarioSummary: 'Spike 30 → 130 req/s · 30 s (120ms latency injection at 8s)',
+    design: buildRetryStormTemplateDesign(),
+  },
+  {
     id: 'tpl-rag-chatbot',
     title: 'RAG chatbot',
     category: 'starter',
@@ -1762,6 +2990,18 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     topologySummary: 'Client → ALB → Chat API → Embed + Vector Search → LLM (120k TPM)',
     scenarioSummary: 'Constant 10 req/s · 30 s',
     design: buildRagChatbotTemplateDesign(),
+  },
+  {
+    id: 'tpl-pubsub-fanout',
+    title: 'Pub/Sub event fanout',
+    category: 'starter',
+    summary:
+      'Amazon SNS publishing events across multiple SQS queues to decouple email alerts and analytics processing.',
+    lesson:
+      'Publishing once to a topic fans out concurrently to independent queues without coupling ingest latency to slow backend workers.',
+    topologySummary: 'Client → ALB → Ingest API → SNS Topic → SQS Queues → Fargate Workers',
+    scenarioSummary: 'Constant 80 req/s · 30 s',
+    design: buildPubSubFanoutTemplateDesign(),
   },
   {
     id: 'tpl-net-db-unreachable',
@@ -1852,6 +3092,28 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     topologySummary: 'OCI Compute (Private subnet) ✖ Object Storage (Missing Service GW)',
     scenarioSummary: 'Constant 15 req/s · 10 s',
     design: buildNetOciServiceGatewayDesign(),
+  },
+  {
+    id: 'tpl-multi-region',
+    title: 'Multi-region latency & cost',
+    category: 'starter',
+    summary: 'Route 53 DNS directing US and EU traffic to localized regional compute with Global DynamoDB replication.',
+    lesson:
+      'Compare regional p50 latency (<30ms) against cross-ocean traffic, while evaluating inter-region data transfer replication costs.',
+    topologySummary: 'US & EU Clients → Route 53 → Regional ALBs/APIs → Global DynamoDB',
+    scenarioSummary: 'Constant 120 req/s · 30 s',
+    design: buildMultiRegionTemplateDesign(),
+  },
+  {
+    id: 'tpl-cross-cloud',
+    title: 'Cross-cloud cost comparison',
+    category: 'starter',
+    summary: 'Equivalent 3-tier architectures running side-by-side on AWS, GCP, Azure, and OCI.',
+    lesson:
+      'Compare total monthly cost and p95 latency across AWS, GCP, Azure, and OCI under identical 100 req/s application workloads.',
+    topologySummary: 'AWS vs GCP vs Azure vs OCI (100 req/s parallel benchmark)',
+    scenarioSummary: 'Constant 100 req/s · 30 s',
+    design: buildCrossCloudTemplateDesign(),
   },
 ];
 

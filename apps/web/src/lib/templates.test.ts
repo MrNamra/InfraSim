@@ -8,7 +8,7 @@ import { STARTER_TEMPLATES, getStarterTemplate } from './templates';
 
 describe('Phase 1 starter templates', () => {
   it('validates every starter template against Design JSON Schema and catalog services', () => {
-    expect(STARTER_TEMPLATES.length).toBe(11);
+    expect(STARTER_TEMPLATES.length).toBe(18);
 
     for (const tpl of STARTER_TEMPLATES) {
       const res = validateDesign(tpl.design);
@@ -93,6 +93,20 @@ describe('Phase 1 starter templates', () => {
     expect(r1.summary.totalRequests).toBeGreaterThan(200);
     expect(r1.perNode.llm).toBeDefined();
     expect(r1.perNode.llm!.success).toBeGreaterThan(0);
+  });
+
+  it('executes all 10 starter templates deterministically in sim-engine', async () => {
+    const starters = STARTER_TEMPLATES.filter((t) => (t.category ?? 'starter') === 'starter');
+    expect(starters.length).toBe(10);
+    for (const tpl of starters) {
+      let frameCount = 0;
+      const d = structuredClone(tpl.design);
+      const res = await runSimulation({ design: d, scenarioId: d.scenarios[0]!.id }, () => {
+        frameCount++;
+      });
+      expect(res.summary.totalRequests, `No requests simulated in ${tpl.id}`).toBeGreaterThan(0);
+      expect(frameCount, `No frames recorded in ${tpl.id}`).toBeGreaterThan(0);
+    }
   });
 });
 

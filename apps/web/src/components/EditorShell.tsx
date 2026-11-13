@@ -115,6 +115,10 @@ const CommandPalette = dynamic(() => import('./CommandPalette').then((m) => m.Co
 const TemplateModal = dynamic(() => import('./TemplateModal').then((m) => m.TemplateModal), {
   ssr: false,
 });
+const OnboardingTour = dynamic(
+  () => import('./OnboardingTour').then((m) => m.OnboardingTour),
+  { ssr: false },
+);
 const ChallengesModal = dynamic(() => import('./ChallengesModal').then((m) => m.ChallengesModal), {
   ssr: false,
 });
@@ -266,6 +270,7 @@ export function EditorShell() {
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const [challengesOpen, setChallengesOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -505,6 +510,11 @@ export function EditorShell() {
       document.documentElement.dataset.theme = saved;
     } else {
       document.documentElement.dataset.theme = 'dark';
+    }
+
+    const tourDone = window.localStorage.getItem('infrasim.tourCompleted');
+    if (!tourDone) {
+      setTourOpen(true);
     }
 
     const storedToken = getStoredToken();
@@ -1592,6 +1602,24 @@ export function EditorShell() {
         },
       },
       {
+        id: 'replay-tour',
+        group: 'Help',
+        label: 'Replay onboarding tour',
+        onSelect: () => setTourOpen(true),
+      },
+      {
+        id: 'open-docs',
+        group: 'Help',
+        label: 'Documentation & Architecture guide',
+        onSelect: () => window.open('/docs', '_blank'),
+      },
+      {
+        id: 'open-privacy',
+        group: 'Help',
+        label: 'Privacy policy',
+        onSelect: () => window.open('/privacy', '_blank'),
+      },
+      {
         id: 'open-account',
         group: 'Account',
         label: user ? 'View account' : 'Sign in or register',
@@ -2328,6 +2356,17 @@ export function EditorShell() {
             ) : (
               <Moon className="h-4 w-4" strokeWidth={1.5} />
             )}
+          </button>
+
+          <button
+            type="button"
+            data-testid="help-tour-btn"
+            aria-label="Help & tour"
+            title="Replay onboarding tour or view documentation"
+            onClick={() => setTourOpen(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)]"
+          >
+            <HelpCircle className="h-4 w-4" strokeWidth={1.5} />
           </button>
 
           <Button
@@ -3081,6 +3120,11 @@ export function EditorShell() {
         open={templatesOpen}
         onClose={() => setTemplatesOpen(false)}
         onSelectTemplate={handleLoadTemplate}
+      />
+
+      <OnboardingTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
       />
 
       <ChallengesModal
