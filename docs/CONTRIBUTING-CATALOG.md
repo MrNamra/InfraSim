@@ -54,6 +54,7 @@ Every service row in `packages/catalog/data/<provider>.json` adheres to `Service
 ```
 
 ### Required Fields
+
 - `id`: `<provider>.<service_slug>` (e.g. `aws.sqs`, `gcp.cloud_run`, `azure.cosmos_db`, `oci.functions`).
 - `provider`: `"aws"` | `"gcp"` | `"azure"` | `"oci"` | `"generic"`.
 - `name`: Human-readable service name.
@@ -67,6 +68,7 @@ Every service row in `packages/catalog/data/<provider>.json` adheres to `Service
 ## 3. Verification & Sourcing Rules
 
 Whenever adding or adjusting a service's concurrency limits, timeout, partition ceilings, or pricing:
+
 1. **Never guess quotas or leave unresolved verification notes.**
 2. Look up the official cloud vendor documentation (AWS Developer Guide, GCP Docs, Microsoft Learn, or OCI Documentation).
 3. If a property is dependent on user instance size or configuration, label it clearly (e.g., `"Scales with instance memory — typical default"`).

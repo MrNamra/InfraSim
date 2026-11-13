@@ -1501,7 +1501,11 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'AWS ALB',
       parentGroupId: 'grp-aws',
       position: { x: 320, y: 80 },
-      config: { instances: 1, latency: { distribution: 'lognormal', p50: 2, p95: 6 }, operations: {} },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 6 },
+        operations: {},
+      },
     },
     {
       id: 'api_aws',
@@ -1509,7 +1513,15 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'AWS EC2 API',
       parentGroupId: 'grp-aws',
       position: { x: 580, y: 80 },
-      config: { instances: 2, vcpu: 2, memoryGb: 4, runtimePreset: 'node', cpuMsPerRequest: 8, latency: { distribution: 'lognormal', p50: 10, p95: 28 }, operations: {} },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        latency: { distribution: 'lognormal', p50: 10, p95: 28 },
+        operations: {},
+      },
     },
     {
       id: 'db_aws',
@@ -1517,7 +1529,12 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'AWS RDS Postgres',
       parentGroupId: 'grp-aws',
       position: { x: 840, y: 80 },
-      config: { instances: 1, connections: { max: 60 }, latency: { distribution: 'lognormal', p50: 8, p95: 24 }, operations: {} },
+      config: {
+        instances: 1,
+        connections: { max: 60 },
+        latency: { distribution: 'lognormal', p50: 8, p95: 24 },
+        operations: {},
+      },
     },
     // GCP
     {
@@ -1534,7 +1551,11 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'GCP HTTPS LB',
       parentGroupId: 'grp-gcp',
       position: { x: 320, y: 260 },
-      config: { instances: 1, latency: { distribution: 'lognormal', p50: 2, p95: 6 }, operations: {} },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 6 },
+        operations: {},
+      },
     },
     {
       id: 'api_gcp',
@@ -1542,7 +1563,15 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'GCP Compute VM',
       parentGroupId: 'grp-gcp',
       position: { x: 580, y: 260 },
-      config: { instances: 2, vcpu: 2, memoryGb: 4, runtimePreset: 'node', cpuMsPerRequest: 8, latency: { distribution: 'lognormal', p50: 10, p95: 28 }, operations: {} },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        latency: { distribution: 'lognormal', p50: 10, p95: 28 },
+        operations: {},
+      },
     },
     {
       id: 'db_gcp',
@@ -1550,7 +1579,12 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'GCP Cloud SQL PG',
       parentGroupId: 'grp-gcp',
       position: { x: 840, y: 260 },
-      config: { instances: 1, connections: { max: 60 }, latency: { distribution: 'lognormal', p50: 8, p95: 24 }, operations: {} },
+      config: {
+        instances: 1,
+        connections: { max: 60 },
+        latency: { distribution: 'lognormal', p50: 8, p95: 24 },
+        operations: {},
+      },
     },
     // Azure
     {
@@ -1567,7 +1601,11 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'Azure App Gateway',
       parentGroupId: 'grp-azure',
       position: { x: 320, y: 440 },
-      config: { instances: 1, latency: { distribution: 'lognormal', p50: 2, p95: 6 }, operations: {} },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 6 },
+        operations: {},
+      },
     },
     {
       id: 'api_azure',
@@ -1575,7 +1613,15 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'Azure VM API',
       parentGroupId: 'grp-azure',
       position: { x: 580, y: 440 },
-      config: { instances: 2, vcpu: 2, memoryGb: 4, runtimePreset: 'node', cpuMsPerRequest: 8, latency: { distribution: 'lognormal', p50: 10, p95: 28 }, operations: {} },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        latency: { distribution: 'lognormal', p50: 10, p95: 28 },
+        operations: {},
+      },
     },
     {
       id: 'db_azure',
@@ -1583,7 +1629,12 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'Azure Flexible PG',
       parentGroupId: 'grp-azure',
       position: { x: 840, y: 440 },
-      config: { instances: 1, connections: { max: 60 }, latency: { distribution: 'lognormal', p50: 8, p95: 24 }, operations: {} },
+      config: {
+        instances: 1,
+        connections: { max: 60 },
+        latency: { distribution: 'lognormal', p50: 8, p95: 24 },
+        operations: {},
+      },
     },
     // OCI
     {
@@ -1600,7 +1651,11 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'OCI Load Balancer',
       parentGroupId: 'grp-oci',
       position: { x: 320, y: 620 },
-      config: { instances: 1, latency: { distribution: 'lognormal', p50: 2, p95: 6 }, operations: {} },
+      config: {
+        instances: 1,
+        latency: { distribution: 'lognormal', p50: 2, p95: 6 },
+        operations: {},
+      },
     },
     {
       id: 'api_oci',
@@ -1608,7 +1663,15 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'OCI Compute VM',
       parentGroupId: 'grp-oci',
       position: { x: 580, y: 620 },
-      config: { instances: 2, vcpu: 2, memoryGb: 4, runtimePreset: 'node', cpuMsPerRequest: 8, latency: { distribution: 'lognormal', p50: 10, p95: 28 }, operations: {} },
+      config: {
+        instances: 2,
+        vcpu: 2,
+        memoryGb: 4,
+        runtimePreset: 'node',
+        cpuMsPerRequest: 8,
+        latency: { distribution: 'lognormal', p50: 10, p95: 28 },
+        operations: {},
+      },
     },
     {
       id: 'db_oci',
@@ -1616,26 +1679,127 @@ function buildCrossCloudTemplateDesign(): Design {
       label: 'OCI PostgreSQL',
       parentGroupId: 'grp-oci',
       position: { x: 840, y: 620 },
-      config: { instances: 1, connections: { max: 60 }, latency: { distribution: 'lognormal', p50: 8, p95: 24 }, operations: {} },
+      config: {
+        instances: 1,
+        connections: { max: 60 },
+        latency: { distribution: 'lognormal', p50: 8, p95: 24 },
+        operations: {},
+      },
     },
   ];
   d.edges = [
     // AWS
-    { id: 'e-aws-c-alb', from: 'client_aws', to: 'alb_aws', protocol: 'https', port: 443, callType: 'sync', weight: 1 },
-    { id: 'e-aws-alb-api', from: 'alb_aws', to: 'api_aws', protocol: 'http', port: 8080, callType: 'sync', weight: 1 },
-    { id: 'e-aws-api-db', from: 'api_aws', to: 'db_aws', protocol: 'sql', port: 5432, callType: 'sync', weight: 1 },
+    {
+      id: 'e-aws-c-alb',
+      from: 'client_aws',
+      to: 'alb_aws',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-aws-alb-api',
+      from: 'alb_aws',
+      to: 'api_aws',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-aws-api-db',
+      from: 'api_aws',
+      to: 'db_aws',
+      protocol: 'sql',
+      port: 5432,
+      callType: 'sync',
+      weight: 1,
+    },
     // GCP
-    { id: 'e-gcp-c-lb', from: 'client_gcp', to: 'lb_gcp', protocol: 'https', port: 443, callType: 'sync', weight: 1 },
-    { id: 'e-gcp-lb-api', from: 'lb_gcp', to: 'api_gcp', protocol: 'http', port: 8080, callType: 'sync', weight: 1 },
-    { id: 'e-gcp-api-db', from: 'api_gcp', to: 'db_gcp', protocol: 'sql', port: 5432, callType: 'sync', weight: 1 },
+    {
+      id: 'e-gcp-c-lb',
+      from: 'client_gcp',
+      to: 'lb_gcp',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-gcp-lb-api',
+      from: 'lb_gcp',
+      to: 'api_gcp',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-gcp-api-db',
+      from: 'api_gcp',
+      to: 'db_gcp',
+      protocol: 'sql',
+      port: 5432,
+      callType: 'sync',
+      weight: 1,
+    },
     // Azure
-    { id: 'e-az-c-gw', from: 'client_azure', to: 'gw_azure', protocol: 'https', port: 443, callType: 'sync', weight: 1 },
-    { id: 'e-az-gw-api', from: 'gw_azure', to: 'api_azure', protocol: 'http', port: 8080, callType: 'sync', weight: 1 },
-    { id: 'e-az-api-db', from: 'api_azure', to: 'db_azure', protocol: 'sql', port: 5432, callType: 'sync', weight: 1 },
+    {
+      id: 'e-az-c-gw',
+      from: 'client_azure',
+      to: 'gw_azure',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-az-gw-api',
+      from: 'gw_azure',
+      to: 'api_azure',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-az-api-db',
+      from: 'api_azure',
+      to: 'db_azure',
+      protocol: 'sql',
+      port: 5432,
+      callType: 'sync',
+      weight: 1,
+    },
     // OCI
-    { id: 'e-oci-c-lb', from: 'client_oci', to: 'lb_oci', protocol: 'https', port: 443, callType: 'sync', weight: 1 },
-    { id: 'e-oci-lb-api', from: 'lb_oci', to: 'api_oci', protocol: 'http', port: 8080, callType: 'sync', weight: 1 },
-    { id: 'e-oci-api-db', from: 'api_oci', to: 'db_oci', protocol: 'sql', port: 5432, callType: 'sync', weight: 1 },
+    {
+      id: 'e-oci-c-lb',
+      from: 'client_oci',
+      to: 'lb_oci',
+      protocol: 'https',
+      port: 443,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-oci-lb-api',
+      from: 'lb_oci',
+      to: 'api_oci',
+      protocol: 'http',
+      port: 8080,
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-oci-api-db',
+      from: 'api_oci',
+      to: 'db_oci',
+      protocol: 'sql',
+      port: 5432,
+      callType: 'sync',
+      weight: 1,
+    },
   ];
   d.scenarios = [
     {
@@ -2939,7 +3103,8 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     id: 'tpl-serverless-api',
     title: 'Serverless API',
     category: 'starter',
-    summary: 'HTTP API Gateway triggering auto-scaling Lambda functions backed by DynamoDB on-demand.',
+    summary:
+      'HTTP API Gateway triggering auto-scaling Lambda functions backed by DynamoDB on-demand.',
     lesson:
       'Observe sub-millisecond gateway dispatch, Lambda concurrency scaling under burst, and zero idle costs when traffic ceases.',
     topologySummary: 'Client → API Gateway (HTTP) → Lambda (10×) → DynamoDB (On-Demand)',
@@ -2953,7 +3118,8 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     summary: 'Ingestion API and SQS queue buffering order bursts for ECS Fargate workers and DLQ.',
     lesson:
       'Under sudden ingest surges, SQS absorbs excess requests preventing database saturation; observe worker queue draining and DLQ isolation.',
-    topologySummary: 'Client → ALB → Ingest API → SQS Queue → ECS Fargate (4×) → RDS Postgres + DLQ',
+    topologySummary:
+      'Client → ALB → Ingest API → SQS Queue → ECS Fargate (4×) → RDS Postgres + DLQ',
     scenarioSummary: 'Spike 40 → 260 req/s · 30 s',
     design: buildEventPipelineTemplateDesign(),
   },
@@ -2961,7 +3127,8 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     id: 'tpl-multi-az-ha',
     title: 'Multi-AZ HA with AZ outage',
     category: 'starter',
-    summary: 'ALB balancing across dual-AZ EC2 instances with Multi-AZ RDS failover capability under simulated zone failure.',
+    summary:
+      'ALB balancing across dual-AZ EC2 instances with Multi-AZ RDS failover capability under simulated zone failure.',
     lesson:
       'Inject an AZ outage at 10s: watch ALB shift 100% of requests to AZ-B with zero dropped requests while maintaining healthy response times.',
     topologySummary: 'Client → Multi-AZ ALB → AZ-A API + AZ-B API → RDS Multi-AZ',
@@ -2972,7 +3139,8 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     id: 'tpl-retry-storm',
     title: 'Retry storm & circuit breaker',
     category: 'starter',
-    summary: 'Cascading timeout loop between edge API and downstream dependency with retry policy amplifying load.',
+    summary:
+      'Cascading timeout loop between edge API and downstream dependency with retry policy amplifying load.',
     lesson:
       'Downstream slowdown causes upstream retries, amplifying load 3x until queue overflows. Enable the edge circuit breaker to fail fast and recover.',
     topologySummary: 'Client → ALB → Storefront API → Payment Svc (Retries ×3) → Ledger DB',
@@ -3097,7 +3265,8 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     id: 'tpl-multi-region',
     title: 'Multi-region latency & cost',
     category: 'starter',
-    summary: 'Route 53 DNS directing US and EU traffic to localized regional compute with Global DynamoDB replication.',
+    summary:
+      'Route 53 DNS directing US and EU traffic to localized regional compute with Global DynamoDB replication.',
     lesson:
       'Compare regional p50 latency (<30ms) against cross-ocean traffic, while evaluating inter-region data transfer replication costs.',
     topologySummary: 'US & EU Clients → Route 53 → Regional ALBs/APIs → Global DynamoDB',

@@ -84,6 +84,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install monorepo Node dependencies and build packages
+        working-directory: .
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:packages
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'

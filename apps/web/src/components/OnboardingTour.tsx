@@ -167,12 +167,13 @@ export function OnboardingTour({ open, onClose, onNavigateStep }: OnboardingTour
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-hairline)] pt-3 text-[11px]">
             <span className="text-[var(--text-muted)]">
-              Target: <strong className="font-medium text-[var(--text-secondary)]">{currentStep.targetArea}</strong>
+              Target:{' '}
+              <strong className="font-medium text-[var(--text-secondary)]">
+                {currentStep.targetArea}
+              </strong>
             </span>
             {currentStep.shortcut ? (
-              <span className="font-mono text-[var(--accent)]">
-                {currentStep.shortcut}
-              </span>
+              <span className="font-mono text-[var(--accent)]">{currentStep.shortcut}</span>
             ) : null}
           </div>
         </div>

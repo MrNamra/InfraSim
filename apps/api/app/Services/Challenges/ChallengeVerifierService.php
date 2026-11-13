@@ -111,6 +111,12 @@ class ChallengeVerifierService
         $cliScript = $repoRoot.'/packages/diagnosis/dist/challenges/verifyCli.js';
 
         if (! is_file($cliScript)) {
+            $buildProcess = new Process(['pnpm', '--filter', '@infrasim/diagnosis', 'build'], $repoRoot);
+            $buildProcess->setTimeout(30);
+            $buildProcess->run();
+        }
+
+        if (! is_file($cliScript)) {
             throw new RuntimeException(
                 'Challenge verifier CLI build missing at packages/diagnosis/dist/challenges/verifyCli.js',
             );

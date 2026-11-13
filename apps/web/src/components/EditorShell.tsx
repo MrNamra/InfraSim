@@ -115,10 +115,9 @@ const CommandPalette = dynamic(() => import('./CommandPalette').then((m) => m.Co
 const TemplateModal = dynamic(() => import('./TemplateModal').then((m) => m.TemplateModal), {
   ssr: false,
 });
-const OnboardingTour = dynamic(
-  () => import('./OnboardingTour').then((m) => m.OnboardingTour),
-  { ssr: false },
-);
+const OnboardingTour = dynamic(() => import('./OnboardingTour').then((m) => m.OnboardingTour), {
+  ssr: false,
+});
 const ChallengesModal = dynamic(() => import('./ChallengesModal').then((m) => m.ChallengesModal), {
   ssr: false,
 });
@@ -3123,10 +3122,7 @@ export function EditorShell() {
         onSelectTemplate={handleLoadTemplate}
       />
 
-      <OnboardingTour
-        open={tourOpen}
-        onClose={() => setTourOpen(false)}
-      />
+      <OnboardingTour open={tourOpen} onClose={() => setTourOpen(false)} />
 
       <ChallengesModal
         open={challengesOpen}

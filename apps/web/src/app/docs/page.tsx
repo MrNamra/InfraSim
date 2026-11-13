@@ -79,9 +79,9 @@ export default function DocsPage() {
                 Traffic Ingestion
               </div>
               <p className="mt-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                Traffic generators produce requests according to your selected curve (constant, ramp,
-                spike, steps, diurnal, or custom trace). Each request tracks payload bytes, user flow
-                steps, and client timeouts.
+                Traffic generators produce requests according to your selected curve (constant,
+                ramp, spike, steps, diurnal, or custom trace). Each request tracks payload bytes,
+                user flow steps, and client timeouts.
               </p>
             </div>
 
@@ -103,8 +103,9 @@ export default function DocsPage() {
                 Topology Routing
               </div>
               <p className="mt-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                Edges model network delays based on VPC boundaries, cross-AZ hops, or public internet
-                latency. Egress checks verify firewall rules, route tables, and NAT gateways.
+                Edges model network delays based on VPC boundaries, cross-AZ hops, or public
+                internet latency. Egress checks verify firewall rules, route tables, and NAT
+                gateways.
               </p>
             </div>
           </div>
@@ -114,7 +115,9 @@ export default function DocsPage() {
         <section id="estimated-vs-real" className="mb-14">
           <div className="flex items-center gap-2.5 text-[var(--text-primary)]">
             <Scale className="h-5 w-5 text-[var(--accent)]" strokeWidth={1.5} />
-            <h2 className="text-[20px] font-semibold">2. What&apos;s Estimated vs What&apos;s Real</h2>
+            <h2 className="text-[20px] font-semibold">
+              2. What&apos;s Estimated vs What&apos;s Real
+            </h2>
           </div>
           <p className="mt-2.5 text-[14px] leading-relaxed text-[var(--text-secondary)]">
             InfraSim is designed to teach architecture tradeoffs and catch scaling bugs before
@@ -129,11 +132,26 @@ export default function DocsPage() {
                 What is Real (Deterministic)
               </div>
               <ul className="mt-3 space-y-2 text-[12px] text-[var(--text-secondary)]">
-                <li>• <strong>User Code Execution:</strong> JavaScript and TypeScript handler code actually runs in a QuickJS WebAssembly engine.</li>
-                <li>• <strong>Network Reachability:</strong> Exact hop-by-hop packet evaluation against security groups, NACLs, route tables, and CIDRs.</li>
-                <li>• <strong>Terraform Compilation:</strong> HCL generation and parser import produce real, valid syntax and dependency graphs.</li>
-                <li>• <strong>Schema Validation:</strong> Designs and JSON payloads validate strictly against Ajv schemas.</li>
-                <li>• <strong>Reproducibility:</strong> Random seeds produce identical request traces, latencies, and drops down to the millisecond.</li>
+                <li>
+                  • <strong>User Code Execution:</strong> JavaScript and TypeScript handler code
+                  actually runs in a QuickJS WebAssembly engine.
+                </li>
+                <li>
+                  • <strong>Network Reachability:</strong> Exact hop-by-hop packet evaluation
+                  against security groups, NACLs, route tables, and CIDRs.
+                </li>
+                <li>
+                  • <strong>Terraform Compilation:</strong> HCL generation and parser import produce
+                  real, valid syntax and dependency graphs.
+                </li>
+                <li>
+                  • <strong>Schema Validation:</strong> Designs and JSON payloads validate strictly
+                  against Ajv schemas.
+                </li>
+                <li>
+                  • <strong>Reproducibility:</strong> Random seeds produce identical request traces,
+                  latencies, and drops down to the millisecond.
+                </li>
               </ul>
             </div>
 
@@ -143,10 +161,22 @@ export default function DocsPage() {
                 What is Estimated (Typical Defaults)
               </div>
               <ul className="mt-3 space-y-2 text-[12px] text-[var(--text-secondary)]">
-                <li>• <strong>Latency Distributions:</strong> Service p50/p95 times are log-normal distributions labeled &ldquo;Typical default — edit me&rdquo;.</li>
-                <li>• <strong>Cold Starts:</strong> FaaS cold start penalties (100–1200 ms) reflect observed averages, not cloud provider SLAs.</li>
-                <li>• <strong>Cost Calculations:</strong> Monthly costs use public on-demand list pricing and do not account for custom enterprise discounts.</li>
-                <li>• <strong>Hardware Jitter:</strong> Real-world multi-tenant noisy neighbor CPU throttling is simulated statistically via chaos events.</li>
+                <li>
+                  • <strong>Latency Distributions:</strong> Service p50/p95 times are log-normal
+                  distributions labeled &ldquo;Typical default — edit me&rdquo;.
+                </li>
+                <li>
+                  • <strong>Cold Starts:</strong> FaaS cold start penalties (100–1200 ms) reflect
+                  observed averages, not cloud provider SLAs.
+                </li>
+                <li>
+                  • <strong>Cost Calculations:</strong> Monthly costs use public on-demand list
+                  pricing and do not account for custom enterprise discounts.
+                </li>
+                <li>
+                  • <strong>Hardware Jitter:</strong> Real-world multi-tenant noisy neighbor CPU
+                  throttling is simulated statistically via chaos events.
+                </li>
               </ul>
             </div>
           </div>
@@ -159,8 +189,8 @@ export default function DocsPage() {
             <h2 className="text-[20px] font-semibold">3. Architecture & Systems Glossary</h2>
           </div>
           <p className="mt-2.5 text-[14px] leading-relaxed text-[var(--text-secondary)]">
-            Core terminology used throughout the workbench telemetry dock, inspector panels, and Why?
-            diagnostics.
+            Core terminology used throughout the workbench telemetry dock, inspector panels, and
+            Why? diagnostics.
           </p>
 
           <div className="mt-6 divide-y divide-[var(--border-hairline)] rounded-[10px] border border-[var(--border-hairline)] bg-[var(--bg-surface)]">
@@ -180,10 +210,10 @@ export default function DocsPage() {
                 Queue Saturation & Little&apos;s Law
               </dt>
               <dd className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                Little&apos;s Law establishes that average concurrent requests in flight (L) equals arrival
-                rate (&lambda;) multiplied by average latency (W): <em>L = &lambda; &times; W</em>. When
-                downstream latency climbs, in-flight requests accumulate rapidly until queue limits are
-                exhausted.
+                Little&apos;s Law establishes that average concurrent requests in flight (L) equals
+                arrival rate (&lambda;) multiplied by average latency (W):{' '}
+                <em>L = &lambda; &times; W</em>. When downstream latency climbs, in-flight requests
+                accumulate rapidly until queue limits are exhausted.
               </dd>
             </div>
 
@@ -192,9 +222,9 @@ export default function DocsPage() {
                 Retry Storm & Cascading Failure
               </dt>
               <dd className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                When a downstream service slows down, upstream callers experience timeouts and trigger
-                immediate retries. These duplicate requests multiply arrival rates (2x–4x), driving the
-                struggling dependency into total collapse.
+                When a downstream service slows down, upstream callers experience timeouts and
+                trigger immediate retries. These duplicate requests multiply arrival rates (2x–4x),
+                driving the struggling dependency into total collapse.
               </dd>
             </div>
 
@@ -203,9 +233,10 @@ export default function DocsPage() {
                 Circuit Breaker Pattern
               </dt>
               <dd className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                A protective pattern wrapping inter-service calls. When consecutive error rates exceed a
-                threshold, the circuit trips from Closed to Open, immediately rejecting subsequent
-                requests without burdening the failing backend and giving it room to recover.
+                A protective pattern wrapping inter-service calls. When consecutive error rates
+                exceed a threshold, the circuit trips from Closed to Open, immediately rejecting
+                subsequent requests without burdening the failing backend and giving it room to
+                recover.
               </dd>
             </div>
 
@@ -214,16 +245,14 @@ export default function DocsPage() {
                 Dead-Letter Queue (DLQ)
               </dt>
               <dd className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                A secondary queue where messages that fail repeatedly (exceeding maximum receive count
-                or timeout) are isolated, preventing unprocessable poison pills from blocking the
-                primary worker pipeline.
+                A secondary queue where messages that fail repeatedly (exceeding maximum receive
+                count or timeout) are isolated, preventing unprocessable poison pills from blocking
+                the primary worker pipeline.
               </dd>
             </div>
 
             <div className="p-4">
-              <dt className="text-[13px] font-medium text-[var(--text-primary)]">
-                Blast Radius
-              </dt>
+              <dt className="text-[13px] font-medium text-[var(--text-primary)]">Blast Radius</dt>
               <dd className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
                 The maximum extent of user disruption caused by the failure of a single component,
                 availability zone, or region. Dual-AZ deployments with health checks confine blast

@@ -18,6 +18,12 @@ class ChallengeSeeder extends Seeder
         $entryPath = $repoRoot.'/packages/diagnosis/dist/challenges/starterChallenges.js';
 
         if (! is_file($entryPath)) {
+            $buildProcess = new Process(['pnpm', '--filter', '@infrasim/diagnosis', 'build'], $repoRoot);
+            $buildProcess->setTimeout(30);
+            $buildProcess->run();
+        }
+
+        if (! is_file($entryPath)) {
             throw new RuntimeException(
                 'Built challenge catalog missing at packages/diagnosis/dist/challenges/starterChallenges.js',
             );

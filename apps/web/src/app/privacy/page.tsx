@@ -4,7 +4,8 @@ import { ArrowLeft, Cpu, Database, EyeOff, Lock, Shield } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy — InfraSim',
-  description: 'InfraSim privacy principles, local-first architecture commitments, and data guarantees.',
+  description:
+    'InfraSim privacy principles, local-first architecture commitments, and data guarantees.',
 };
 
 export default function PrivacyPage() {
@@ -49,9 +50,10 @@ export default function PrivacyPage() {
             Our Core Privacy Principle
           </h2>
           <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-            InfraSim is built as a deterministic, client-side cloud architecture workbench. You do not
-            need to trust our servers with your proprietary infrastructure layouts or application code
-            because simulation, diagnosis, and layout computation occur entirely within your browser.
+            InfraSim is built as a deterministic, client-side cloud architecture workbench. You do
+            not need to trust our servers with your proprietary infrastructure layouts or
+            application code because simulation, diagnosis, and layout computation occur entirely
+            within your browser.
           </p>
         </section>
 
@@ -63,9 +65,9 @@ export default function PrivacyPage() {
             </div>
             <p className="mt-2">
               All architecture canvases, custom service schemas, test scenarios, and simulated run
-              frames are stored locally in your browser using IndexedDB. You can build, simulate, and
-              export full topologies completely offline without logging in or transmitting data over
-              the network.
+              frames are stored locally in your browser using IndexedDB. You can build, simulate,
+              and export full topologies completely offline without logging in or transmitting data
+              over the network.
             </p>
           </div>
 
@@ -77,9 +79,9 @@ export default function PrivacyPage() {
             <p className="mt-2">
               User-authored TypeScript and JavaScript handler scripts execute inside a sandboxed
               QuickJS engine compiled to WebAssembly within a dedicated Web Worker. The sandbox is
-              completely isolated: it has no network socket access, no filesystem access, and enforces
-              strict memory (≤ 128 MB) and execution timeouts (≤ 500 ms). We never send, run, or log
-              your handler code on remote servers.
+              completely isolated: it has no network socket access, no filesystem access, and
+              enforces strict memory (≤ 128 MB) and execution timeouts (≤ 500 ms). We never send,
+              run, or log your handler code on remote servers.
             </p>
           </div>
 
@@ -90,30 +92,32 @@ export default function PrivacyPage() {
             </div>
             <p className="mt-2">
               If you optionally create an account to synchronize designs across devices or generate
-              read-only share links, designs are transmitted over TLS 1.3 to our API. Shared links use
-              cryptographically random 32-character tokens, and unlisted links can be revoked at any
-              moment with one click.
+              read-only share links, designs are transmitted over TLS 1.3 to our API. Shared links
+              use cryptographically random 32-character tokens, and unlisted links can be revoked at
+              any moment with one click.
             </p>
           </div>
 
           <div className="rounded-[10px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-5">
             <div className="flex items-center gap-2.5 text-[var(--text-primary)] font-medium">
               <EyeOff className="h-4 w-4 text-[var(--accent)]" strokeWidth={1.5} />
-              <h3 className="text-[14px]">4. Zero telemetry on proprietary designs & zero trackers</h3>
+              <h3 className="text-[14px]">
+                4. Zero telemetry on proprietary designs & zero trackers
+              </h3>
             </div>
             <p className="mt-2">
-              InfraSim contains zero third-party advertising trackers, zero cookie profiling networks,
-              and zero analytics scripts. Server logs record only standard operational metrics
-              (request method, status, response latency, and request ID) without storing design documents,
-              credentials, or environment secrets.
+              InfraSim contains zero third-party advertising trackers, zero cookie profiling
+              networks, and zero analytics scripts. Server logs record only standard operational
+              metrics (request method, status, response latency, and request ID) without storing
+              design documents, credentials, or environment secrets.
             </p>
           </div>
         </div>
 
         <footer className="mt-12 border-t border-[var(--border-hairline)] pt-6 text-[12px] text-[var(--text-muted)]">
           <p>
-            Questions or data deletion requests? Contact privacy@infrasim.dev or review our open-source
-            architecture at{' '}
+            Questions or data deletion requests? Contact privacy@infrasim.dev or review our
+            open-source architecture at{' '}
             <a
               href="https://github.com/MrNamra/InfraSim"
               target="_blank"
