@@ -13,6 +13,20 @@ export default defineConfig({
   use: {
     baseURL,
     trace: 'on-first-retry',
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: baseURL,
+          localStorage: [
+            {
+              name: 'infrasim.tourCompleted',
+              value: 'true',
+            },
+          ],
+        },
+      ],
+    },
   },
   projects: [
     {

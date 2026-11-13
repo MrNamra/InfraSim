@@ -13,6 +13,13 @@ test('Phase 5 E2E: live Terraform HCL dock + diff, ZIP export modal, Terraform p
   const pageErrors: string[] = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
 
+  await page.addInitScript(() => {
+    (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(
+      'infrasim.tourCompleted',
+      'true',
+    );
+  });
+
   await page.goto('/');
 
   // 1. Load 3-tier starter template and inspect live Terraform dock + live diff gutter
@@ -21,9 +28,9 @@ test('Phase 5 E2E: live Terraform HCL dock + diff, ZIP export modal, Terraform p
   await page.getByTestId('load-template-tpl-3tier').click();
   await expect(page.getByTestId('template-modal')).not.toBeVisible();
 
-  await page.getByTestId('dock-tab-terraform').click();
-  const tfDock = page.getByTestId('terraform-dock-tab');
-  await expect(tfDock).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId('inspector-tab-terraform').click();
+  const tfInspector = page.getByTestId('terraform-dock-tab');
+  await expect(tfInspector).toBeVisible({ timeout: 10_000 });
   await page.getByTestId('terraform-file-tab-compute.tf').click();
   await expect(page.getByTestId('terraform-dock-code-view')).toContainText('aws_instance');
 
@@ -31,12 +38,35 @@ test('Phase 5 E2E: live Terraform HCL dock + diff, ZIP export modal, Terraform p
   await page.getByTestId('canvas-node-api').click({ force: true });
   await page.getByTestId('inspector-tab-config').click();
   await page.getByLabel('Node label').fill('Checkout API');
+  await page.getByTestId('inspector-tab-terraform').click();
   await expect(page.getByTestId('terraform-dock-code-view')).toContainText('checkout_api', {
     timeout: 5_000,
   });
-  await expect(
-    page.getByTestId('terraform-dock-code-view').locator('tr[data-changed="true"]').first(),
-  ).toBeVisible();
+
+  // Test Bi-directional HCL editing with syntax error safety:
+  // 1. Enter invalid HCL with syntax error -> verify error banner shown, canvas NOT updated
+  await page.getByTestId('terraform-hcl-editor').fill(`resource "aws_instance" "api" {
+  instance_type = "t3.unclosed_string
+`);
+  await expect(page.getByTestId('terraform-syntax-error')).toBeVisible({ timeout: 5_000 });
+  // Verify canvas node remains "Checkout API"
+  await page.getByTestId('canvas-node-api').click({ force: true });
+  await page.getByTestId('inspector-tab-config').click();
+  await expect(page.getByLabel('Node label')).toHaveValue('Checkout API');
+
+  // 2. Fix HCL syntax to valid definition -> verify error clears and canvas updates
+  await page.getByTestId('inspector-tab-terraform').click();
+  await page.getByTestId('terraform-hcl-editor').fill(`resource "aws_instance" "api" {
+  instance_type = "t3.2xlarge"
+  tags = {
+    Name = "Live Synced API"
+  }
+}
+`);
+  await expect(page.getByTestId('terraform-syntax-error')).toHaveCount(0, { timeout: 5_000 });
+  await page.getByTestId('canvas-node-api').click({ force: true });
+  await page.getByTestId('inspector-tab-config').click();
+  await expect(page.getByLabel('Node label')).toHaveValue('Live Synced API', { timeout: 5_000 });
 
   // 2. Open Export Modal -> verify files, download ZIP archive cleanly
   await page.getByTestId('topbar-export-terraform-btn').click();

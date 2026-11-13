@@ -206,8 +206,8 @@ const ReachabilityDockTab = dynamic(
   () => import('./dock/ReachabilityDockTab').then((m) => m.ReachabilityDockTab),
   { ssr: false },
 );
-const TerraformDockTab = dynamic(
-  () => import('./dock/TerraformDockTab').then((m) => m.TerraformDockTab),
+const TerraformInspectorTab = dynamic(
+  () => import('./inspector/TerraformInspectorTab').then((m) => m.TerraformInspectorTab),
   { ssr: false },
 );
 const TerraformExportModal = dynamic(
@@ -224,8 +224,8 @@ const ShareAndVersionsModal = dynamic(
 );
 
 type Theme = 'dark' | 'light';
-type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why';
-type DockTab = 'metrics' | 'logs' | 'traces' | 'reachability' | 'terraform' | 'cost' | 'insights';
+type InspectorTab = 'config' | 'latency' | 'code' | 'network' | 'cost' | 'why' | 'terraform';
+type DockTab = 'metrics' | 'logs' | 'traces' | 'reachability' | 'cost' | 'insights';
 
 const INSPECTOR_TABS: { id: InspectorTab; label: string }[] = [
   { id: 'config', label: 'Config' },
@@ -234,6 +234,7 @@ const INSPECTOR_TABS: { id: InspectorTab; label: string }[] = [
   { id: 'network', label: 'Network' },
   { id: 'cost', label: 'Cost' },
   { id: 'why', label: 'Why?' },
+  { id: 'terraform', label: 'Terraform' },
 ];
 
 const DOCK_TABS: { id: DockTab; label: string; icon: typeof Activity }[] = [
@@ -241,7 +242,6 @@ const DOCK_TABS: { id: DockTab; label: string; icon: typeof Activity }[] = [
   { id: 'logs', label: 'Logs', icon: Terminal },
   { id: 'traces', label: 'Traces', icon: Layers },
   { id: 'reachability', label: 'Reachability', icon: Network },
-  { id: 'terraform', label: 'Terraform', icon: FileCode2 },
   { id: 'cost', label: 'Cost', icon: DollarSign },
   { id: 'insights', label: 'Insights', icon: HelpCircle },
 ];
@@ -1490,11 +1490,10 @@ export function EditorShell() {
       },
       {
         id: 'tab-terraform',
-        group: 'Dock',
-        label: 'Open Terraform live preview',
+        group: 'Inspector',
+        label: 'Open Terraform live inspector',
         onSelect: () => {
-          setDockCollapsed(false);
-          setDockTab('terraform');
+          setInspectorTab('terraform');
         },
       },
       {
@@ -2295,6 +2294,22 @@ export function EditorShell() {
 
           <button
             type="button"
+            data-testid="topbar-terraform-btn"
+            aria-label="Terraform Inspector"
+            title="Inspect and edit live Terraform HCL"
+            onClick={() => setInspectorTab('terraform')}
+            className={`inline-flex h-8 items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-medium transition-colors ${
+              inspectorTab === 'terraform'
+                ? 'border-[var(--accent)] bg-[var(--bg-raised)] text-[var(--accent)]'
+                : 'border-[var(--border-hairline)] bg-[var(--bg-raised)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <FileCode2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span>Terraform</span>
+          </button>
+
+          <button
+            type="button"
             data-testid="topbar-import-terraform-btn"
             aria-label="Import Terraform JSON"
             title="Import Terraform plan/state JSON"
@@ -2556,7 +2571,9 @@ export function EditorShell() {
         {/* Right Inspector */}
         <aside
           data-testid="inspector-panel"
-          className="flex w-80 shrink-0 flex-col border-l border-[var(--border-hairline)] bg-[var(--bg-surface)] xl:w-[348px]"
+          className={`flex shrink-0 flex-col border-l border-[var(--border-hairline)] bg-[var(--bg-surface)] transition-all ${
+            inspectorTab === 'terraform' ? 'w-[480px] xl:w-[600px]' : 'w-80 xl:w-[348px]'
+          }`}
         >
           <div className="flex items-center gap-0.5 overflow-x-auto border-b border-[var(--border-hairline)] px-2 py-2">
             {INSPECTOR_TABS.map((tab) => {
@@ -2585,7 +2602,17 @@ export function EditorShell() {
             })}
           </div>
 
-          {selectedGroup && inspectorTab === 'network' ? (
+          {inspectorTab === 'terraform' ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <TerraformInspectorTab
+                design={design}
+                defaultRegion={primaryRegion}
+                selectedNodeId={selectedNodeId}
+                onApplyPatchedDesign={handleApplyPatchedDesign}
+                onOpenExportModal={() => setTerraformExportOpen(true)}
+              />
+            </div>
+          ) : selectedGroup && inspectorTab === 'network' ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
               <div className="border-b border-[var(--border-hairline)] px-4 py-2.5 text-[12px]">
                 <div className="text-[10px] font-medium text-[var(--text-muted)]">
@@ -3047,12 +3074,6 @@ export function EditorShell() {
                 onSetAnalysis={setNetworkAnalysis}
                 onApplyPatchedDesign={handleApplyPatchedDesign}
                 onRerunVerify={handleRerunVerify}
-              />
-            ) : dockTab === 'terraform' ? (
-              <TerraformDockTab
-                design={design}
-                defaultRegion={primaryRegion}
-                onOpenExportModal={() => setTerraformExportOpen(true)}
               />
             ) : dockTab === 'cost' ? (
               <CostDockTab

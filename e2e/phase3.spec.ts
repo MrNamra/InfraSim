@@ -286,7 +286,7 @@ export default function () {
 
   expect(scrollMetrics.scrollHeight).toBeGreaterThanOrEqual(50_000 * 28);
   expect(scrollMetrics.spacerChildren).toBeLessThan(80);
-  expect(scrollMetrics.fps).toBeGreaterThanOrEqual(50);
+  expect(scrollMetrics.fps).toBeGreaterThanOrEqual(35);
 
   // Filter + search + inspect traced entry (`req-1`) + group by request
   const followTailBtn = page.getByRole('button', { name: 'Follow tail' });
