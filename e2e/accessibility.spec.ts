@@ -4,6 +4,15 @@ import AxeBuilder from '@axe-core/playwright';
 test.describe('Accessibility pass (T7.2 / Spec 16 §10)', () => {
   test.setTimeout(60_000);
 
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(
+        'infrasim.tourCompleted',
+        'true',
+      );
+    });
+  });
+
   test('Axe core: / homepage has no critical or serious accessibility violations', async ({
     page,
   }) => {

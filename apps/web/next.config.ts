@@ -28,7 +28,7 @@ export default function createNextConfig(phase: string): NextConfig {
               key: 'Content-Security-Policy',
               value: [
                 "default-src 'self'",
-                "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'",
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
                 "worker-src 'self' blob:",
                 "style-src 'self' 'unsafe-inline'",
                 "font-src 'self' data:",

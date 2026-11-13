@@ -2284,6 +2284,7 @@ export function EditorShell() {
           <Button
             variant="secondary"
             size="sm"
+            data-testid="topbar-commands-btn"
             onClick={() => setCommandOpen(true)}
             aria-label="Open command palette"
             className="hidden sm:inline-flex"

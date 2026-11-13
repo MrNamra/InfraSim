@@ -93,6 +93,7 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
           <input
             ref={inputRef}
             type="text"
+            data-testid="command-palette-input"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
