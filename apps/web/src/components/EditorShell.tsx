@@ -1614,8 +1614,54 @@ export function EditorShell() {
     ],
   );
 
+  const screenReaderAnnouncement = useMemo(() => {
+    if (simStatus === 'running') {
+      return 'Simulation running. Press Stop to cancel.';
+    }
+    if (simStatus === 'completed' && simResult) {
+      const bottleneck = simResult.bottleneckNodeId
+        ? design.nodes.find((n) => n.id === simResult.bottleneckNodeId)
+        : null;
+      const bottleneckSummary = bottleneck
+        ? `Bottleneck: ${bottleneck.label} with ${Math.round(
+            (simResult.perNode[bottleneck.id]?.peakUtilization ?? 0) * 100,
+          )}% utilization and ${simResult.perNode[bottleneck.id]?.drops ?? 0} dropped requests.`
+        : '';
+      const totalReqs = simResult.summary.totalRequests;
+      const errorCount = totalReqs - simResult.summary.success;
+      const errorPct = totalReqs > 0 ? Math.round((errorCount / totalReqs) * 100) : 0;
+      return `Simulation completed: ${totalReqs.toLocaleString()} requests in ${
+        simResult.durationS
+      } seconds, ${errorPct}% errors. ${bottleneckSummary}`;
+    }
+    if (selectedNode) {
+      const nf = currentFrame?.nodes[selectedNode.id];
+      if (nf) {
+        const dropCount =
+          Object.values(nf.errorsPerSec).reduce((s, v) => s + (v ?? 0), 0) + nf.dropsPerSec;
+        return `${selectedNode.label}: ${nf.health}, ${Math.round(nf.utilization * 100)}% utilization${
+          dropCount > 0 ? `, ${Math.round(dropCount)} errors per second` : ''
+        }. Press E to connect, arrow keys to move, Enter to configure.`;
+      }
+      return `Selected ${selectedNode.label}. Press E to connect, arrow keys to move, Enter to configure.`;
+    }
+    return `Architecture canvas with ${design.nodes.length} services and ${design.edges.length} connections.`;
+  }, [simStatus, simResult, selectedNode, currentFrame, design.nodes, design.edges]);
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+      {/* Screen-reader live announcer for WCAG status feedback */}
+      <div
+        id="sr-live-announcer"
+        data-testid="sr-live-announcer"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {screenReaderAnnouncement}
+      </div>
+
       {/* Top Bar */}
       <header
         data-testid="topbar"
@@ -2365,6 +2411,12 @@ export function EditorShell() {
                   setScenarioOpen(true);
                 }}
                 onLoadTemplateClick={() => setTemplatesOpen(true)}
+                onFocusInspector={() => {
+                  const inspectorEl = document.querySelector<HTMLElement>(
+                    '[data-testid="inspector-panel"] input, [data-testid="inspector-panel"] button',
+                  );
+                  inspectorEl?.focus();
+                }}
                 registerViewportCenterGetter={(getter) => {
                   viewportCenterGetterRef.current = getter;
                 }}

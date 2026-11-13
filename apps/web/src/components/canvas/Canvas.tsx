@@ -27,7 +27,7 @@ import {
   type OnNodeDrag,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import { Grid3x3, LayoutGrid, Maximize2, Trash2 } from 'lucide-react';
+import { Grid3x3, LayoutGrid, Link2, Maximize2, Trash2 } from 'lucide-react';
 import { getService } from '@infrasim/catalog';
 import type { SimFrame } from '@infrasim/shared-types';
 import { inferEdgePlacement } from '@infrasim/sim-engine';
@@ -78,6 +78,7 @@ export interface CanvasProps {
   onInspectEdgeNetwork?: (edgeId: string) => void;
   onInjectChaosNode?: (nodeId: string, az?: string) => void;
   onLoadTemplateClick?: () => void;
+  onFocusInspector?: () => void;
   registerViewportCenterGetter?: (getter: () => { x: number; y: number }) => void;
   registerAutoLayoutTrigger?: (trigger: () => Promise<void>) => void;
 }
@@ -98,6 +99,7 @@ function CanvasInner({
   onInspectEdgeNetwork,
   onInjectChaosNode,
   onLoadTemplateClick,
+  onFocusInspector,
   registerViewportCenterGetter,
   registerAutoLayoutTrigger,
 }: CanvasProps) {
@@ -132,9 +134,34 @@ function CanvasInner({
   const setSnapEnabled = useDesignStore((s) => s.setSnapEnabled);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [connectSourceId, setConnectSourceId] = useState<string | null>(null);
+  const [connectTargetId, setConnectTargetId] = useState<string>('');
   const [autoLayoutBusy, setAutoLayoutBusy] = useState(false);
   const [liveNodes, setLiveNodes] = useState<CanvasFlowNode[]>([]);
   const lastFittedDesignIdRef = useRef<string | null>(null);
+
+  const connectCandidateTargets = useMemo(
+    () => (connectSourceId ? design.nodes.filter((n) => n.id !== connectSourceId) : []),
+    [connectSourceId, design.nodes],
+  );
+
+  useEffect(() => {
+    if (!connectSourceId) {
+      setConnectTargetId('');
+      return;
+    }
+    const stillExists = design.nodes.some((n) => n.id === connectSourceId);
+    if (!stillExists) {
+      setConnectSourceId(null);
+      return;
+    }
+    if (
+      connectCandidateTargets.length > 0 &&
+      !connectCandidateTargets.some((n) => n.id === connectTargetId)
+    ) {
+      setConnectTargetId(connectCandidateTargets[0]!.id);
+    }
+  }, [connectCandidateTargets, connectSourceId, connectTargetId, design.nodes]);
 
   // Cap concurrent shaking overloaded nodes at 30 per spec 16 §4
   const shakingAllowedIds = useMemo(() => {
@@ -362,13 +389,19 @@ function CanvasInner({
   const onNodeClick = useCallback(
     (_e: MouseEvent, node: Node) => {
       setContextMenu(null);
+      if (connectSourceId && node.type === 'serviceNode' && node.id !== connectSourceId) {
+        connectEdge(connectSourceId, node.id);
+        setConnectSourceId(null);
+        selectNode(node.id);
+        return;
+      }
       if (node.type === 'groupNode') {
         selectGroup(node.id);
       } else {
         selectNode(node.id);
       }
     },
-    [selectGroup, selectNode],
+    [connectEdge, connectSourceId, selectGroup, selectNode],
   );
 
   const onNodeDoubleClick = useCallback(
@@ -451,6 +484,9 @@ function CanvasInner({
 
       if (e.key === 'Escape') {
         setContextMenu(null);
+        if (connectSourceId) {
+          setConnectSourceId(null);
+        }
         return;
       }
       if (isEditingText) {
@@ -459,6 +495,68 @@ function CanvasInner({
 
       const mod = e.metaKey || e.ctrlKey;
       const keyLower = e.key.toLowerCase();
+
+      if (!mod && keyLower === 'e' && selectedNodeId) {
+        e.preventDefault();
+        setConnectSourceId((prev) => (prev === selectedNodeId ? null : selectedNodeId));
+        return;
+      }
+
+      if (!mod && e.key === 'Enter' && selectedNodeId) {
+        e.preventDefault();
+        onInspectNode?.(selectedNodeId, 'config');
+        onFocusInspector?.();
+        return;
+      }
+
+      if (
+        !mod &&
+        (e.key === 'ArrowUp' ||
+          e.key === 'ArrowDown' ||
+          e.key === 'ArrowLeft' ||
+          e.key === 'ArrowRight')
+      ) {
+        if (selectedNodeId) {
+          const targetNode = design.nodes.find((n) => n.id === selectedNodeId);
+          if (targetNode) {
+            e.preventDefault();
+            const step = e.shiftKey ? 64 : 16;
+            const delta =
+              e.key === 'ArrowUp'
+                ? { x: 0, y: -step }
+                : e.key === 'ArrowDown'
+                  ? { x: 0, y: step }
+                  : e.key === 'ArrowLeft'
+                    ? { x: -step, y: 0 }
+                    : { x: step, y: 0 };
+            moveNodeWorldPosition(selectedNodeId, {
+              x: targetNode.position.x + delta.x,
+              y: targetNode.position.y + delta.y,
+            });
+            return;
+          }
+        } else if (selectedGroupId) {
+          const targetGroup = design.groups.find((g) => g.id === selectedGroupId);
+          if (targetGroup) {
+            e.preventDefault();
+            const rect = getGroupRect(targetGroup);
+            const step = e.shiftKey ? 64 : 16;
+            const delta =
+              e.key === 'ArrowUp'
+                ? { x: 0, y: -step }
+                : e.key === 'ArrowDown'
+                  ? { x: 0, y: step }
+                  : e.key === 'ArrowLeft'
+                    ? { x: -step, y: 0 }
+                    : { x: step, y: 0 };
+            moveGroupWorldPosition(selectedGroupId, {
+              x: rect.x + delta.x,
+              y: rect.y + delta.y,
+            });
+            return;
+          }
+        }
+      }
 
       if (mod && keyLower === 'z') {
         e.preventDefault();
@@ -492,9 +590,16 @@ function CanvasInner({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    connectSourceId,
     copySelection,
     deleteElements,
+    design.groups,
+    design.nodes,
     duplicateSelection,
+    moveGroupWorldPosition,
+    moveNodeWorldPosition,
+    onFocusInspector,
+    onInspectNode,
     pasteClipboard,
     redo,
     selectedEdgeId,
@@ -661,6 +766,26 @@ function CanvasInner({
           <span>Fit</span>
         </button>
 
+        {selectedNodeId ? (
+          <button
+            type="button"
+            data-testid="canvas-connect-mode-btn"
+            title={connectSourceId ? 'Cancel connect mode (Esc)' : 'Connect to another node (E)'}
+            aria-label="Connect node"
+            onClick={() =>
+              setConnectSourceId((prev) => (prev === selectedNodeId ? null : selectedNodeId))
+            }
+            className={`flex h-7 items-center gap-1 rounded-[6px] px-2 text-[11px] font-medium transition-colors ${
+              connectSourceId
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)] ring-1 ring-[var(--accent)]'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Link2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span>Connect</span>
+          </button>
+        ) : null}
+
         {hasSelectedElement ? (
           <button
             type="button"
@@ -680,6 +805,64 @@ function CanvasInner({
           </button>
         ) : null}
       </div>
+
+      {/* Accessible keyboard connect bar (E key or Connect button) */}
+      {connectSourceId ? (
+        <div
+          data-testid="keyboard-connect-bar"
+          role="region"
+          aria-label="Connect node"
+          className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-[8px] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-1.5 text-[12px] shadow-[var(--shadow-floating)]"
+        >
+          <Link2 className="h-3.5 w-3.5 text-[var(--accent)]" strokeWidth={1.5} />
+          <span className="text-[var(--text-secondary)]">
+            Connect from{' '}
+            <strong className="font-medium text-[var(--text-primary)]">
+              {design.nodes.find((n) => n.id === connectSourceId)?.label ?? connectSourceId}
+            </strong>{' '}
+            to:
+          </span>
+          {connectCandidateTargets.length > 0 ? (
+            <>
+              <select
+                aria-label="Target service to connect"
+                data-testid="keyboard-connect-target-select"
+                value={connectTargetId}
+                onChange={(e) => setConnectTargetId(e.target.value)}
+                className="h-7 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] px-2 text-[12px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+              >
+                {connectCandidateTargets.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.label} ({n.serviceId})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                data-testid="keyboard-connect-submit-btn"
+                onClick={() => {
+                  if (connectTargetId) {
+                    connectEdge(connectSourceId, connectTargetId);
+                    setConnectSourceId(null);
+                  }
+                }}
+                className="inline-flex h-7 items-center rounded-[6px] bg-[var(--accent-solid)] px-2.5 font-medium text-[var(--accent-solid-text)] hover:opacity-90"
+              >
+                Connect
+              </button>
+            </>
+          ) : (
+            <span className="text-[var(--text-muted)]">No other services to connect</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setConnectSourceId(null)}
+            className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          >
+            Cancel (Esc)
+          </button>
+        </div>
+      ) : null}
 
       {/* Empty canvas guide overlay (non-blocking drop target) */}
       {design.nodes.length === 0 && design.groups.length === 0 ? (

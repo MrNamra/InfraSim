@@ -25,6 +25,7 @@
     "schema:check": "pnpm --filter @infrasim/shared-types schema:check"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@eslint/js": "^9.21.0",
     "@playwright/test": "^1.50.1",
     "@types/node": "^22.13.4",

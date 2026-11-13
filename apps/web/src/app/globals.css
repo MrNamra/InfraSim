@@ -29,6 +29,17 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+button:focus-visible,
+[role='tab']:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* React Flow Graphite theme overrides (higher specificity beats bundled @xyflow/react CSS regardless of import order) */
 [data-theme='dark'] .react-flow,
 [data-theme='light'] .react-flow,
