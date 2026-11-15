@@ -42,13 +42,14 @@ export interface MetricsDockTabProps {
   onUnpinRunA?: () => void;
 }
 
-type ChartMode = 'rps' | 'latency' | 'utilization' | 'queue';
+type ChartMode = 'rps' | 'latency' | 'utilization' | 'queue' | 'amplification';
 
 const MODE_LABELS: { id: ChartMode; label: string }[] = [
   { id: 'rps', label: 'Throughput & Errors' },
   { id: 'latency', label: 'Latency (p50/p95/p99)' },
   { id: 'utilization', label: 'Utilization' },
   { id: 'queue', label: 'Queue & Instances' },
+  { id: 'amplification', label: 'Amplification & Goodput' },
 ];
 
 interface SeriesLine {
@@ -335,6 +336,65 @@ export function MetricsDockTab({
           }),
         });
       }
+    } else if (chartMode === 'amplification') {
+      unit = 'req/s / count';
+      lines.push({
+        id: 'offered',
+        label: 'Offered (req/s)',
+        color: 'var(--text-secondary)',
+        points: buckets.map((b) => ({
+          x: b.tS,
+          y: b.offeredRps ?? b.rpsIn,
+        })),
+      });
+      lines.push({
+        id: 'attempted',
+        label: 'Attempted (req/s)',
+        color: 'var(--status-overloaded)',
+        points: buckets.map((b) => ({
+          x: b.tS,
+          y: b.attemptRps ?? b.rpsIn,
+        })),
+      });
+      lines.push({
+        id: 'goodput',
+        label: 'Goodput (req/s)',
+        color: 'var(--status-ok)',
+        points: buckets.map((b) => ({
+          x: b.tS,
+          y: b.goodputRps ?? b.throughputRps,
+        })),
+      });
+      lines.push({
+        id: 'inflight',
+        label: 'In-flight',
+        color: 'var(--accent)',
+        points: buckets.map((b) => ({
+          x: b.tS,
+          y: b.inFlight ?? 0,
+        })),
+      });
+      lines.push({
+        id: 'queue',
+        label: 'Queue depth',
+        color: 'var(--status-hot)',
+        points: buckets.map((b) => ({
+          x: b.tS,
+          y: b.queueDepth ?? 0,
+        })),
+      });
+      if (buckets.some((b) => (b.lateCompletionsPerSec ?? 0) > 0)) {
+        lines.push({
+          id: 'late',
+          label: 'Late completions (/s)',
+          color: '#eab308',
+          dashed: true,
+          points: buckets.map((b) => ({
+            x: b.tS,
+            y: b.lateCompletionsPerSec ?? 0,
+          })),
+        });
+      }
     } else {
       unit = 'count';
       const qNodeId = effectiveNodeFilter ?? result.bottleneckNodeId ?? design.nodes[0]?.id;
@@ -581,6 +641,51 @@ export function MetricsDockTab({
               </span>
             ) : null}
           </div>
+
+          {result.summary.peakAmplification !== undefined && result.summary.peakAmplification > 1.05 ? (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[var(--text-muted)]">Peak Amp</span>
+              <span
+                data-testid="peak-amplification-badge"
+                className="font-mono font-medium tabular-nums text-[var(--status-overloaded)]"
+              >
+                {result.summary.peakAmplification.toFixed(2)}x
+              </span>
+            </div>
+          ) : null}
+
+          {result.summary.minGoodputRps !== undefined ? (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[var(--text-muted)]">Min Goodput</span>
+              <span
+                data-testid="min-goodput-badge"
+                className="font-mono font-medium tabular-nums text-[var(--text-primary)]"
+              >
+                {Math.round(result.summary.minGoodputRps)} req/s
+              </span>
+            </div>
+          ) : null}
+
+          {result.summary.faultWindow ? (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[var(--text-muted)]">Recovery</span>
+              {result.summary.recoveryTimeS !== null && result.summary.recoveryTimeS !== undefined ? (
+                <span
+                  data-testid="recovery-time-badge"
+                  className="rounded-[4px] border border-[rgba(76,195,138,0.3)] bg-[rgba(76,195,138,0.1)] px-1.5 py-0.5 font-mono font-medium tabular-nums text-[var(--status-ok)]"
+                >
+                  {result.summary.recoveryTimeS.toFixed(1)}s
+                </span>
+              ) : (
+                <span
+                  data-testid="did-not-recover-badge"
+                  className="rounded-[4px] border border-[rgba(229,72,77,0.3)] bg-[rgba(229,72,77,0.1)] px-1.5 py-0.5 font-mono font-medium tabular-nums text-[var(--status-overloaded)]"
+                >
+                  Did not recover
+                </span>
+              )}
+            </div>
+          ) : null}
 
           {bottleneckNode && bottleneckSummary ? (
             <div className="flex items-baseline gap-1.5">
@@ -885,8 +990,49 @@ export function MetricsDockTab({
                     );
                   })}
 
-                  {/* Chaos window shaded bands */}
+                  {/* Chaos / Fault window shaded bands */}
                   <g clipPath={`url(#${clipId})`}>
+                    {result.summary.faultWindow ? (() => {
+                      const fw = result.summary.faultWindow;
+                      const plotW = svgWidth - padX * 2;
+                      const safeMaxX = Math.max(1, maxX);
+                      const startX =
+                        padX + (Math.max(0, Math.min(safeMaxX, fw.fromS)) / safeMaxX) * plotW;
+                      const endX =
+                        padX + (Math.max(0, Math.min(safeMaxX, fw.toS)) / safeMaxX) * plotW;
+                      const widthPx = Math.max(2, endX - startX);
+                      return (
+                        <g key="metrics-fault-window" data-testid="metrics-fault-window">
+                          <rect
+                            x={startX}
+                            y={padY}
+                            width={widthPx}
+                            height={svgHeight - padY * 2}
+                            fill="rgba(239, 68, 68, 0.12)"
+                          />
+                          <line
+                            x1={startX}
+                            x2={startX}
+                            y1={padY}
+                            y2={svgHeight - padY}
+                            stroke="var(--status-overloaded)"
+                            strokeWidth={1}
+                            strokeDasharray="2 2"
+                            opacity={0.65}
+                          />
+                          <line
+                            x1={endX}
+                            x2={endX}
+                            y1={padY}
+                            y2={svgHeight - padY}
+                            stroke="var(--status-overloaded)"
+                            strokeWidth={1}
+                            strokeDasharray="2 2"
+                            opacity={0.65}
+                          />
+                        </g>
+                      );
+                    })() : null}
                     {chaos.map((ev, idx) => {
                       const plotW = svgWidth - padX * 2;
                       const safeMaxX = Math.max(1, maxX);
@@ -1014,6 +1160,14 @@ export function MetricsDockTab({
                     <span>{line.label}</span>
                   </span>
                 ))}
+                {result.summary.faultWindow ? (
+                  <span className="inline-flex items-center gap-1 text-[var(--status-overloaded)]">
+                    <span className="inline-block h-2 w-2.5 rounded-[2px] border border-[var(--status-overloaded)] bg-[rgba(239,68,68,0.18)]" />
+                    <span>
+                      Fault ({result.summary.faultWindow.fromS}s–{result.summary.faultWindow.toS}s)
+                    </span>
+                  </span>
+                ) : null}
                 {chaos.length > 0 ? (
                   <span className="inline-flex items-center gap-1 text-[var(--status-warm)]">
                     <span className="inline-block h-2 w-2.5 rounded-[2px] border border-[var(--status-warm)] bg-[rgba(229,160,13,0.18)]" />

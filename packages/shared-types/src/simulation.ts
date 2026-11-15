@@ -112,6 +112,14 @@ export interface TimeSeriesBucket {
   p50: number;
   p95: number;
   p99: number;
+  offeredRps?: number;
+  attemptRps?: number;
+  amplification?: number;
+  goodputRps?: number;
+  lateCompletionsPerSec?: number;
+  inFlight?: number;
+  queueDepth?: number;
+  errorsByKind?: Partial<Record<ErrorKind, number>>;
   perNode: Record<
     string,
     {
@@ -179,6 +187,11 @@ export interface SimulationResult {
     p95: number;
     p99: number;
     throughputRps: number;
+    peakAmplification?: number;
+    minGoodputRps?: number;
+    peakQueueDepth?: number;
+    recoveryTimeS?: number | null;
+    faultWindow?: { fromS: number; toS: number } | null;
   };
   perNode: Record<string, NodeSummary>;
   series: TimeSeries;

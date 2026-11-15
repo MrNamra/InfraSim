@@ -18,7 +18,8 @@ export type ErrorKind =
   | 'dropped_queue_full'
   | 'circuit_open'
   | 'user_code'
-  | 'not_reachable';
+  | 'not_reachable'
+  | 'shed';
 
 /** Behavioral kind determining how the simulation engine handles a service node. */
 export type MockKind =

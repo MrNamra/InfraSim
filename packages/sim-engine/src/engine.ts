@@ -823,6 +823,11 @@ export async function runSimulation(
   let bucketRootArrivals = 0;
   let bucketRootSuccess = 0;
   let bucketRootErrorCount = 0;
+  let bucketRootOffered = 0;
+  let bucketTotalAttempts = 0;
+  let bucketRootGoodput = 0;
+  let bucketLateCompletions = 0;
+  let bucketErrorsByKind: Partial<Record<ErrorKind, number>> = {};
   const bucketRootHist = new LogHistogram();
   const buckets: TimeSeriesBucket[] = [];
 
@@ -1183,6 +1188,7 @@ export async function runSimulation(
 
     if (call.callerTimedOut) {
       rn.totalWastedWorkMs += totalLatencyMs;
+      bucketLateCompletions += 1;
     }
 
     if (call.span) {
@@ -1296,6 +1302,7 @@ export async function runSimulation(
   };
 
   const launchEdgeAttempt = (attemptState: OutboundAttempt) => {
+    bucketTotalAttempts += 1;
     const { edgeState, targetNode } = attemptState;
 
     // Network block check (drop / conn_refused / dns)
@@ -2502,6 +2509,19 @@ export async function runSimulation(
 
     const rootPct = bucketRootHist.percentiles();
     const totalReqSec = bucketRootArrivals;
+    const offeredRps = bucketRootOffered * scaleFactor;
+    const attemptRps = bucketTotalAttempts * scaleFactor;
+    const amplification = offeredRps > 0 ? Number((attemptRps / offeredRps).toFixed(2)) : 1;
+    const goodputRps = bucketRootGoodput * scaleFactor;
+    const lateCompletionsPerSec = bucketLateCompletions * scaleFactor;
+    const totalInFlight =
+      orderedNodes.reduce((sum, rn) => sum + rn.station.inFlight, 0) * scaleFactor;
+    const totalQueueDepth =
+      orderedNodes.reduce(
+        (sum, rn) => sum + rn.station.slotQueue.length + rn.asyncBacklog.length,
+        0,
+      ) * scaleFactor;
+
     buckets.push({
       tS: secondIdx,
       rpsIn: bucketRootArrivals * scaleFactor,
@@ -2510,9 +2530,22 @@ export async function runSimulation(
       p50: rootPct.p50,
       p95: rootPct.p95,
       p99: rootPct.p99,
+      offeredRps,
+      attemptRps,
+      amplification,
+      goodputRps,
+      lateCompletionsPerSec,
+      inFlight: totalInFlight,
+      queueDepth: totalQueueDepth,
+      errorsByKind: { ...bucketErrorsByKind },
       perNode: perNodeBucket,
     });
 
+    bucketRootOffered = 0;
+    bucketTotalAttempts = 0;
+    bucketRootGoodput = 0;
+    bucketLateCompletions = 0;
+    bucketErrorsByKind = {};
     bucketRootArrivals = 0;
     bucketRootSuccess = 0;
     bucketRootErrorCount = 0;
@@ -2791,8 +2824,10 @@ export async function runSimulation(
         // Reservoir sample up to 200 traces
         const reqIdx = ++rootTotalRequests;
         bucketRootArrivals += 1;
-        const shouldSampleTrace = sampledTraces.length < 200 || traceSampleRng.chance(200 / reqIdx);
+        bucketRootOffered += 1;
         const reqStartMs = now;
+        const reqDeadlineMs = reqStartMs + (entryNode.node.config.timeoutMs ?? 30_000);
+        const shouldSampleTrace = sampledTraces.length < 200 || traceSampleRng.chance(200 / reqIdx);
         const rootRequestId = `req-${reqIdx}`;
         const sampledForReplayLog = reqIdx === 1 || logSampleRng.chance(0.01);
         const sampledForPlatformSuccessLog =
@@ -2805,14 +2840,23 @@ export async function runSimulation(
 
         const finishRootRequest = (ok: boolean, errorKind?: ErrorKind) => {
           const totalMs = Math.max(0.01, now - reqStartMs);
+          const completedWithinDeadline = now <= reqDeadlineMs;
           rootHist.record(totalMs);
           bucketRootHist.record(totalMs);
-          if (ok) {
+          if (ok && completedWithinDeadline) {
             rootSuccess += 1;
             bucketRootSuccess += 1;
+            bucketRootGoodput += 1;
           } else {
             bucketRootErrorCount += 1;
-            incrementErrorRecord(rootErrors, errorKind ?? 'server');
+            const effectiveErr: ErrorKind = !completedWithinDeadline
+              ? 'timeout'
+              : (errorKind ?? 'server');
+            incrementErrorRecord(rootErrors, effectiveErr);
+            bucketErrorsByKind[effectiveErr] = (bucketErrorsByKind[effectiveErr] ?? 0) + 1;
+          }
+          if (ok && !completedWithinDeadline) {
+            bucketLateCompletions += 1;
           }
 
           if (shouldSampleTrace && traceSpans) {
@@ -2847,6 +2891,7 @@ export async function runSimulation(
           entryNode.bucketArrivals += 1;
           entryNode.frameArrivals += 1;
           if (entryNode.outgoingSync.length === 0) {
+            bucketTotalAttempts += 1;
             entryNode.totalCompletions += 1;
             entryNode.bucketCompletions += 1;
             entryNode.frameCompletions += 1;
@@ -2909,6 +2954,7 @@ export async function runSimulation(
         }
 
         // Direct entry into a service node (no Client node on canvas)
+        bucketTotalAttempts += 1;
         const rootCall: CallCtx = {
           id: ++callCounter,
           rootRequestId,
@@ -3433,6 +3479,57 @@ export async function runSimulation(
   void computeErlangC;
   void SCHEMA_VERSION;
 
+  // Fault window determination (from chaos events or node scenario overrides)
+  let faultFromS = Infinity;
+  let faultToS = -Infinity;
+  for (const ch of scenario.chaos) {
+    if (
+      ['add-latency', 'kill-instances', 'error-rate', 'throttle', 'az-outage'].includes(ch.kind)
+    ) {
+      faultFromS = Math.min(faultFromS, ch.atS);
+      faultToS = Math.max(faultToS, ch.atS + ch.durationS);
+    }
+  }
+  for (const node of design.nodes) {
+    for (const ov of node.config.scenarioOverrides ?? []) {
+      faultFromS = Math.min(faultFromS, ov.fromS);
+      faultToS = Math.max(faultToS, ov.toS);
+    }
+  }
+  const hasFault = Number.isFinite(faultFromS) && Number.isFinite(faultToS) && faultToS > faultFromS;
+  const faultWindow = hasFault ? { fromS: faultFromS, toS: faultToS } : null;
+
+  const peakAmplification = Math.max(1, ...buckets.map((b) => b.amplification ?? 1));
+  const peakQueueDepth = Math.max(0, ...buckets.map((b) => b.queueDepth ?? 0));
+
+  let minGoodputRps = Infinity;
+  if (faultWindow) {
+    const faultBuckets = buckets.filter(
+      (b) => b.tS >= faultWindow.fromS && b.tS <= faultWindow.toS,
+    );
+    if (faultBuckets.length > 0) {
+      minGoodputRps = Math.min(...faultBuckets.map((b) => b.goodputRps ?? 0));
+    }
+  }
+  if (!Number.isFinite(minGoodputRps)) {
+    minGoodputRps = buckets.length > 0 ? Math.min(...buckets.map((b) => b.goodputRps ?? 0)) : 0;
+  }
+
+  let recoveryTimeS: number | null = 0;
+  if (faultWindow) {
+    recoveryTimeS = null; // default to "did not recover" if recovery condition never met
+    for (const b of buckets) {
+      if (b.tS >= faultWindow.toS) {
+        const targetGoodput = (b.offeredRps ?? 0) * 0.95;
+        const targetQueue = Math.max(5, (b.offeredRps ?? 0) * 0.05);
+        if ((b.goodputRps ?? 0) >= targetGoodput && (b.queueDepth ?? 0) <= targetQueue) {
+          recoveryTimeS = Math.max(0, b.tS - faultWindow.toS);
+          break;
+        }
+      }
+    }
+  }
+
   return {
     runId,
     seed,
@@ -3446,6 +3543,11 @@ export async function runSimulation(
       p95: rootPct.p95,
       p99: rootPct.p99,
       throughputRps: Number(((rootSuccess * scaleFactor) / durationS).toFixed(2)),
+      peakAmplification,
+      minGoodputRps,
+      peakQueueDepth,
+      recoveryTimeS,
+      faultWindow,
     },
     perNode: perNodeSummary,
     series: {
