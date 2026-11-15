@@ -124,6 +124,10 @@ const ChallengesModal = dynamic(() => import('./ChallengesModal').then((m) => m.
 const ChallengeBanner = dynamic(() => import('./ChallengeBanner').then((m) => m.ChallengeBanner), {
   ssr: false,
 });
+const RetryLabAssumptionsCard = dynamic(
+  () => import('./RetryLabAssumptionsCard').then((m) => m.RetryLabAssumptionsCard),
+  { ssr: false },
+);
 const CustomServiceModal = dynamic(
   () => import('./CustomServiceModal').then((m) => m.CustomServiceModal),
   { ssr: false },
@@ -2441,6 +2445,14 @@ export function EditorShell() {
               onRevealSolution={handleRevealChallengeSolution}
               onApplyRevealedSolution={handleApplyRevealedSolution}
               onExitChallenge={exitChallengeState}
+            />
+          ) : null}
+
+          {design.id === 'tpl-retry-amplification-lab' ||
+          design.name.toLowerCase().includes('retry amplification') ? (
+            <RetryLabAssumptionsCard
+              design={design}
+              onUpdateDesign={(next) => loadDesign(next, false)}
             />
           ) : null}
 

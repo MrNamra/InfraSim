@@ -13,7 +13,9 @@ export interface TemplateModalProps {
 
 /** Modal gallery presenting starter architectures and Phase 4 networking lessons. */
 export function TemplateModal({ open, onClose, onSelectTemplate }: TemplateModalProps) {
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'starter' | 'network'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<
+    'all' | 'starter' | 'network' | 'resilience'
+  >('all');
 
   useEffect(() => {
     if (!open) return;
@@ -33,6 +35,10 @@ export function TemplateModal({ open, onClose, onSelectTemplate }: TemplateModal
   );
   const networkCount = useMemo(
     () => STARTER_TEMPLATES.filter((t) => t.category === 'network').length,
+    [],
+  );
+  const resilienceCount = useMemo(
+    () => STARTER_TEMPLATES.filter((t) => t.category === 'resilience').length,
     [],
   );
   const filteredTemplates = useMemo(() => {
@@ -117,6 +123,18 @@ export function TemplateModal({ open, onClose, onSelectTemplate }: TemplateModal
             }`}
           >
             Networking lessons ({networkCount})
+          </button>
+          <button
+            type="button"
+            data-testid="template-filter-resilience"
+            onClick={() => setCategoryFilter('resilience')}
+            className={`rounded-[6px] px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              categoryFilter === 'resilience'
+                ? 'bg-[var(--bg-raised)] text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+            }`}
+          >
+            Resilience labs ({resilienceCount})
           </button>
         </div>
 

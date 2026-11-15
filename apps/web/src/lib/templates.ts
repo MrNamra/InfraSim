@@ -3,7 +3,7 @@ import { createEmptyDesign, type Design } from '@infrasim/shared-types';
 export interface StarterTemplate {
   id: string;
   title: string;
-  category?: 'starter' | 'network';
+  category?: 'starter' | 'network' | 'resilience';
   summary: string;
   lesson: string;
   topologySummary: string;
@@ -3075,8 +3075,250 @@ function buildNetOciServiceGatewayDesign(): Design {
   return d;
 }
 
+export type RetryLabVariantId = 'A' | 'B' | 'C' | 'D' | 'E';
+
+export interface RetryLabVariant {
+  id: RetryLabVariantId;
+  name: string;
+  shortLabel: string;
+  description: string;
+  apply: (baseDesign: Design) => Design;
+}
+
+export const RETRY_LAB_VARIANTS: RetryLabVariant[] = [
+  {
+    id: 'A',
+    name: 'A: Baseline (2 immediate retries)',
+    shortLabel: 'A: Baseline',
+    description: '2 immediate retries on failure with zero backoff, no circuit breaker, no load shedding.',
+    apply: (d) => {
+      const copy = JSON.parse(JSON.stringify(d)) as Design;
+      const edge = copy.edges.find((e) => e.id === 'e-api-db');
+      if (edge) {
+        edge.retry = { max: 2, backoffMs: 0, jitter: false, fullJitter: false };
+        delete edge.circuitBreaker;
+        delete edge.deadlinePropagation;
+        delete edge.cancelOnTimeout;
+      }
+      const db = copy.nodes.find((n) => n.id === 'db');
+      if (db) {
+        delete db.config.loadShed;
+        delete db.config.cancelOnTimeout;
+      }
+      return copy;
+    },
+  },
+  {
+    id: 'B',
+    name: 'B: Bounded retries + backoff + jitter',
+    shortLabel: 'B: Backoff + Jitter',
+    description: 'Exponential backoff with full jitter to desynchronize retry spikes.',
+    apply: (d) => {
+      const copy = JSON.parse(JSON.stringify(d)) as Design;
+      const edge = copy.edges.find((e) => e.id === 'e-api-db');
+      if (edge) {
+        edge.retry = { max: 2, backoffMs: 100, jitter: true, fullJitter: true };
+        delete edge.circuitBreaker;
+        delete edge.deadlinePropagation;
+        delete edge.cancelOnTimeout;
+      }
+      const db = copy.nodes.find((n) => n.id === 'db');
+      if (db) {
+        delete db.config.loadShed;
+        delete db.config.cancelOnTimeout;
+      }
+      return copy;
+    },
+  },
+  {
+    id: 'C',
+    name: 'C: Circuit breaker',
+    shortLabel: 'C: Circuit Breaker',
+    description: 'Fast-fails when failure threshold is breached, giving downstream DB time to clear queue.',
+    apply: (d) => {
+      const copy = JSON.parse(JSON.stringify(d)) as Design;
+      const edge = copy.edges.find((e) => e.id === 'e-api-db');
+      if (edge) {
+        edge.retry = { max: 2, backoffMs: 100, jitter: true, fullJitter: true };
+        edge.circuitBreaker = { failureThreshold: 5, windowMs: 5000, openMs: 5000 };
+        delete edge.deadlinePropagation;
+        delete edge.cancelOnTimeout;
+      }
+      const db = copy.nodes.find((n) => n.id === 'db');
+      if (db) {
+        delete db.config.loadShed;
+        delete db.config.cancelOnTimeout;
+      }
+      return copy;
+    },
+  },
+  {
+    id: 'D',
+    name: 'D: Load shedding',
+    shortLabel: 'D: Load Shedding',
+    description: 'Database fast-fails 503 when queue wait exceeds 800ms or in-flight exceeds 100.',
+    apply: (d) => {
+      const copy = JSON.parse(JSON.stringify(d)) as Design;
+      const edge = copy.edges.find((e) => e.id === 'e-api-db');
+      if (edge) {
+        edge.retry = { max: 2, backoffMs: 0, jitter: false, fullJitter: false };
+        delete edge.circuitBreaker;
+        delete edge.deadlinePropagation;
+        delete edge.cancelOnTimeout;
+      }
+      const db = copy.nodes.find((n) => n.id === 'db');
+      if (db) {
+        db.config.loadShed = { enabled: true, maxQueueWaitMs: 800, maxInFlight: 100 };
+        delete db.config.cancelOnTimeout;
+      }
+      return copy;
+    },
+  },
+  {
+    id: 'E',
+    name: 'E: Retry budget + breaker + shedding',
+    shortLabel: 'E: Comprehensive',
+    description: '20% retry budget, circuit breaker, load shedding, deadline propagation, and cancel on timeout.',
+    apply: (d) => {
+      const copy = JSON.parse(JSON.stringify(d)) as Design;
+      const edge = copy.edges.find((e) => e.id === 'e-api-db');
+      if (edge) {
+        edge.retry = {
+          max: 2,
+          backoffMs: 100,
+          jitter: true,
+          fullJitter: true,
+          budget: { percent: 20, minRps: 10 },
+        };
+        edge.circuitBreaker = { failureThreshold: 5, windowMs: 5000, openMs: 5000 };
+        edge.deadlinePropagation = true;
+        edge.cancelOnTimeout = true;
+      }
+      const db = copy.nodes.find((n) => n.id === 'db');
+      if (db) {
+        db.config.loadShed = { enabled: true, maxQueueWaitMs: 800, maxInFlight: 100 };
+        db.config.cancelOnTimeout = true;
+      }
+      return copy;
+    },
+  },
+];
+
+export function buildRetryAmplificationLabDesign(): Design {
+  const d = createEmptyDesign('tpl-retry-amplification-lab', 'Retry Amplification Lab');
+  d.description =
+    '300 RPS API tier calling a DB with 100-connection pool. At t=30s..90s DB latency spikes from 20ms to 800ms, triggering client timeouts and retry amplification.';
+  d.settings.primaryProvider = 'aws';
+  d.settings.seed = 42;
+  d.nodes = [
+    {
+      id: 'client',
+      serviceId: 'generic.client',
+      label: 'Clients (300 RPS)',
+      position: { x: 80, y: 220 },
+      config: {
+        instances: 1,
+        timeoutMs: 1000,
+        operations: {},
+      },
+    },
+    {
+      id: 'api',
+      serviceId: 'aws.ec2',
+      label: 'API Tier',
+      position: { x: 440, y: 220 },
+      config: {
+        instances: 3,
+        vcpu: 2,
+        memoryGb: 4,
+        maxInFlightPerInstance: 20,
+        cpuMsPerRequest: 2,
+        timeoutMs: 1000,
+        latency: { distribution: 'fixed', p50: 2, p95: 5 },
+        operations: {},
+      },
+    },
+    {
+      id: 'db',
+      serviceId: 'aws.rds_postgres',
+      label: 'Database (100 conn)',
+      position: { x: 800, y: 220 },
+      config: {
+        instances: 1,
+        connections: { max: 100 },
+        connectionWaitMs: 1000,
+        latency: { distribution: 'fixed', p50: 20, p95: 20 },
+        operations: {},
+      },
+    },
+  ];
+  d.edges = [
+    {
+      id: 'e-client-api',
+      from: 'client',
+      to: 'api',
+      protocol: 'https',
+      callType: 'sync',
+      weight: 1,
+    },
+    {
+      id: 'e-api-db',
+      from: 'api',
+      to: 'db',
+      protocol: 'sql',
+      callType: 'sync',
+      weight: 1,
+      retry: {
+        max: 2,
+        backoffMs: 0,
+        jitter: false,
+      },
+    },
+  ];
+  d.scenarios = [
+    {
+      id: 'sc-retry-lab',
+      name: 'DB Slowdown (20ms → 800ms)',
+      durationS: 180,
+      entryNodeId: 'client',
+      profile: { kind: 'constant', rps: 300 },
+      seedOverride: 42,
+      flows: [
+        {
+          id: 'flow-query',
+          name: 'Query',
+          weight: 1,
+          steps: [{ method: 'GET', path: '/items' }],
+        },
+      ],
+      chaos: [
+        {
+          kind: 'add-latency',
+          nodeId: 'db',
+          atS: 30,
+          durationS: 60,
+          extraMs: 780,
+        },
+      ],
+    },
+  ];
+  return d;
+}
+
 /** Built-in Phase 1 starter architectures, Phase 3 RAG template, and Phase 4 networking lessons. */
 export const STARTER_TEMPLATES: StarterTemplate[] = [
+  {
+    id: 'tpl-retry-amplification-lab',
+    title: 'Retry Amplification Lab',
+    category: 'resilience',
+    summary:
+      '300 RPS API tier calling a DB with a 100-connection pool. At t=30s..90s DB latency spikes from 20ms to 800ms, triggering client timeouts and retry storm amplification.',
+    lesson:
+      'Compare baseline immediate retries against backoff/jitter, circuit breaking, load shedding, and retry budgeting. Observe offered vs attempted vs goodput.',
+    topologySummary: 'Clients (300 RPS) → API Tier (3× 2 vCPU) → PostgreSQL (100 conn)',
+    scenarioSummary: 'Constant 300 req/s · 180 s · DB slowdown at 30s–90s',
+    design: buildRetryAmplificationLabDesign(),
+  },
   {
     id: 'tpl-3tier',
     title: 'Simple 3-tier web app',
