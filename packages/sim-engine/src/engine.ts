@@ -2125,8 +2125,7 @@ export async function runSimulation(
       ) {
         const meanServiceMs = Math.max(1, rn.node.config.latency?.p50 ?? 20);
         const estWaitMs =
-          ((rn.dbWaitQueue.length + 1) * meanServiceMs) /
-          Math.max(1, rn.capacities.connectionsMax);
+          ((rn.dbWaitQueue.length + 1) * meanServiceMs) / Math.max(1, rn.capacities.connectionsMax);
         const firstDb = rn.dbWaitQueue[0];
         if (
           (firstDb && now - firstDb.enqueuedAtMs > rn.node.config.loadShed.maxQueueWaitMs) ||
@@ -3676,7 +3675,8 @@ export async function runSimulation(
       faultToS = Math.max(faultToS, ov.toS);
     }
   }
-  const hasFault = Number.isFinite(faultFromS) && Number.isFinite(faultToS) && faultToS > faultFromS;
+  const hasFault =
+    Number.isFinite(faultFromS) && Number.isFinite(faultToS) && faultToS > faultFromS;
   const faultWindow = hasFault ? { fromS: faultFromS, toS: faultToS } : null;
 
   const peakAmplification = Math.max(1, ...buckets.map((b) => b.amplification ?? 1));

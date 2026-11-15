@@ -642,7 +642,8 @@ export function MetricsDockTab({
             ) : null}
           </div>
 
-          {result.summary.peakAmplification !== undefined && result.summary.peakAmplification > 1.05 ? (
+          {result.summary.peakAmplification !== undefined &&
+          result.summary.peakAmplification > 1.05 ? (
             <div className="flex items-baseline gap-1.5">
               <span className="text-[var(--text-muted)]">Peak Amp</span>
               <span
@@ -669,7 +670,8 @@ export function MetricsDockTab({
           {result.summary.faultWindow ? (
             <div className="flex items-baseline gap-1.5">
               <span className="text-[var(--text-muted)]">Recovery</span>
-              {result.summary.recoveryTimeS !== null && result.summary.recoveryTimeS !== undefined ? (
+              {result.summary.recoveryTimeS !== null &&
+              result.summary.recoveryTimeS !== undefined ? (
                 <span
                   data-testid="recovery-time-badge"
                   className="rounded-[4px] border border-[rgba(76,195,138,0.3)] bg-[rgba(76,195,138,0.1)] px-1.5 py-0.5 font-mono font-medium tabular-nums text-[var(--status-ok)]"
@@ -992,47 +994,49 @@ export function MetricsDockTab({
 
                   {/* Chaos / Fault window shaded bands */}
                   <g clipPath={`url(#${clipId})`}>
-                    {result.summary.faultWindow ? (() => {
-                      const fw = result.summary.faultWindow;
-                      const plotW = svgWidth - padX * 2;
-                      const safeMaxX = Math.max(1, maxX);
-                      const startX =
-                        padX + (Math.max(0, Math.min(safeMaxX, fw.fromS)) / safeMaxX) * plotW;
-                      const endX =
-                        padX + (Math.max(0, Math.min(safeMaxX, fw.toS)) / safeMaxX) * plotW;
-                      const widthPx = Math.max(2, endX - startX);
-                      return (
-                        <g key="metrics-fault-window" data-testid="metrics-fault-window">
-                          <rect
-                            x={startX}
-                            y={padY}
-                            width={widthPx}
-                            height={svgHeight - padY * 2}
-                            fill="rgba(239, 68, 68, 0.12)"
-                          />
-                          <line
-                            x1={startX}
-                            x2={startX}
-                            y1={padY}
-                            y2={svgHeight - padY}
-                            stroke="var(--status-overloaded)"
-                            strokeWidth={1}
-                            strokeDasharray="2 2"
-                            opacity={0.65}
-                          />
-                          <line
-                            x1={endX}
-                            x2={endX}
-                            y1={padY}
-                            y2={svgHeight - padY}
-                            stroke="var(--status-overloaded)"
-                            strokeWidth={1}
-                            strokeDasharray="2 2"
-                            opacity={0.65}
-                          />
-                        </g>
-                      );
-                    })() : null}
+                    {result.summary.faultWindow
+                      ? (() => {
+                          const fw = result.summary.faultWindow;
+                          const plotW = svgWidth - padX * 2;
+                          const safeMaxX = Math.max(1, maxX);
+                          const startX =
+                            padX + (Math.max(0, Math.min(safeMaxX, fw.fromS)) / safeMaxX) * plotW;
+                          const endX =
+                            padX + (Math.max(0, Math.min(safeMaxX, fw.toS)) / safeMaxX) * plotW;
+                          const widthPx = Math.max(2, endX - startX);
+                          return (
+                            <g key="metrics-fault-window" data-testid="metrics-fault-window">
+                              <rect
+                                x={startX}
+                                y={padY}
+                                width={widthPx}
+                                height={svgHeight - padY * 2}
+                                fill="rgba(239, 68, 68, 0.12)"
+                              />
+                              <line
+                                x1={startX}
+                                x2={startX}
+                                y1={padY}
+                                y2={svgHeight - padY}
+                                stroke="var(--status-overloaded)"
+                                strokeWidth={1}
+                                strokeDasharray="2 2"
+                                opacity={0.65}
+                              />
+                              <line
+                                x1={endX}
+                                x2={endX}
+                                y1={padY}
+                                y2={svgHeight - padY}
+                                stroke="var(--status-overloaded)"
+                                strokeWidth={1}
+                                strokeDasharray="2 2"
+                                opacity={0.65}
+                              />
+                            </g>
+                          );
+                        })()
+                      : null}
                     {chaos.map((ev, idx) => {
                       const plotW = svgWidth - padX * 2;
                       const safeMaxX = Math.max(1, maxX);

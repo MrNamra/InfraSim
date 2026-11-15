@@ -86,17 +86,30 @@ Client generates request R (from TrafficProfile + flows)
 1. If the node has a **call plan** (from user code, file 12) → execute its steps (sequential / parallel groups / branches). Each call's target is resolved to a node connected by an outgoing edge whose target `serviceId` matches the call; if several match, pick by edge `weight`. If none → error `not_reachable` + insight "Your code calls X but no edge connects to it".
 2. Otherwise use **edge weights**: each outgoing edge is a call; edges in the same `callType` group are alternatives chosen by `weight` unless `fanOut` marks all-of. Default: pick **one** edge by weight among sync edges; call **all** async edges.
 
-### Timeouts and wasted work
+### Timeouts, deadlines, and wasted work
 
-Each call has a timeout = `min(edge/node timeoutMs, remainingDeadline)`. On timeout the **caller** stops waiting (error `timeout`) but the **callee keeps working** unless `cancelOnTimeout=true` (default false). This "zombie work" is what makes timeouts amplify overload. Record `wastedWorkMs`.
+Each call has a timeout = `min(edge/node timeoutMs, remainingDeadline)`. When `deadlinePropagation=true`, remaining client deadline is passed across hops. On timeout the **caller** stops waiting (error `timeout`) but the **callee keeps working** unless `cancelOnTimeout=true` (default false). When `cancelOnTimeout=true`, callee execution and any queued database connection queries are immediately aborted/purged. Wasted work after the client deadline expired is recorded in `wastedWorkMs` and tracked per bucket as `lateCompletionsPerSec`.
 
-### Retries
+### Retries, backoff, and full jitter
 
-`retry: {max, backoffMs, jitter}`. Backoff = `backoffMs × 2^attempt` (+ full jitter if enabled). Each retry is a new `ARRIVE` at the target. Count retries per edge (needed for retry-storm insight).
+`retry: { max, backoffMs, jitter, fullJitter, budget }`.
+- Default backoff: `backoffMs × 2^(attempt - 1)` (clamped to 30,000 ms).
+- When `fullJitter=true`, sleep duration is randomized across `[0, backoffMs × 2^(attempt - 1)]` using seeded PRNG (`random() * computedBackoff`).
+- Each retry schedules a new `ARRIVE` at target. Retries increment attempt counts; amplification factor $A = \text{attempts} / \text{offered}$.
+- **Retry Budget**: Token bucket configured via `budget: { percent: number, minRps?: number }`. Each root client request credits 1 token (or fraction based on ratio); retries draw from the budget. If available retry tokens are depleted and retry rate exceeds `minRps`, further retries are suppressed, returning the original error immediately.
 
 ### Circuit breaker
 
-States closed → open (failures ≥ threshold in window) → half-open (after `openMs`, allow probe) → closed/open. Open state fails instantly with `circuit_open`.
+States `closed` → `open` (failures ≥ `failureThreshold` in `windowSeconds`) → `half-open` (after `openDurationSeconds` cooldown, allow probe) → `closed`/`open`.
+- While `open`, calls fail immediately with error `circuit_open` (fast-fail, 0 latency, 0 queue occupancy).
+
+### Load shedding
+
+Configured on nodes via `node.config.loadShed: { enabled: boolean, maxQueueWaitMs?: number, maxInFlight?: number }`.
+- When active, incoming requests to compute nodes or database connection pools are fast-rejected with HTTP 503 (`errorKind: 'shed'`) if:
+  1. The node in-flight count meets or exceeds `maxInFlight`, or
+  2. The estimated queue waiting time at head of line (`queueWaitTimeMs` or `queueDepth × serviceTimeP50 / slots`) exceeds `maxQueueWaitMs`.
+- This prevents queue buildup, caps latency for admitted work, and protects database connection pools under severe slowdowns.
 
 ## 4. Queues, drops and overload
 
@@ -164,6 +177,23 @@ Log each with a platform log line (file 12) and emit an insight linking to the R
    If DES and theory disagree by > 25% in steady state, the diagnosis package logs a warning (helps catch engine bugs).
 5. Metrics buckets: 1 s. Percentiles via a log-bucket histogram (≈ 2% relative error, base 1.02) per node per bucket; merge for summaries. No per-request arrays.
 6. Traces: reservoir-sample ≤ 200 completed requests (bias: keep all error traces up to 50). Particles: sample ≤ 300 in-flight requests for animation.
+
+### 8.1 Resilience and amplification metrics (per 1 s bucket)
+
+To model and analyze retry storms and mitigation effectiveness under failure, the engine tracks the following time series per bucket and in `SimulationResult.summary`:
+
+| Metric | Field | Description |
+|---|---|---|
+| **Offered RPS** | `offeredRps` | New client-originated requests arriving at the ingress per second. |
+| **Attempted RPS** | `attemptRps` | Total requests dispatched across nodes per second, including retries. |
+| **Amplification** | `amplification` | Ratio `attemptRps / offeredRps` (or 1.0 if offered is 0). Peak amplification captured in summary. |
+| **Goodput RPS** | `goodputRps` | Requests that completed successfully **within the client-observed deadline** (`now <= reqDeadlineMs`), clamped to $\le \text{offeredRps}$. |
+| **Late Completions** | `lateCompletionsPerSec` | Requests that completed successfully at the callee, but whose client had already timed out (pure wasted work). |
+| **In-Flight** | `inFlight` | Instantaneous concurrent requests actively being processed across nodes. |
+| **Queue Depth** | `queueDepth` | Total requests waiting in node station queues and database connection pool queues. |
+| **Errors by Kind** | `errorsByKind` | Counts of errors broken down by kind: `timeout`, `shed`, `circuit_open`, `throttled`, `dropped_queue_full`, `conn_timeout`, etc. |
+| **Fault Window** | `faultWindow` | Automatically identified active fault interval `[startS, endS]` based on active chaos events or latency overrides. |
+| **Recovery Time** | `recoveryTimeSeconds` | Seconds elapsed after the fault window ends until goodput recovers to $\ge 95\%$ of offered load and queue depth drops to $\le 5$. Marked with a "Did not recover" status if recovery does not occur before simulation end. |
 
 ## 9. Health states (drive the UI)
 

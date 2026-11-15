@@ -42,6 +42,24 @@ Start quickly from 10 production-grade architecture blueprints (3-tier web apps,
 
 ![Starter Templates Gallery](docs/assets/templates-modal.png)
 
+### Retry Amplification Lab (Resilience & Chaos Engineering)
+
+Explore the catastrophic effects of unmitigated retry storms and compare resilience patterns side by side:
+
+- **Scenario Context:** 300 RPS constant ingress traffic hits an API backed by a database with a 100-connection pool. At $t=30\,\text{s}$ to $t=90\,\text{s}$, database latency degrades from 20 ms to 800 ms. Ingress clients time out at 1,000 ms and retry twice immediately.
+- **The Failure Mode:** Retries saturate the connection pool, exploding the wait queue to over 1,500 requests, producing $\approx 3.0\times$ retry amplification, collapsing goodput to 0 RPS, and failing to recover even after the fault ends due to head-of-line queue pileup.
+- **Five Comparative Variants:**
+  - **Variant A (Baseline):** 2 immediate retries with zero backoff.
+  - **Variant B (Backoff + Jitter):** Bounded retries with exponential backoff and randomized full jitter.
+  - **Variant C (Circuit Breaker):** Fast-fails traffic immediately when downstream failure thresholds are breached.
+  - **Variant D (Load Shedding):** Fast-fails requests with HTTP 503 (`shed`) when queue wait exceeds 800 ms, protecting connection pools.
+  - **Variant E (Comprehensive):** Combines a 20% token-bucket retry budget, circuit breaking, and load shedding to cap peak amplification at $1.20\times$ and guarantee instant recovery.
+- **Automated "Run All Variants" Comparison:** Execute all 5 variants under an identical fixed seed to produce a comparison table (peak amplification, minimum goodput, peak queue depth, p95 latency, error rate during fault, and recovery time) with multi-series overlay charts.
+- **What is Estimated vs. Real:**
+  - **Estimated:** Downstream service execution times (log-normal latency distributions) and continuous-time queue wait dynamics derived from discrete-event queueing theory.
+  - **Exact / Real:** Token-bucket retry budgets, circuit breaker state transitions, discrete request lifecycles, and deadline propagation timers.
+  - _Simulated with the assumptions above. Not a cloud benchmark._
+
 ---
 
 ## Monorepo Layout

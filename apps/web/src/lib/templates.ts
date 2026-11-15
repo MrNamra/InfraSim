@@ -3090,7 +3090,8 @@ export const RETRY_LAB_VARIANTS: RetryLabVariant[] = [
     id: 'A',
     name: 'A: Baseline (2 immediate retries)',
     shortLabel: 'A: Baseline',
-    description: '2 immediate retries on failure with zero backoff, no circuit breaker, no load shedding.',
+    description:
+      '2 immediate retries on failure with zero backoff, no circuit breaker, no load shedding.',
     apply: (d) => {
       const copy = JSON.parse(JSON.stringify(d)) as Design;
       const edge = copy.edges.find((e) => e.id === 'e-api-db');
@@ -3134,7 +3135,8 @@ export const RETRY_LAB_VARIANTS: RetryLabVariant[] = [
     id: 'C',
     name: 'C: Circuit breaker',
     shortLabel: 'C: Circuit Breaker',
-    description: 'Fast-fails when failure threshold is breached, giving downstream DB time to clear queue.',
+    description:
+      'Fast-fails when failure threshold is breached, giving downstream DB time to clear queue.',
     apply: (d) => {
       const copy = JSON.parse(JSON.stringify(d)) as Design;
       const edge = copy.edges.find((e) => e.id === 'e-api-db');
@@ -3178,7 +3180,8 @@ export const RETRY_LAB_VARIANTS: RetryLabVariant[] = [
     id: 'E',
     name: 'E: Retry budget + breaker + shedding',
     shortLabel: 'E: Comprehensive',
-    description: '20% retry budget, circuit breaker, load shedding, deadline propagation, and cancel on timeout.',
+    description:
+      '20% retry budget, circuit breaker, load shedding, deadline propagation, and cancel on timeout.',
     apply: (d) => {
       const copy = JSON.parse(JSON.stringify(d)) as Design;
       const edge = copy.edges.find((e) => e.id === 'e-api-db');

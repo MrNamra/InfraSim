@@ -185,13 +185,7 @@ export function RetryLabAssumptionsCard({
         recoveryTimeS: res.summary.recoveryTimeS ?? null,
       };
     });
-  }, [
-    variantResults,
-    loadRps,
-    dbLatencyNormalMs,
-    faultStartS,
-    faultEndS,
-  ]);
+  }, [variantResults, loadRps, dbLatencyNormalMs, faultStartS, faultEndS]);
 
   const hasAnyResults = Boolean(variantResults.A);
 
@@ -467,8 +461,12 @@ export function RetryLabAssumptionsCard({
                     const totalFault = Math.max(dbLatencyNormalMs + 1, Number(e.target.value));
                     const copy = JSON.parse(JSON.stringify(design)) as Design;
                     const ch = copy.scenarios[0]?.chaos.find(
-                      (c): c is Extract<import('@infrasim/shared-types').ChaosEvent, { kind: 'add-latency' }> =>
-                        c.kind === 'add-latency' && c.nodeId === 'db',
+                      (
+                        c,
+                      ): c is Extract<
+                        import('@infrasim/shared-types').ChaosEvent,
+                        { kind: 'add-latency' }
+                      > => c.kind === 'add-latency' && c.nodeId === 'db',
                     );
                     if (ch) {
                       ch.extraMs = totalFault - dbLatencyNormalMs;
