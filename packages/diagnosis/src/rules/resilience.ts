@@ -1,3 +1,4 @@
+import type { FixSuggestion, JsonPatchOp } from '@infrasim/shared-types';
 import { getTrafficShare, resolveNodeService, sumSummaryErrors } from '../helpers.js';
 import type { DiagnosisContext, Rule } from '../types.js';
 
@@ -126,6 +127,16 @@ export const retryStormRule: Rule = {
       if (triggeredBySpans || triggeredByAmplification) {
         const targetNode = ctx.design.nodes.find((n) => n.id === edge.to);
         const callerNode = ctx.design.nodes.find((n) => n.id === edge.from);
+        const peakAmp = ctx.result.summary.peakAmplification;
+        const measuredAmplification =
+          peakAmp !== undefined && peakAmp > 1
+            ? Number(peakAmp.toFixed(2))
+            : Number(
+                (Math.max(1, toSummary.requests) / Math.max(1, fromSummary?.requests ?? 1)).toFixed(
+                  2,
+                ),
+              );
+
         matches.push({
           nodeIds: [edge.from, edge.to],
           edgeIds: [edge.id],
@@ -138,6 +149,7 @@ export const retryStormRule: Rule = {
             jitter: edge.retry.jitter ? 'on' : 'off',
             targetErrorPct: Math.round(errRatio * 100),
             retrySpans,
+            measuredAmplification,
           },
           trafficShare: getTrafficShare(
             Math.max(fromSummary?.requests ?? 0, toSummary.requests),
@@ -150,29 +162,62 @@ export const retryStormRule: Rule = {
     return matches;
   },
   explain: (m) => ({
-    short: `Edge ${m.evidence.callerLabel} → ${m.evidence.targetLabel} retried aggressively (max=${m.evidence.maxRetries}, backoff=${m.evidence.backoffMs} ms, jitter=${m.evidence.jitter}) while errors hit ${m.evidence.targetErrorPct}%.`,
-    deep: `What happened: Immediate or un-jittered retries multiplied inbound traffic onto ${m.evidence.targetLabel} just as it began failing (${m.evidence.targetErrorPct}% error rate).\nWhy: Without exponential backoff + jitter and a circuit breaker, N callers retrying M times multiplies overload by up to (M + 1)x.\nHow to fix: Add exponential backoff with jitter (>= 100 ms), cap retries, and attach a circuit breaker.\nTrade-off: Failing requests return slightly faster instead of retrying repeatedly against a saturated dependency.`,
+    short: `Edge ${m.evidence.callerLabel} → ${m.evidence.targetLabel} retried aggressively (${m.evidence.measuredAmplification}x measured amplification, max=${m.evidence.maxRetries}, backoff=${m.evidence.backoffMs} ms, jitter=${m.evidence.jitter}) while errors hit ${m.evidence.targetErrorPct}%.`,
+    deep: `What happened: Immediate or un-jittered retries amplified inbound traffic by ${m.evidence.measuredAmplification}x onto ${m.evidence.targetLabel} just as it began failing (${m.evidence.targetErrorPct}% error rate).\nWhy: Without exponential backoff + jitter and a circuit breaker, N callers retrying M times multiplies overload by up to (M + 1)x.\nHow to fix: Add exponential backoff with full jitter (>= 100 ms), cap retries with a retry budget, or attach a circuit breaker.\nTrade-off: Failing requests return slightly faster instead of retrying repeatedly against a saturated dependency.`,
   }),
   fixes: (m, ctx) => {
     const eIdx = edgeIndexOf(ctx, String(m.evidence.edgeId ?? ''));
     if (eIdx < 0) return [];
-    return [
+    const tIdx = nodeIndexOf(ctx, m.nodeIds[1]);
+    const fixesList: FixSuggestion[] = [
       {
         label: 'Enable exponential backoff + jitter & circuit breaker',
         patch: [
           {
             op: 'add',
             path: `/edges/${eIdx}/retry`,
-            value: { max: 2, backoffMs: 100, jitter: true },
+            value: { max: 2, backoffMs: 100, jitter: true, fullJitter: true },
           },
           {
             op: 'add',
             path: `/edges/${eIdx}/circuitBreaker`,
             value: { failureThreshold: 5, windowMs: 10_000, openMs: 10_000 },
           },
-        ],
+        ] as JsonPatchOp[],
+        tradeOff: 'Desynchronizes retries and breaks failure cascade when dependency stalls',
+      },
+      {
+        label: 'Apply 20% retry budget to cap retry storm volume',
+        patch: [
+          {
+            op: 'add',
+            path: `/edges/${eIdx}/retry`,
+            value: {
+              max: 2,
+              backoffMs: 100,
+              jitter: true,
+              fullJitter: true,
+              budget: { percent: 20, minRps: 10 },
+            },
+          },
+        ] as JsonPatchOp[],
+        tradeOff: 'Limits total retries across all callers to at most 20% of new requests',
       },
     ];
+    if (tIdx >= 0) {
+      fixesList.push({
+        label: `Enable load shedding on ${m.evidence.targetLabel} (fast-fail 503 on overload)`,
+        patch: [
+          {
+            op: 'add',
+            path: `/nodes/${tIdx}/config/loadShed`,
+            value: { enabled: true, maxQueueWaitMs: 800, maxInFlight: 100 },
+          },
+        ] as JsonPatchOp[],
+        tradeOff: 'Rejects requests exceeding queue capacity to protect existing in-flight work',
+      });
+    }
+    return fixesList;
   },
 };
 
@@ -429,6 +474,12 @@ export const noCircuitBreakerRule: Rule = {
       if (errRatio > 0.5) {
         const caller = ctx.design.nodes.find((n) => n.id === edge.from);
         const target = ctx.design.nodes.find((n) => n.id === edge.to);
+        const peakAmp = ctx.result.summary.peakAmplification;
+        const measuredAmplification =
+          peakAmp !== undefined && peakAmp > 1
+            ? Number(peakAmp.toFixed(2))
+            : Number((1 + edge.retry.max * 0.5).toFixed(2));
+
         matches.push({
           nodeIds: [edge.from, edge.to],
           edgeIds: [edge.id],
@@ -438,6 +489,7 @@ export const noCircuitBreakerRule: Rule = {
             targetLabel: target?.label ?? edge.to,
             errorPct: Math.round(errRatio * 100),
             maxRetries: edge.retry.max,
+            measuredAmplification,
           },
           trafficShare: getTrafficShare(toSummary.requests, ctx),
           durationFraction: Math.max(0.4, Math.min(1, errRatio)),
@@ -447,13 +499,14 @@ export const noCircuitBreakerRule: Rule = {
     return matches;
   },
   explain: (m) => ({
-    short: `${m.evidence.callerLabel} → ${m.evidence.targetLabel} has no circuit breaker while ${m.evidence.errorPct}% of calls fail and retry.`,
-    deep: `What happened: ${m.evidence.targetLabel} failed ${m.evidence.errorPct}% of calls while ${m.evidence.callerLabel} kept sending up to ${m.evidence.maxRetries} retries.\nHow to fix: Attach a circuit breaker on the edge to fail fast while the dependency recovers.\nTrade-off: Fast-fails return immediate 503s during open state instead of blocking caller threads.`,
+    short: `${m.evidence.callerLabel} → ${m.evidence.targetLabel} has no circuit breaker; retries caused ${m.evidence.measuredAmplification}x amplification while ${m.evidence.errorPct}% of calls fail.`,
+    deep: `What happened: ${m.evidence.targetLabel} failed ${m.evidence.errorPct}% of calls while ${m.evidence.callerLabel} kept sending up to ${m.evidence.maxRetries} retries, amplifying load by ${m.evidence.measuredAmplification}x.\nHow to fix: Attach a circuit breaker on the edge to trip open and fail fast while the dependency recovers, or configure a retry budget.\nTrade-off: Fast-fails return immediate 503s during open state instead of blocking caller threads.`,
   }),
   fixes: (m, ctx) => {
     const eIdx = edgeIndexOf(ctx, String(m.evidence.edgeId ?? ''));
     if (eIdx < 0) return [];
-    return [
+    const tIdx = nodeIndexOf(ctx, m.nodeIds[1]);
+    const fixesList: FixSuggestion[] = [
       {
         label: 'Attach circuit breaker (5 failures / 10 s open)',
         patch: [
@@ -462,10 +515,46 @@ export const noCircuitBreakerRule: Rule = {
             path: `/edges/${eIdx}/circuitBreaker`,
             value: { failureThreshold: 5, windowMs: 10_000, openMs: 10_000 },
           },
-        ],
+        ] as JsonPatchOp[],
         tradeOff: 'Fails fast on outage instead of blocking threads',
       },
+      {
+        label: 'Attach circuit breaker + 20% retry budget',
+        patch: [
+          {
+            op: 'add',
+            path: `/edges/${eIdx}/circuitBreaker`,
+            value: { failureThreshold: 5, windowMs: 10_000, openMs: 10_000 },
+          },
+          {
+            op: 'add',
+            path: `/edges/${eIdx}/retry`,
+            value: {
+              max: 2,
+              backoffMs: 100,
+              jitter: true,
+              fullJitter: true,
+              budget: { percent: 20, minRps: 10 },
+            },
+          },
+        ] as JsonPatchOp[],
+        tradeOff: 'Stops retry amplification and sheds excess retries during dependency brownout',
+      },
     ];
+    if (tIdx >= 0) {
+      fixesList.push({
+        label: `Enable load shedding on ${m.evidence.targetLabel}`,
+        patch: [
+          {
+            op: 'add',
+            path: `/nodes/${tIdx}/config/loadShed`,
+            value: { enabled: true, maxQueueWaitMs: 800, maxInFlight: 100 },
+          },
+        ] as JsonPatchOp[],
+        tradeOff: 'Downstream dependency sheds queued work when queue wait exceeds threshold',
+      });
+    }
+    return fixesList;
   },
 };
 
