@@ -517,6 +517,76 @@ export function EdgePopover({
                 className="mt-0.5 h-7 w-full rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 font-mono text-[11px] tabular-nums text-[var(--text-primary)] disabled:opacity-40"
               />
             </label>
+
+            <label className="flex items-center gap-1.5 pt-1 text-[11px] text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={Boolean(edge.retry?.fullJitter)}
+                disabled={!edge.retry || edge.retry.max === 0}
+                onChange={(e) =>
+                  onUpdate(edge.id, (d) => {
+                    if (d.retry) {
+                      d.retry.fullJitter = e.target.checked;
+                    }
+                  })
+                }
+              />
+              <span>Full jitter</span>
+            </label>
+
+            <label className="flex items-center gap-1.5 pt-1 text-[11px] text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={Boolean(edge.cancelOnTimeout)}
+                onChange={(e) =>
+                  onUpdate(edge.id, (d) => {
+                    d.cancelOnTimeout = e.target.checked;
+                  })
+                }
+              />
+              <span>Cancel on timeout</span>
+            </label>
+
+            <label className="flex items-center gap-1.5 pt-1 text-[11px] text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={Boolean(edge.deadlinePropagation)}
+                onChange={(e) =>
+                  onUpdate(edge.id, (d) => {
+                    d.deadlinePropagation = e.target.checked;
+                  })
+                }
+              />
+              <span>Deadline propagation</span>
+            </label>
+
+            <label className="block">
+              <span className="text-[10px] text-[var(--text-muted)]">Retry budget %</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                placeholder="Off"
+                value={edge.retry?.budget?.percent ?? ''}
+                disabled={!edge.retry || edge.retry.max === 0}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  onUpdate(edge.id, (d) => {
+                    if (d.retry) {
+                      if (!e.target.value || val <= 0) {
+                        delete d.retry.budget;
+                      } else {
+                        d.retry.budget = {
+                          percent: Math.min(100, Math.max(1, Math.round(val))),
+                          minRps: d.retry.budget?.minRps ?? 10,
+                        };
+                      }
+                    }
+                  });
+                }}
+                className="mt-0.5 h-7 w-full rounded-[5px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 font-mono text-[11px] tabular-nums text-[var(--text-primary)] disabled:opacity-40"
+              />
+            </label>
           </div>
         </div>
 

@@ -175,6 +175,7 @@ interface OutboundAttempt {
   maxRetries: number;
   backoffMs: number;
   jitter: boolean;
+  fullJitter?: boolean;
   attemptTimeoutMs: number;
   overallDeadlineMs: number;
   startMs: number;
@@ -253,6 +254,9 @@ interface RuntimeEdge {
   viaNat: boolean;
   viaPrivateLink: boolean;
   extraNetworkLatencyMs: number;
+  retryBudgetTokens: number;
+  retryBudgetMaxTokens: number;
+  lastRetryBudgetRefillMs: number;
 }
 
 interface RuntimeNode {
@@ -755,6 +759,9 @@ export async function runSimulation(
       viaNat: toNode.kind === 'net' || fromNode.kind === 'net' || Boolean(netAnalysis?.viaNat),
       viaPrivateLink: resolvedPlacement.viaPrivateLink || Boolean(netAnalysis?.viaEndpoint),
       extraNetworkLatencyMs: netAnalysis?.extraLatencyMs ?? 0,
+      retryBudgetTokens: e.retry?.budget ? Math.max(10, e.retry.budget.minRps ?? 10) : 0,
+      retryBudgetMaxTokens: e.retry?.budget ? Math.max(100, (e.retry.budget.minRps ?? 10) * 10) : 0,
+      lastRetryBudgetRefillMs: 0,
     };
     orderedEdges.push(re);
     fromNode.outgoingAll.push(re);
@@ -1266,6 +1273,15 @@ export async function runSimulation(
         advanceStationIntegrals(rn.station, now);
         rn.station.busyConnections = Math.max(0, rn.station.busyConnections - 1);
       }
+    } else if (!call.dbConnectionHeld && rn.dbWaitQueue.length > 0) {
+      const dbIdx = rn.dbWaitQueue.findIndex((w) => w.call === call);
+      if (dbIdx >= 0) {
+        const waiter = rn.dbWaitQueue[dbIdx];
+        if (waiter) {
+          waiter.expired = true;
+          rn.dbWaitQueue.splice(dbIdx, 1);
+        }
+      }
     }
 
     // Release slot if acquired and promote head queued caller
@@ -1274,6 +1290,11 @@ export async function runSimulation(
       const promoted = releaseSlotAndDequeue(rn.station, now);
       if (promoted) {
         startServiceAtNode(promoted.req);
+      }
+    } else if (rn.station.slotQueue.length > 0) {
+      const qIdx = rn.station.slotQueue.findIndex((entry) => entry.req === call);
+      if (qIdx >= 0) {
+        rn.station.slotQueue.splice(qIdx, 1);
       }
     }
 
@@ -1349,6 +1370,22 @@ export async function runSimulation(
       return;
     }
 
+    // Retry budget replenishment on new client request
+    if (attemptState.attemptIndex === 0 && edgeState.edge.retry?.budget) {
+      const budget = edgeState.edge.retry.budget;
+      const minRps = budget.minRps ?? 10;
+      const dtS = Math.max(0, (now - edgeState.lastRetryBudgetRefillMs) / 1000);
+      edgeState.retryBudgetTokens = Math.min(
+        edgeState.retryBudgetMaxTokens,
+        edgeState.retryBudgetTokens + dtS * minRps,
+      );
+      edgeState.lastRetryBudgetRefillMs = now;
+      edgeState.retryBudgetTokens = Math.min(
+        edgeState.retryBudgetMaxTokens,
+        edgeState.retryBudgetTokens + budget.percent / 100,
+      );
+    }
+
     // Circuit breaker check
     if (edgeState.circuitBreaker && !allowCircuitBreakerRequest(edgeState.circuitBreaker, now)) {
       attemptState.edgeState.winCount += 1;
@@ -1406,7 +1443,9 @@ export async function runSimulation(
       deadlineMs: attemptDeadlineMs,
       callerTimedOut: false,
       settledWithCaller: false,
-      cancelOnTimeout: Boolean(targetNode.node.config.cancelOnTimeout),
+      cancelOnTimeout: Boolean(
+        targetNode.node.config.cancelOnTimeout || edgeState.edge.cancelOnTimeout,
+      ),
       slotAcquired: false,
       dbConnectionHeld: false,
       holdingCore: false,
@@ -1448,17 +1487,39 @@ export async function runSimulation(
           return;
         }
 
+        // Retry budget check
+        let budgetAllowed = true;
+        if (edgeState.edge.retry?.budget) {
+          const budget = edgeState.edge.retry.budget;
+          const minRps = budget.minRps ?? 10;
+          const dtS = Math.max(0, (now - edgeState.lastRetryBudgetRefillMs) / 1000);
+          edgeState.retryBudgetTokens = Math.min(
+            edgeState.retryBudgetMaxTokens,
+            edgeState.retryBudgetTokens + dtS * minRps,
+          );
+          edgeState.lastRetryBudgetRefillMs = now;
+          if (edgeState.retryBudgetTokens >= 1) {
+            edgeState.retryBudgetTokens -= 1;
+            budgetAllowed = true;
+          } else {
+            budgetAllowed = false;
+          }
+        }
+
         // Retry logic on retryable error
         const canRetry =
           attemptState.attemptIndex < attemptState.maxRetries &&
+          budgetAllowed &&
           outcome.errorKind !== 'circuit_open' &&
           now < attemptState.overallDeadlineMs - 5;
 
         if (canRetry) {
           const expDelay = attemptState.backoffMs * Math.pow(2, attemptState.attemptIndex);
-          const delayMs = attemptState.jitter
-            ? expDelay * Math.max(0.1, edgeState.rng.next())
-            : expDelay;
+          const delayMs = attemptState.fullJitter
+            ? edgeState.rng.next() * expDelay
+            : attemptState.jitter
+              ? expDelay * Math.max(0.1, edgeState.rng.next())
+              : expDelay;
           if (now + delayMs < attemptState.overallDeadlineMs) {
             emitLog(
               'warn',
@@ -1519,8 +1580,18 @@ export async function runSimulation(
     const nodeTimeout = caller?.node.node.config.timeoutMs ?? 30_000;
     const lbIdle =
       caller?.node.kind === 'lb' ? caller.node.node.config.lb?.idleTimeoutMs : undefined;
-    const effectiveTimeout = Math.min(nodeTimeout, lbIdle ?? nodeTimeout);
-    const overallDeadlineMs = Math.max(parentDeadlineMs, now + 1);
+    let effectiveTimeout = Math.min(nodeTimeout, lbIdle ?? nodeTimeout);
+    let overallDeadlineMs = Math.max(parentDeadlineMs, now + 1);
+
+    if (
+      caller &&
+      (edgeState.edge.deadlinePropagation || caller.incomingEdge?.edge.deadlinePropagation)
+    ) {
+      const remainingCallerMs = Math.max(1, caller.deadlineMs - now);
+      effectiveTimeout = Math.min(effectiveTimeout, remainingCallerMs);
+      overallDeadlineMs = Math.min(overallDeadlineMs, caller.deadlineMs);
+    }
+
     const retryCfg = edgeState.edge.retry;
 
     launchEdgeAttempt({
@@ -1531,6 +1602,7 @@ export async function runSimulation(
       maxRetries: retryCfg?.max ?? DEFAULT_EDGE_BASE_RETRY_MAX,
       backoffMs: retryCfg?.backoffMs ?? 50,
       jitter: retryCfg?.jitter ?? true,
+      fullJitter: Boolean(retryCfg?.fullJitter),
       attemptTimeoutMs: effectiveTimeout,
       overallDeadlineMs,
       startMs: now,
@@ -2032,6 +2104,39 @@ export async function runSimulation(
     ) {
       const isWrite = isDbWrite;
 
+      if (
+        rn.node.config.loadShed &&
+        rn.node.config.loadShed.enabled !== false &&
+        rn.node.config.loadShed.maxInFlight !== undefined &&
+        rn.station.busyConnections >= rn.node.config.loadShed.maxInFlight
+      ) {
+        recordNodeOutcome(call, false, 'shed');
+        call.settledWithCaller = true;
+        call.onFinish?.({ ok: false, errorKind: 'shed', bytesOut: 0 });
+        return;
+      }
+
+      if (
+        rn.node.config.loadShed &&
+        rn.node.config.loadShed.enabled !== false &&
+        rn.node.config.loadShed.maxQueueWaitMs !== undefined
+      ) {
+        const meanServiceMs = Math.max(1, rn.node.config.latency?.p50 ?? 20);
+        const estWaitMs =
+          ((rn.dbWaitQueue.length + 1) * meanServiceMs) /
+          Math.max(1, rn.capacities.connectionsMax);
+        const firstDb = rn.dbWaitQueue[0];
+        if (
+          (firstDb && now - firstDb.enqueuedAtMs > rn.node.config.loadShed.maxQueueWaitMs) ||
+          estWaitMs > rn.node.config.loadShed.maxQueueWaitMs
+        ) {
+          recordNodeOutcome(call, false, 'shed');
+          call.settledWithCaller = true;
+          call.onFinish?.({ ok: false, errorKind: 'shed', bytesOut: 0 });
+          return;
+        }
+      }
+
       if (rn.station.busyConnections < rn.capacities.connectionsMax) {
         advanceStationIntegrals(rn.station, now);
         rn.station.busyConnections += 1;
@@ -2407,6 +2512,53 @@ export async function runSimulation(
       }
     }
 
+    // Load shedding: fast-fail 503 ('shed') when queue wait exceeds maxQueueWaitMs or in-flight exceeds maxInFlight
+    const loadShed = rn.node.config.loadShed;
+    if (loadShed && loadShed.enabled !== false) {
+      const activeSlots = Math.max(
+        1,
+        Math.round(
+          (rn.station.slotsCapacity * rn.station.instancesActive) /
+            Math.max(1, rn.station.instancesTotal),
+        ),
+      );
+      const isOverInFlight =
+        loadShed.maxInFlight !== undefined &&
+        (rn.station.inFlight >= loadShed.maxInFlight ||
+          (rn.capacities.connectionsMax !== null &&
+            rn.station.busyConnections >= loadShed.maxInFlight));
+
+      let isOverQueueWait = false;
+      if (loadShed.maxQueueWaitMs !== undefined) {
+        if (rn.station.slotQueue.length > 0) {
+          const head = rn.station.slotQueue[0];
+          const headWaitMs = head ? now - head.enqueuedAtMs : 0;
+          const meanServiceMs = Math.max(1, rn.node.config.latency?.p50 ?? 20);
+          const estWaitMs = ((rn.station.slotQueue.length + 1) * meanServiceMs) / activeSlots;
+          if (headWaitMs > loadShed.maxQueueWaitMs || estWaitMs > loadShed.maxQueueWaitMs) {
+            isOverQueueWait = true;
+          }
+        } else if (rn.dbWaitQueue.length > 0) {
+          const firstDb = rn.dbWaitQueue[0];
+          const headWaitMs = firstDb ? now - firstDb.enqueuedAtMs : 0;
+          const meanServiceMs = Math.max(1, rn.node.config.latency?.p50 ?? 20);
+          const estWaitMs =
+            ((rn.dbWaitQueue.length + 1) * meanServiceMs) /
+            Math.max(1, rn.capacities.connectionsMax ?? 1);
+          if (headWaitMs > loadShed.maxQueueWaitMs || estWaitMs > loadShed.maxQueueWaitMs) {
+            isOverQueueWait = true;
+          }
+        }
+      }
+
+      if (isOverInFlight || isOverQueueWait) {
+        recordNodeOutcome(call, false, 'shed');
+        call.settledWithCaller = true;
+        call.onFinish?.({ ok: false, errorKind: 'shed', bytesOut: 0 });
+        return;
+      }
+    }
+
     const slotRes = tryAcquireOrEnqueueSlot(rn.station, call, now);
     if (slotRes.status === 'down') {
       recordNodeOutcome(call, false, 'server');
@@ -2701,6 +2853,9 @@ export async function runSimulation(
         };
         token.targetCall.span.status = 'timeout';
       }
+      if (token.targetCall.cancelOnTimeout) {
+        settleCallAndReleaseResources(token.targetCall, false, 'timeout');
+      }
     }
     token.attempt.edgeState.winCount += 1;
     token.attempt.edgeState.winErrors += 1;
@@ -2720,13 +2875,37 @@ export async function runSimulation(
     }
 
     const retryCfg = token.attempt;
+    let budgetAllowed = true;
+    if (token.attempt.edgeState.edge.retry?.budget) {
+      const budget = token.attempt.edgeState.edge.retry.budget;
+      const minRps = budget.minRps ?? 10;
+      const dtS = Math.max(0, (now - token.attempt.edgeState.lastRetryBudgetRefillMs) / 1000);
+      token.attempt.edgeState.retryBudgetTokens = Math.min(
+        token.attempt.edgeState.retryBudgetMaxTokens,
+        token.attempt.edgeState.retryBudgetTokens + dtS * minRps,
+      );
+      token.attempt.edgeState.lastRetryBudgetRefillMs = now;
+      if (token.attempt.edgeState.retryBudgetTokens >= 1) {
+        token.attempt.edgeState.retryBudgetTokens -= 1;
+        budgetAllowed = true;
+      } else {
+        budgetAllowed = false;
+      }
+    }
+
     const canRetry =
-      retryCfg.attemptIndex < retryCfg.maxRetries && now < retryCfg.overallDeadlineMs - 5;
+      retryCfg.attemptIndex < retryCfg.maxRetries &&
+      budgetAllowed &&
+      (!token.attempt.edgeState.circuitBreaker ||
+        token.attempt.edgeState.circuitBreaker.state !== 'open') &&
+      now < retryCfg.overallDeadlineMs - 5;
     if (canRetry) {
       const expDelay = retryCfg.backoffMs * Math.pow(2, retryCfg.attemptIndex);
-      const delayMs = retryCfg.jitter
-        ? expDelay * Math.max(0.1, retryCfg.edgeState.rng.next())
-        : expDelay;
+      const delayMs = retryCfg.fullJitter
+        ? retryCfg.edgeState.rng.next() * expDelay
+        : retryCfg.jitter
+          ? expDelay * Math.max(0.1, retryCfg.edgeState.rng.next())
+          : expDelay;
       if (now + delayMs < retryCfg.overallDeadlineMs) {
         emitLog(
           'warn',

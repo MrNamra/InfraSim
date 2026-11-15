@@ -553,6 +553,70 @@ export function ConfigTab({
             <span>Cancel downstream</span>
           </label>
         </div>
+
+        {/* Load Shedding */}
+        <div className="mt-2 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-sunken)] p-2 space-y-2">
+          <div className="flex items-center justify-between text-[11px] font-medium text-[var(--text-secondary)]">
+            <span>Load shedding</span>
+            <input
+              type="checkbox"
+              checked={Boolean(cfg.loadShed?.enabled)}
+              onChange={(e) =>
+                onUpdateConfig((d) => {
+                  if (e.target.checked) {
+                    d.loadShed = {
+                      enabled: true,
+                      maxQueueWaitMs: d.loadShed?.maxQueueWaitMs ?? 800,
+                      maxInFlight: d.loadShed?.maxInFlight ?? 100,
+                    };
+                  } else {
+                    if (d.loadShed) {
+                      d.loadShed.enabled = false;
+                    }
+                  }
+                })
+              }
+            />
+          </div>
+          {cfg.loadShed?.enabled ? (
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <label className="block">
+                <span className="text-[10px] text-[var(--text-muted)]">Max wait (ms)</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={cfg.loadShed?.maxQueueWaitMs ?? 800}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    onUpdateConfig((d) => {
+                      if (d.loadShed) {
+                        d.loadShed.maxQueueWaitMs = Math.max(1, Math.round(n));
+                      }
+                    });
+                  }}
+                  className="mt-0.5 h-7 w-full rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-1.5 font-mono text-[11px] tabular-nums text-[var(--text-primary)]"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[10px] text-[var(--text-muted)]">Max in-flight</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={cfg.loadShed?.maxInFlight ?? 100}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    onUpdateConfig((d) => {
+                      if (d.loadShed) {
+                        d.loadShed.maxInFlight = Math.max(1, Math.round(n));
+                      }
+                    });
+                  }}
+                  className="mt-0.5 h-7 w-full rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-1.5 font-mono text-[11px] tabular-nums text-[var(--text-primary)]"
+                />
+              </label>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       {/* Kind-specific behavior settings */}

@@ -82,6 +82,11 @@ export interface NodeConfig {
   };
   timeoutMs?: number;
   cancelOnTimeout?: boolean;
+  loadShed?: {
+    enabled?: boolean;
+    maxQueueWaitMs?: number;
+    maxInFlight?: number;
+  };
   coldStart?: {
     enabled: boolean;
     probabilityModel: 'idle-based' | 'fixed';
@@ -188,8 +193,19 @@ export interface EdgeInstance {
   bandwidthGbps?: number;
   tunnel?: 'none' | 'privatelink' | 'vpn';
   networkLatency?: LatencyModel;
-  retry?: { max: number; backoffMs: number; jitter: boolean };
+  retry?: {
+    max: number;
+    backoffMs: number;
+    jitter: boolean;
+    fullJitter?: boolean;
+    budget?: {
+      percent: number;
+      minRps?: number;
+    };
+  };
   circuitBreaker?: { failureThreshold: number; windowMs: number; openMs: number };
+  deadlinePropagation?: boolean;
+  cancelOnTimeout?: boolean;
   label?: string;
   inferred?: boolean;
   confidence?: number;
