@@ -1323,7 +1323,9 @@ export async function runSimulation(
   };
 
   const launchEdgeAttempt = (attemptState: OutboundAttempt) => {
-    bucketTotalAttempts += 1;
+    if (attemptState.attemptIndex > 0) {
+      bucketTotalAttempts += 1;
+    }
     const { edgeState, targetNode } = attemptState;
 
     // Network block check (drop / conn_refused / dns)
@@ -2664,7 +2666,7 @@ export async function runSimulation(
     const offeredRps = bucketRootOffered * scaleFactor;
     const attemptRps = bucketTotalAttempts * scaleFactor;
     const amplification = offeredRps > 0 ? Number((attemptRps / offeredRps).toFixed(2)) : 1;
-    const goodputRps = bucketRootGoodput * scaleFactor;
+    const goodputRps = Math.min(offeredRps, bucketRootGoodput * scaleFactor);
     const lateCompletionsPerSec = bucketLateCompletions * scaleFactor;
     const totalInFlight =
       orderedNodes.reduce((sum, rn) => sum + rn.station.inFlight, 0) * scaleFactor;
@@ -3004,6 +3006,7 @@ export async function runSimulation(
         const reqIdx = ++rootTotalRequests;
         bucketRootArrivals += 1;
         bucketRootOffered += 1;
+        bucketTotalAttempts += 1;
         const reqStartMs = now;
         const reqDeadlineMs = reqStartMs + (entryNode.node.config.timeoutMs ?? 30_000);
         const shouldSampleTrace = sampledTraces.length < 200 || traceSampleRng.chance(200 / reqIdx);
@@ -3070,7 +3073,6 @@ export async function runSimulation(
           entryNode.bucketArrivals += 1;
           entryNode.frameArrivals += 1;
           if (entryNode.outgoingSync.length === 0) {
-            bucketTotalAttempts += 1;
             entryNode.totalCompletions += 1;
             entryNode.bucketCompletions += 1;
             entryNode.frameCompletions += 1;
@@ -3133,7 +3135,6 @@ export async function runSimulation(
         }
 
         // Direct entry into a service node (no Client node on canvas)
-        bucketTotalAttempts += 1;
         const rootCall: CallCtx = {
           id: ++callCounter,
           rootRequestId,

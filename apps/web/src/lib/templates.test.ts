@@ -8,7 +8,7 @@ import { STARTER_TEMPLATES, getStarterTemplate } from './templates';
 
 describe('Phase 1 starter templates', () => {
   it('validates every starter template against Design JSON Schema and catalog services', () => {
-    expect(STARTER_TEMPLATES.length).toBe(18);
+    expect(STARTER_TEMPLATES.length).toBe(19);
 
     for (const tpl of STARTER_TEMPLATES) {
       const res = validateDesign(tpl.design);
